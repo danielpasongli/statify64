@@ -49,4 +49,54 @@ describe('formatTestsOfNormalityTable', () => {
     expect(table?.rows[0].sw_sig).toBe('0.321');
     expect(table?.footnotes).toEqual(expect.arrayContaining(['a. Lilliefors Significance Correction']));
   });
+
+  it('adds a separate dynamic interpretation for each normality test', () => {
+    const results: any = {
+      all_data: {
+        factorLevels: {},
+        results: [
+          {
+            variable: { name: 'x1', label: 'Pendapatan' },
+            normalityTests: {
+              alpha: 0.01,
+              kolmogorovSmirnov: { statistic: 0.12, df: 20, pValue: 0.02 },
+              shapiroWilk: { statistic: 0.91, df: 20, pValue: 0.009 },
+            },
+          },
+        ],
+      },
+    };
+
+    const table = formatTestsOfNormalityTable(results, baseParams);
+
+    expect(table?.footer).toEqual(expect.arrayContaining([
+      'H₀: data berdistribusi normal. H₁: data tidak berdistribusi normal.',
+      'Kolmogorov-Smirnov — Pendapatan: p = 0.020 ≥ α = 0.010; gagal menolak H₀. Tidak terdapat bukti bahwa data menyimpang dari distribusi normal.',
+      'Shapiro-Wilk — Pendapatan: p = 0.009 < α = 0.010; H₀ ditolak. Data tidak berdistribusi normal.',
+    ]));
+  });
+
+  it('does not create a conclusion for a test that was not computed', () => {
+    const results: any = {
+      all_data: {
+        factorLevels: {},
+        results: [
+          {
+            variable: { name: 'x1', label: 'Pendapatan' },
+            normalityTests: {
+              alpha: 0.05,
+              kolmogorovSmirnov: { statistic: 0.12, df: 6001, pValue: 0.2 },
+              shapiroWilk: null,
+              notes: ['Shapiro-Wilk is only reported for sample sizes up to 5000.'],
+            },
+          },
+        ],
+      },
+    };
+
+    const table = formatTestsOfNormalityTable(results, baseParams);
+
+    expect(table?.footer).toHaveLength(2);
+    expect((table?.footer as string[]).join(' ')).not.toContain('Shapiro-Wilk —');
+  });
 });
