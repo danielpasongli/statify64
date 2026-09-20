@@ -18,6 +18,23 @@ const formatSig = (value: number | null | undefined): string => {
   return value.toFixed(3);
 };
 
+const formatInterpretation = (
+  testName: string,
+  subject: string,
+  pValue: number | null | undefined,
+  alpha: number,
+): string | null => {
+  if (pValue === null || pValue === undefined || !Number.isFinite(pValue)) return null;
+
+  const significant = pValue < alpha;
+  const comparison = significant ? '<' : '≥';
+  const decision = significant
+    ? 'H₀ ditolak. Data tidak berdistribusi normal.'
+    : 'gagal menolak H₀. Tidak terdapat bukti bahwa data menyimpang dari distribusi normal.';
+
+  return `${testName} — ${subject}: p = ${pValue.toFixed(3)} ${comparison} α = ${alpha.toFixed(3)}; ${decision}`;
+};
+
 export const formatTestsOfNormalityTable = (
   results: ExploreAggregatedResults,
   params: ExploreAnalysisParams,
@@ -28,6 +45,7 @@ export const formatTestsOfNormalityTable = (
   const resultsByDepVar = regroupByDepVar(results);
   const rows: any[] = [];
   const footnotes: string[] = [];
+  const interpretations: string[] = [];
 
   let hasKsValue = false;
 
@@ -57,6 +75,18 @@ export const formatTestsOfNormalityTable = (
       const rowHeader = hasFactors
         ? [depVarLabel, factorLabel]
         : [depVarLabel];
+
+      const subject = factorLabel
+        ? `${depVarLabel} (kelompok ${factorLabel})`
+        : depVarLabel;
+      const alpha = Number.isFinite(normality.alpha) ? normality.alpha : 0.05;
+
+      [
+        formatInterpretation('Kolmogorov-Smirnov', subject, ks?.pValue, alpha),
+        formatInterpretation('Shapiro-Wilk', subject, sw?.pValue, alpha),
+      ].forEach((interpretation) => {
+        if (interpretation) interpretations.push(interpretation);
+      });
 
       rows.push({
         rowHeader,
@@ -132,5 +162,11 @@ export const formatTestsOfNormalityTable = (
     columnHeaders,
     rows,
     footnotes: footnotes.length ? footnotes : undefined,
+    footer: interpretations.length
+      ? [
+          'H₀: data berdistribusi normal. H₁: data tidak berdistribusi normal.',
+          ...interpretations,
+        ]
+      : undefined,
   };
 };
