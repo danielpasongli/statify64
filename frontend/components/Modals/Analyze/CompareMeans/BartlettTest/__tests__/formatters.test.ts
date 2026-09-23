@@ -76,6 +76,12 @@ describe('formatters', () => {
             expect(result.title).toContain('Bartlett');
             expect(result.columnHeaders).toBeDefined();
             expect(result.rows).toHaveLength(1);
+            expect(result.description).toEqual(expect.arrayContaining([
+                '<p><strong>Hipotesis</strong></p>',
+                '<p>H₀: σ₁² = σ₂² = ⋯ = σₖ² — seluruh kelompok memiliki varians yang sama (homogen).</p>',
+                '<p><strong>Interpretasi</strong></p>',
+                '<p>Bartlett — Test Score: χ²(2) = 5.123, p = 0.077 ≥ α = 0.050; gagal menolak H₀. Belum terdapat bukti bahwa varians antar kelompok berbeda.</p>',
+            ]));
 
             // Verifikasi rowHeader adalah array non-empty
             expect(result.rows[0]?.rowHeader).toBeInstanceOf(Array);
@@ -104,6 +110,7 @@ describe('formatters', () => {
             // p-value < 0.001 harus ditampilkan sebagai <.001
             const sigValue = result.rows[0].sig;
             expect(sigValue).toBe('<.001');
+            expect(result.description?.join(' ')).toContain('H₀ ditolak. Varians antar kelompok berbeda secara signifikan.');
         });
 
         it('harus menangani error result', () => {
