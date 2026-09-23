@@ -191,7 +191,31 @@ describe('Crosstabs Formatters', () => {
             expect((formatted?.rows[1] as any).value).toBe('474');
             expect((formatted?.rows[0] as any).df).toBe('2');
             expect((formatted?.rows[0] as any).sig).toBe('<.001');
-            expect(formatted?.footnotes?.[0]).toContain('expected count less than 5');
+            expect(formatted?.footer?.[0]).toContain('expected count less than 5');
+            expect(formatted?.description).toEqual(expect.arrayContaining([
+                '<p><strong>Hipotesis uji kebebasan</strong></p>',
+                '<p>H₀: Pᵢⱼ = Pᵢ·P·ⱼ — Gender dan Job Category saling bebas.</p>',
+                '<p><strong>Konteks proporsi multinomial</strong></p>',
+                '<p>Pearson Chi-Square: χ²(2) = 67.149, p < 0.001; H₀ ditolak. Terdapat hubungan yang signifikan antara Gender dan Job Category.</p>',
+                '<p>Dalam konteks proporsi multinomial, H₀ ditolak. Distribusi proporsi Job Category berbeda secara signifikan pada minimal satu kelompok Gender.</p>',
+            ]));
+        });
+
+        it('uses binomial proportion context when the outcome has two categories', () => {
+            const binomialResult: CrosstabsWorkerResult = {
+                ...mockResult,
+                summary: {
+                    ...mockResult.summary,
+                    colCategories: ['Yes', 'No'],
+                    colTotals: [300, 174],
+                },
+            };
+
+            const formatted = formatChiSquareTestsTable(binomialResult, mockParams);
+
+            expect(formatted?.description?.join(' ')).toContain('Konteks proporsi binomial');
+            expect(formatted?.description?.join(' ')).toContain('p₁ = p₂ = ⋯ = pₖ');
+            expect(formatted?.description?.join(' ')).toContain('Proporsi Job Category berbeda secara signifikan pada minimal satu kelompok Gender.');
         });
 
         it('should return null when chi-square option is disabled', () => {

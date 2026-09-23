@@ -25,6 +25,30 @@ function formatDF(value: number | undefined): number | string {
     return Math.round(value);
 }
 
+const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+}[character] as string));
+
+function formatBartlettInterpretation(result: BartlettTestResult, alpha = 0.05): string | null {
+    if (!result.variable || !Number.isFinite(result.statistic) || !Number.isFinite(result.df) || !Number.isFinite(result.pValue)) {
+        return null;
+    }
+
+    const variableName = escapeHtml(result.variable.label || result.variable.name || 'Unknown');
+    const pValue = result.pValue as number;
+    const significant = pValue < alpha;
+    const pText = pValue < 0.001 ? 'p < 0.001' : `p = ${pValue.toFixed(3)} ${significant ? '<' : '≥'} α = ${alpha.toFixed(3)}`;
+    const decision = significant
+        ? 'H₀ ditolak. Varians antar kelompok berbeda secara signifikan.'
+        : 'gagal menolak H₀. Belum terdapat bukti bahwa varians antar kelompok berbeda.';
+
+    return `<p>Bartlett — ${variableName}: χ²(${Math.round(result.df as number)}) = ${(result.statistic as number).toFixed(3)}, ${pText}; ${decision}</p>`;
+}
+
 /**
  * Format tabel hasil Bartlett Test
  *
@@ -58,9 +82,12 @@ export function formatBartlettTestTable(results: BartlettTestResult[]): Bartlett
             { header: 'Sig.', key: 'sig' },
         ],
         rows: [],
-        footer: "Tests the null hypothesis that variances are equal across groups. " +
-                "A significant result (p < 0.05) indicates variances are not equal. " +
-                "Note: Bartlett's Test is sensitive to departures from normality."
+        description: [
+            '<p><strong>Hipotesis</strong></p>',
+            '<p>H₀: σ₁² = σ₂² = ⋯ = σₖ² — seluruh kelompok memiliki varians yang sama (homogen).</p>',
+            '<p>H₁: ∃ i ≠ j: σᵢ² ≠ σⱼ² — minimal dua kelompok memiliki varians berbeda.</p>',
+            '<p><strong>Interpretasi</strong></p>',
+        ],
     };
 
     for (const result of results) {
@@ -95,8 +122,15 @@ export function formatBartlettTestTable(results: BartlettTestResult[]): Bartlett
             };
             console.log('[INFO] Adding data row:', dataRow);
             table.rows.push(dataRow);
+            const interpretation = formatBartlettInterpretation(result);
+            if (interpretation) table.description?.push(interpretation);
         }
     }
+
+    table.description?.push(
+        '<p><strong>Catatan asumsi</strong></p>',
+        '<p>Uji Bartlett mengasumsikan data dalam setiap kelompok berdistribusi normal dan sensitif terhadap pelanggaran normalitas.</p>',
+    );
 
     console.log('[INFO] formatBartlettTestTable: Final table has', table.rows.length, 'rows');
 

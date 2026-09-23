@@ -195,11 +195,11 @@ export const useCrosstabsAnalysis = (params: CrosstabsAnalysisParams, onClose: (
                                     title: chiSquareTable.title,
                                     columnHeaders: chiSquareTable.columnHeaders,
                                     rows: chiSquareTable.rows,
-                                    footnotes: chiSquareTable.footnotes,
+                                    footer: chiSquareTable.footer,
                                 }]
                             }),
                             components: "Chi-Square Tests",
-                            description: "Pearson Chi-Square test of independence"
+                            description: chiSquareTable.description?.join('\n') || ''
                         });
                     }
                 } catch (e) {

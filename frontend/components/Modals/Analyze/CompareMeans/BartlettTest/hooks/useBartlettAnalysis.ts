@@ -106,7 +106,7 @@ export function useBartlettAnalysis({
                 title: "Bartlett's Test of Homogeneity of Variances",
                 output_data: JSON.stringify(tableToSave),
                 components: "Bartlett Test",
-                description: "Tests the null hypothesis that variances are equal across groups"
+                description: bartlettTable.description?.join('\n') || ''
             });
 
             // Tambahkan statistik deskriptif jika diminta
