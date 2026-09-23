@@ -31,7 +31,7 @@ describe('formatTestsOfNormalityTable', () => {
             variable: { name: 'x1', label: 'X1' },
             normalityTests: {
               sampleSize: 20,
-              kolmogorovSmirnov: { statistic: 0.12345, df: 20, pValue: 0.0004 },
+              kolmogorovSmirnov: { statistic: 0.12345, df: 20, pValue: 0.0004, isLowerBound: true },
               shapiroWilk: { statistic: 0.9788, df: 20, pValue: 0.321 },
             },
           },
@@ -44,10 +44,13 @@ describe('formatTestsOfNormalityTable', () => {
     expect(table?.title).toBe('Tests of Normality');
     expect(table?.rows).toHaveLength(1);
     expect(table?.rows[0].ks_statistic).toBe('0.123');
-    expect(table?.rows[0].ks_sig).toBe('<.001');
+    expect(table?.rows[0].ks_sig).toBe('<.001*');
     expect(table?.rows[0].sw_statistic).toBe('0.979');
     expect(table?.rows[0].sw_sig).toBe('0.321');
-    expect(table?.footer).toEqual(expect.arrayContaining(['a. Lilliefors Significance Correction']));
+    expect(table?.footer).toEqual([
+      '*. This is a lower bound of the true significance.',
+      'a. Lilliefors Significance Correction',
+    ]);
   });
 
   it('adds a separate dynamic interpretation for each normality test', () => {
@@ -70,9 +73,12 @@ describe('formatTestsOfNormalityTable', () => {
     const table = formatTestsOfNormalityTable(results, baseParams);
 
     expect(table?.footnotes).toEqual(expect.arrayContaining([
-      'H₀: data berdistribusi normal. H₁: data tidak berdistribusi normal.',
-      'Kolmogorov-Smirnov — Pendapatan: p = 0.020 ≥ α = 0.010; gagal menolak H₀. Tidak terdapat bukti bahwa data menyimpang dari distribusi normal.',
-      'Shapiro-Wilk — Pendapatan: p = 0.009 < α = 0.010; H₀ ditolak. Data tidak berdistribusi normal.',
+      '<p><strong>Hipotesis</strong></p>',
+      '<p>H₀: X ∼ N(μ, σ²) — data berdistribusi normal.</p>',
+      '<p>H₁: X ≁ N(μ, σ²) — data tidak berdistribusi normal.</p>',
+      '<p><strong>Interpretasi</strong></p>',
+      '<p>Kolmogorov-Smirnov — Pendapatan: p = 0.020 ≥ α = 0.010; gagal menolak H₀. Tidak terdapat bukti bahwa data menyimpang dari distribusi normal.</p>',
+      '<p>Shapiro-Wilk — Pendapatan: p = 0.009 < α = 0.010; H₀ ditolak. Data tidak berdistribusi normal.</p>',
     ]));
   });
 
@@ -96,7 +102,7 @@ describe('formatTestsOfNormalityTable', () => {
 
     const table = formatTestsOfNormalityTable(results, baseParams);
 
-    expect(table?.footnotes).toHaveLength(2);
+    expect(table?.footnotes).toHaveLength(5);
     expect(table?.footnotes?.join(' ')).not.toContain('Shapiro-Wilk —');
   });
 });

@@ -154,7 +154,7 @@ export const formatTestsOfNormalityTable = (
       ];
 
   if (hasKsValue) {
-    footnotes.unshift('a. Lilliefors Significance Correction');
+    footnotes.push('a. Lilliefors Significance Correction');
   }
 
   return {
@@ -163,8 +163,11 @@ export const formatTestsOfNormalityTable = (
     rows,
     footnotes: interpretations.length
       ? [
-          'H₀: data berdistribusi normal. H₁: data tidak berdistribusi normal.',
-          ...interpretations,
+          '<p><strong>Hipotesis</strong></p>',
+          '<p>H₀: X ∼ N(μ, σ²) — data berdistribusi normal.</p>',
+          '<p>H₁: X ≁ N(μ, σ²) — data tidak berdistribusi normal.</p>',
+          '<p><strong>Interpretasi</strong></p>',
+          ...interpretations.map((interpretation) => `<p>${interpretation}</p>`),
         ]
       : undefined,
     footer: footnotes.length ? footnotes : undefined,
