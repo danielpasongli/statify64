@@ -161,12 +161,12 @@ export const formatTestsOfNormalityTable = (
     title: 'Tests of Normality',
     columnHeaders,
     rows,
-    footnotes: footnotes.length ? footnotes : undefined,
-    footer: interpretations.length
+    footnotes: interpretations.length
       ? [
           'H₀: data berdistribusi normal. H₁: data tidak berdistribusi normal.',
           ...interpretations,
         ]
       : undefined,
+    footer: footnotes.length ? footnotes : undefined,
   };
 };
