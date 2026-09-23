@@ -2,8 +2,10 @@ import type { FC } from "react";
 import React from "react";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { StatisticsTabProps } from "./types";
 import { ActiveElementHighlight } from "@/components/Common/TourComponents";
+import { InfoIcon } from "lucide-react";
 
 const StatisticsTab: FC<StatisticsTabProps> = ({
     options,
@@ -34,7 +36,25 @@ const StatisticsTab: FC<StatisticsTabProps> = ({
                 className="bg-card border border-border rounded-md p-4 relative"
                 data-testid="crosstabs-statistics-chi-square-section"
             >
-                <div className="text-sm font-medium mb-3">Chi-Square</div>
+                <div className="flex items-center gap-1 mb-3">
+                    <div className="text-sm font-medium">Chi-Square</div>
+                    <TooltipProvider delayDuration={100}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    aria-label="Informasi penggunaan Chi-Square"
+                                    className="text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                                >
+                                    <InfoIcon className="h-4 w-4" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs text-xs">
+                                Uji asosiasi untuk proporsi lebih dari dua populasi (binomial/multinomial) melalui tabel kontingensi.
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
                 <div className="space-y-2">
                     <div className="flex items-center">
                         <Checkbox
@@ -48,9 +68,6 @@ const StatisticsTab: FC<StatisticsTabProps> = ({
                             Pearson Chi-Square
                         </Label>
                     </div>
-                    <p className="text-xs text-muted-foreground pl-6">
-                        Uji asosiasi untuk proporsi lebih dari dua populasi (binomial/multinomial) melalui tabel kontingensi.
-                    </p>
                 </div>
                 <ActiveElementHighlight active={tourActive && currentStep === chiSquareStep} />
             </div>
