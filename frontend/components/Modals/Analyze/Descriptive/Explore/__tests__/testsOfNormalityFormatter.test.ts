@@ -47,7 +47,7 @@ describe('formatTestsOfNormalityTable', () => {
     expect(table?.rows[0].ks_sig).toBe('<.001');
     expect(table?.rows[0].sw_statistic).toBe('0.979');
     expect(table?.rows[0].sw_sig).toBe('0.321');
-    expect(table?.footnotes).toEqual(expect.arrayContaining(['a. Lilliefors Significance Correction']));
+    expect(table?.footer).toEqual(expect.arrayContaining(['a. Lilliefors Significance Correction']));
   });
 
   it('adds a separate dynamic interpretation for each normality test', () => {
@@ -69,7 +69,7 @@ describe('formatTestsOfNormalityTable', () => {
 
     const table = formatTestsOfNormalityTable(results, baseParams);
 
-    expect(table?.footer).toEqual(expect.arrayContaining([
+    expect(table?.footnotes).toEqual(expect.arrayContaining([
       'H₀: data berdistribusi normal. H₁: data tidak berdistribusi normal.',
       'Kolmogorov-Smirnov — Pendapatan: p = 0.020 ≥ α = 0.010; gagal menolak H₀. Tidak terdapat bukti bahwa data menyimpang dari distribusi normal.',
       'Shapiro-Wilk — Pendapatan: p = 0.009 < α = 0.010; H₀ ditolak. Data tidak berdistribusi normal.',
@@ -96,7 +96,7 @@ describe('formatTestsOfNormalityTable', () => {
 
     const table = formatTestsOfNormalityTable(results, baseParams);
 
-    expect(table?.footer).toHaveLength(2);
-    expect((table?.footer as string[]).join(' ')).not.toContain('Shapiro-Wilk —');
+    expect(table?.footnotes).toHaveLength(2);
+    expect(table?.footnotes?.join(' ')).not.toContain('Shapiro-Wilk —');
   });
 });
