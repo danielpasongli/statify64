@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { HelpCircle, Loader2 } from "lucide-react";
+import { HelpCircle, InfoIcon, Loader2 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
@@ -327,9 +327,29 @@ const BartlettTest: FC<BaseModalProps> = ({
     return (
         <DialogContent className="max-w-[600px] p-0 bg-popover text-popover-foreground border border-border shadow-md rounded-md flex flex-col max-h-[85vh]">
             <DialogHeader className="px-6 py-4 border-b border-border flex-shrink-0">
-                <DialogTitle className="text-[22px] font-semibold">
-                    Bartlett&apos;s Test of Homogeneity of Variances
-                </DialogTitle>
+                <div className="flex items-center gap-1">
+                    <DialogTitle className="text-[22px] font-semibold">
+                        Bartlett&apos;s Test of Homogeneity of Variances
+                    </DialogTitle>
+                    <TooltipProvider delayDuration={100}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    aria-label="Syarat penggunaan uji Bartlett"
+                                    className="text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                                >
+                                    <InfoIcon className="h-4 w-4" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs space-y-1 text-xs">
+                                <p>Gunakan variabel numerik berskala pada dua atau lebih kelompok independen.</p>
+                                <p>Data dalam setiap kelompok harus berdistribusi normal.</p>
+                                <p>Setiap kelompok memerlukan minimal dua observasi valid dan varians lebih dari nol.</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
             </DialogHeader>
 
             <div className="flex-grow flex flex-col overflow-hidden">
