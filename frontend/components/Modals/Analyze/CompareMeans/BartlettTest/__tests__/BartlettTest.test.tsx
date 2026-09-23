@@ -46,6 +46,9 @@ jest.mock('lucide-react', () => ({
     HelpCircle: ({ className }: { className?: string }) => (
         <div data-testid="help-circle-icon" className={className}>HelpCircle</div>
     ),
+    InfoIcon: ({ className }: { className?: string }) => (
+        <div data-testid="info-icon" className={className}>InfoIcon</div>
+    ),
 }));
 
 // Mock framer-motion
@@ -193,6 +196,18 @@ describe('BartlettTest Component', () => {
             render(<BartlettTest {...defaultProps} />);
 
             expect(screen.getByText(/Bartlett.*Test.*Homogeneity.*Variances/i)).toBeInTheDocument();
+        });
+
+        it('shows Bartlett usage requirements in the information tooltip', async () => {
+            const user = userEvent.setup();
+            render(<BartlettTest {...defaultProps} />);
+
+            await user.hover(screen.getByRole('button', { name: 'Syarat penggunaan uji Bartlett' }));
+
+            const tooltip = await screen.findByRole('tooltip');
+            expect(tooltip).toHaveTextContent('Gunakan variabel numerik berskala pada dua atau lebih kelompok independen.');
+            expect(tooltip).toHaveTextContent('Data dalam setiap kelompok harus berdistribusi normal.');
+            expect(tooltip).toHaveTextContent('Setiap kelompok memerlukan minimal dua observasi valid dan varians lebih dari nol.');
         });
 
         it('renders variables tab by default', () => {
