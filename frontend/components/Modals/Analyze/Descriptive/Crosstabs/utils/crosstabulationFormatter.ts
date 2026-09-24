@@ -321,14 +321,5 @@ export const formatCrosstabulationTable = (
 
   const title = `${rowVarLabel} * ${colVarLabel} Crosstabulation`;
 
-  // Debug ordering during tests
-  if (process.env.NODE_ENV === 'test' && params.options.cells.row) {
-    try {
-      const preview = (mainRow.children || []).slice(0, 4).map((r: any) => ({ h: r.rowHeader, total: r.total }));
-      // eslint-disable-next-line no-console
-      console.debug('[formatCrosstabulationTable] preview rows:', preview);
-    } catch {}
-  }
-
   return { title, columnHeaders, rows };
 };

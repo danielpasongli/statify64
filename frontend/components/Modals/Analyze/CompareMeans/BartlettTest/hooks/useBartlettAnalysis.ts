@@ -63,8 +63,6 @@ export function useBartlettAnalysis({
      */
     const handleCalculationComplete = useCallback(async (results: BartlettTestResult[]) => {
         try {
-            console.log('[DEBUG] Bartlett Test - Raw results from worker:', results);
-            console.log('[DEBUG] Bartlett Test - First result details:', JSON.stringify(results[0], null, 2));
             resultsRef.current = results;
 
             // Add log entry first
@@ -85,8 +83,6 @@ export function useBartlettAnalysis({
 
             // Format dan simpan tabel Bartlett Test
             const bartlettTable = formatBartlettTestTable(results);
-            console.log('[DEBUG] Bartlett Test - Formatted table:', JSON.stringify(bartlettTable, null, 2));
-
             // Validasi struktur tabel sebelum menyimpan
             if (bartlettTable.rows && bartlettTable.rows.length > 0) {
                 const invalidRows = bartlettTable.rows.filter((row: any) =>
@@ -100,8 +96,6 @@ export function useBartlettAnalysis({
 
             // Deep clone untuk memastikan tidak ada masalah referensi
             const tableToSave = JSON.parse(JSON.stringify({ tables: [bartlettTable] }));
-            console.log('[DEBUG] Bartlett Test - Table to save (after JSON round-trip):', JSON.stringify(tableToSave, null, 2));
-
             await addStatistic(analyticId, {
                 title: "Bartlett's Test of Homogeneity of Variances",
                 output_data: JSON.stringify(tableToSave),
@@ -112,8 +106,6 @@ export function useBartlettAnalysis({
             // Tambahkan statistik deskriptif jika diminta
             if (options.includeDescriptives) {
                 const descriptivesTable = formatDescriptiveStatisticsTable(results);
-                console.log('[DEBUG] Descriptives - Formatted table:', JSON.stringify(descriptivesTable, null, 2));
-
                 // Validasi struktur tabel
                 if (descriptivesTable.rows && descriptivesTable.rows.length > 0) {
                     const invalidRows = descriptivesTable.rows.filter((row: any) =>
@@ -127,8 +119,6 @@ export function useBartlettAnalysis({
 
                 // Deep clone
                 const descriptivesToSave = JSON.parse(JSON.stringify({ tables: [descriptivesTable] }));
-                console.log('[DEBUG] Descriptives - Table to save:', JSON.stringify(descriptivesToSave, null, 2));
-
                 await addStatistic(analyticId, {
                     title: "Descriptive Statistics",
                     output_data: JSON.stringify(descriptivesToSave),

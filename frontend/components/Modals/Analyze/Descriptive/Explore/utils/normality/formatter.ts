@@ -1,38 +1,21 @@
-import type { ExploreAnalysisParams } from '../types';
-import type { ColumnHeader, FormattedTable, ExploreAggregatedResults } from './helpers';
-import { getFactorLabel, regroupByDepVar } from './helpers';
+import { DEFAULT_ALPHA, formatNumber, formatPValue } from '@/components/Modals/Analyze/shared/statisticalOutput';
+import type { ExploreAnalysisParams } from '../../types';
+import type { ColumnHeader, FormattedTable, ExploreAggregatedResults, TableRowData } from '../helpers';
+import { getFactorLabel, regroupByDepVar } from '../helpers';
+import { buildNormalityDescription, buildNormalityInterpretation } from './interpretation';
 
-const formatStatistic = (value: number | null | undefined): string => {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '';
-  return value.toFixed(3);
+const getDisplayName = (
+  label: string | undefined,
+  name: string | undefined,
+  fallback = '',
+): string => {
+  if (label?.trim()) return label;
+  return name ?? fallback;
 };
 
 const formatDf = (value: number | null | undefined): string => {
   if (value === null || value === undefined || !Number.isFinite(value)) return '';
   return String(Math.round(value));
-};
-
-const formatSig = (value: number | null | undefined): string => {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '';
-  if (value < 0.001) return '<.001';
-  return value.toFixed(3);
-};
-
-const formatInterpretation = (
-  testName: string,
-  subject: string,
-  pValue: number | null | undefined,
-  alpha: number,
-): string | null => {
-  if (pValue === null || pValue === undefined || !Number.isFinite(pValue)) return null;
-
-  const significant = pValue < alpha;
-  const comparison = significant ? '<' : '≥';
-  const decision = significant
-    ? 'H₀ ditolak. Data tidak berdistribusi normal.'
-    : 'gagal menolak H₀. Tidak terdapat bukti bahwa data menyimpang dari distribusi normal.';
-
-  return `${testName} — ${subject}: p = ${pValue.toFixed(3)} ${comparison} α = ${alpha.toFixed(3)}; ${decision}`;
 };
 
 export const formatTestsOfNormalityTable = (
@@ -43,7 +26,7 @@ export const formatTestsOfNormalityTable = (
 
   const hasFactors = params.factorVariables.length > 0 && params.factorVariables.every(v => v !== null);
   const resultsByDepVar = regroupByDepVar(results);
-  const rows: any[] = [];
+  const rows: TableRowData[] = [];
   const footnotes: string[] = [];
   const interpretations: string[] = [];
 
@@ -51,7 +34,7 @@ export const formatTestsOfNormalityTable = (
 
   for (const depVarName in resultsByDepVar) {
     const depVarResults = resultsByDepVar[depVarName];
-    const depVarLabel = depVarResults[0]?.variable?.label || depVarName;
+    const depVarLabel = getDisplayName(depVarResults[0]?.variable?.label, depVarName, depVarName);
 
     depVarResults.forEach(result => {
       const normality = result.normalityTests;
@@ -79,23 +62,23 @@ export const formatTestsOfNormalityTable = (
       const subject = factorLabel
         ? `${depVarLabel} (kelompok ${factorLabel})`
         : depVarLabel;
-      const alpha = Number.isFinite(normality.alpha) ? normality.alpha : 0.05;
+      const alpha = Number.isFinite(normality.alpha) ? normality.alpha : DEFAULT_ALPHA;
 
       [
-        formatInterpretation('Kolmogorov-Smirnov', subject, ks?.pValue, alpha),
-        formatInterpretation('Shapiro-Wilk', subject, sw?.pValue, alpha),
+        buildNormalityInterpretation('Kolmogorov-Smirnov', subject, ks?.pValue, alpha),
+        buildNormalityInterpretation('Shapiro-Wilk', subject, sw?.pValue, alpha),
       ].forEach((interpretation) => {
         if (interpretation) interpretations.push(interpretation);
       });
 
       rows.push({
         rowHeader,
-        ks_statistic: formatStatistic(ks?.statistic),
+        ks_statistic: formatNumber(ks?.statistic),
         ks_df: formatDf(ks?.df),
-        ks_sig: formatSig(ks?.pValue) + (ks?.isLowerBound ? '*' : ''),
-        sw_statistic: formatStatistic(sw?.statistic),
+        ks_sig: formatPValue(ks?.pValue) + (ks?.isLowerBound ? '*' : ''),
+        sw_statistic: formatNumber(sw?.statistic),
         sw_df: formatDf(sw?.df),
-        sw_sig: formatSig(sw?.pValue),
+        sw_sig: formatPValue(sw?.pValue),
       });
 
       if (ks?.isLowerBound) {
@@ -117,7 +100,7 @@ export const formatTestsOfNormalityTable = (
 
   if (rows.length === 0) {
     params.dependentVariables.forEach((depVar) => {
-      const depVarLabel = depVar.label || depVar.name;
+      const depVarLabel = getDisplayName(depVar.label, depVar.name);
       rows.push({
         rowHeader: hasFactors ? [depVarLabel, null] : [depVarLabel],
         ks_statistic: '',
@@ -135,7 +118,7 @@ export const formatTestsOfNormalityTable = (
   const columnHeaders: ColumnHeader[] = hasFactors
     ? [
         { header: '', key: 'rowHeader1' },
-        { header: params.factorVariables[0]?.label || params.factorVariables[0]?.name || '', key: 'rowHeader2' },
+        { header: getDisplayName(params.factorVariables[0]?.label, params.factorVariables[0]?.name), key: 'rowHeader2' },
         { header: 'Kolmogorov-Smirnov(a) Statistic', key: 'ks_statistic' },
         { header: 'df', key: 'ks_df' },
         { header: 'Sig.', key: 'ks_sig' },
@@ -161,15 +144,7 @@ export const formatTestsOfNormalityTable = (
     title: 'Tests of Normality',
     columnHeaders,
     rows,
-    footnotes: interpretations.length
-      ? [
-          '<p><strong>Hipotesis</strong></p>',
-          '<p>H₀: X ∼ N(μ, σ²) — data berdistribusi normal.</p>',
-          '<p>H₁: X ≁ N(μ, σ²) — data tidak berdistribusi normal.</p>',
-          '<p><strong>Interpretasi</strong></p>',
-          ...interpretations.map((interpretation) => `<p>${interpretation}</p>`),
-        ]
-      : undefined,
+    footnotes: buildNormalityDescription(interpretations),
     footer: footnotes.length ? footnotes : undefined,
   };
 };
