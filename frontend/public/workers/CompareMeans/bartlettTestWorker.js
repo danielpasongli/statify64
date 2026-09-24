@@ -1,9 +1,9 @@
 /**
  * ============================================================================
- * BARTLETT TEST WEB WORKER
+ * WEB WORKER UJI BARTLETT
  * ============================================================================
  *
- * Bartlett Test Worker (Standalone Pattern - Legacy)
+ * Worker Uji Bartlett (pola mandiri versi lama)
  *
  * TODO: Consider refactoring to BartlettCalculator class pattern
  * to match project architecture (see CompareMeans/libs/oneWayAnova.js)
@@ -13,8 +13,8 @@
  *
  * KONSEP DASAR:
  * Bartlett Test memeriksa apakah beberapa kelompok memiliki varians yang sama.
- * - Test Variable: Variabel numerik yang variansnya ingin diuji (contoh: nilai ujian, tinggi badan)
- * - Grouping Variable: Variabel kategorikal yang membagi data ke kelompok (contoh: kelas A/B/C, gender)
+ * - Variabel uji: Variabel numerik yang variansnya ingin diuji (contoh: nilai ujian, tinggi badan)
+ * - Variabel pengelompokan: Variabel kategorik yang membagi data ke kelompok (contoh: kelas A/B/C, jenis kelamin)
  *
  * HIPOTESIS:
  * H₀: σ₁² = σ₂² = ... = σₖ² (semua varians sama/homogen)
@@ -23,7 +23,7 @@
  * KAPAN DIGUNAKAN:
  * - Sebelum ANOVA: Cek asumsi homogenitas varians
  * - Quality Control: Cek konsistensi variabilitas antar batch/grup
- * - Research: Bandingkan keberagaman data antar kelompok
+ * - Penelitian: Bandingkan keberagaman data antar kelompok
  *
  * ASUMSI:
  * - Data berdistribusi normal (Bartlett sensitif terhadap non-normalitas)
@@ -58,7 +58,7 @@ import chiSquareCdf from 'https://cdn.jsdelivr.net/npm/@stdlib/stats-base-dists-
 import { checkIsMissing } from './libs/utils.js';
 
 /**
- * Menghitung varians dari array data menggunakan Typed Arrays (optimized)
+ * Menghitung varians dari larik data menggunakan Typed Array yang dioptimalkan
  *
  * Varians mengukur seberapa tersebar data dari nilai rata-rata.
  * Rumus: s² = Σ(xᵢ - x̄)² / (n-1)
@@ -121,21 +121,21 @@ function safeLog(value) {
 }
 
 /**
- * Mengelompokkan data berdasarkan nilai grouping variable
+ * Mengelompokkan data berdasarkan nilai variabel pengelompokan
  *
  * OPTIMASI: Menggunakan traditional for loop untuk performa terbaik
  * dan Float64Array untuk penyimpanan data numerik.
  *
- * @param {number[]} testData - Data test variable (variabel yang diuji)
- * @param {number[]|string[]} factorData - Data grouping variable (variabel pengelompokan)
- * @returns {Object} Object berisi data per kelompok dengan Float64Array
+ * @param {number[]} testData - Data variabel yang diuji
+ * @param {number[]|string[]} factorData - Data variabel pengelompokan
+ * @returns {Object} Objek berisi data setiap kelompok dalam Float64Array
  *
  * Contoh:
- * Input:
+ * Masukan:
  *   testData   = [10, 12, 11, 15, 17, 16, 20, 22, 21]
  *   factorData = [ 1,  1,  1,  2,  2,  2,  3,  3,  3]
  *
- * Output:
+ * Keluaran:
  *   {
  *     '1': Float64Array([10, 12, 11]),
  *     '2': Float64Array([15, 17, 16]),
@@ -193,7 +193,7 @@ function groupDataByFactor(testData, factorData, testVariable = {}, factorVariab
         groupIndices[key] = 0;
     }
 
-    // LANGKAH 3: Isi data ke Float64Array (second pass)
+    // LANGKAH 3: Isi data ke Float64Array pada iterasi kedua
     for (let i = 0; i < n; i++) {
         // Skip missing values
         if (!isValidCase(i)) continue;
@@ -320,7 +320,7 @@ function calculateBartlettTest(groupedData) {
     // ========================================================================
     // LANGKAH 2: Hitung ukuran sampel total dan varians per kelompok
     // ========================================================================
-    // Menggunakan Typed Arrays untuk optimal performance
+    // Gunakan Typed Array untuk kinerja optimal
 
     const numGroups = validGroups.length;
     const variances = new Float64Array(numGroups);
@@ -359,7 +359,7 @@ function calculateBartlettTest(groupedData) {
     // ========================================================================
     // LANGKAH 3: Hitung Pooled Variance (Varians Gabungan)
     // ========================================================================
-    // Formula: sp² = Σ(Nᵢ-1)×sᵢ² / (N-k)
+    // Rumus: sp² = Σ(Nᵢ-1)×sᵢ² / (N-k)
     //
     // Pooled variance adalah rata-rata tertimbang dari varians semua kelompok
     // Menggunakan traditional for loop untuk performa optimal
@@ -384,7 +384,7 @@ function calculateBartlettTest(groupedData) {
     // ========================================================================
     // LANGKAH 4: Hitung Statistik M
     // ========================================================================
-    // Formula: M = (N-k)×ln(sp²) - Σ(Nᵢ-1)×ln(sᵢ²)
+    // Rumus: M = (N-k)×ln(sp²) - Σ(Nᵢ-1)×ln(sᵢ²)
     //
     // M mengukur perbedaan antara:
     // - Log dari pooled variance (yang diasumsikan sama untuk semua grup)
@@ -411,7 +411,7 @@ function calculateBartlettTest(groupedData) {
     console.log('[DEBUG] Worker - M:', M, 'numeratorPart1:', numeratorPart1, 'numeratorPart2:', numeratorPart2);    // ========================================================================
     // LANGKAH 5: Hitung Faktor Koreksi C
     // ========================================================================
-    // Formula: C = 1 + [1/(3(k-1))] × [Σ(1/(Nᵢ-1)) - 1/(N-k)]
+    // Rumus: C = 1 + [1/(3(k-1))] × [Σ(1/(Nᵢ-1)) - 1/(N-k)]
     //
     // Faktor koreksi C memperbaiki statistik M agar lebih akurat
     // mengikuti distribusi chi-square, terutama untuk sampel kecil
@@ -437,7 +437,7 @@ function calculateBartlettTest(groupedData) {
     // ========================================================================
     // LANGKAH 6: Hitung Statistik Bartlett (T)
     // ========================================================================
-    // Formula: T = M / C
+    // Rumus: T = M / C
     //
     // Statistik T mengikuti distribusi chi-square dengan df = k-1
     //
@@ -451,7 +451,7 @@ function calculateBartlettTest(groupedData) {
     console.log('[DEBUG] Worker - C:', C, 'Bartlett Statistic:', bartlettStatistic);
 
     // ========================================================================
-    // LANGKAH 7: Hitung Degrees of Freedom dan P-value
+    // LANGKAH 7: Hitung derajat bebas dan nilai-p
     // ========================================================================
     // df = k - 1 (jumlah kelompok minus 1)
     //
@@ -463,7 +463,7 @@ function calculateBartlettTest(groupedData) {
     // Menggunakan fungsi CDF dari distribusi chi-square
     // p-value = 1 - CDF(T, df)
     //
-    // Jika T=0 → CDF=0 → p-value = 1.0 (varians perfect homogen)
+    // Jika T=0 → CDF=0 → nilai-p = 1,0 (varians homogen sempurna)
     // Jika T besar → CDF mendekati 1 → p-value mendekati 0 (varians berbeda)
     const pValue = 1 - chiSquareCdf(bartlettStatistic, df);
 
@@ -488,7 +488,7 @@ function calculateBartlettTest(groupedData) {
 // ============================================================================
 
 /**
- * Format number dengan presisi
+ * Memformat angka dengan presisi tertentu
  */
 function formatNumber(num, decimals = 6) {
     if (typeof num !== 'number' || isNaN(num)) return 'N/A';
@@ -496,7 +496,7 @@ function formatNumber(num, decimals = 6) {
 }
 
 /**
- * Format bytes ke human readable
+ * Memformat byte agar mudah dibaca
  */
 function formatBytes(bytes) {
     if (bytes === 0) return '0 Bytes';
@@ -507,7 +507,7 @@ function formatBytes(bytes) {
 }
 
 /**
- * Estimate memory usage dari data
+ * Memperkirakan penggunaan memori data
  */
 function estimateMemoryUsage(data) {
     let totalBytes = 0;
@@ -532,7 +532,7 @@ function estimateMemoryUsage(data) {
 }
 
 /**
- * Print detailed logging untuk Bartlett Test
+ * Menampilkan log terperinci untuk Uji Bartlett
  */
 function printDetailedLog(testVariable, factorVariable, groupedData, bartlettResult, timing, memoryEstimate) {
     console.log('\n');
@@ -550,13 +550,13 @@ function printDetailedLog(testVariable, factorVariable, groupedData, bartlettRes
     console.log(`  - Grouping: ${formatNumber(timing.grouping, 3)} ms`);
     console.log(`  - Calculation: ${formatNumber(timing.calculation, 3)} ms`);
 
-    // ========== MEMORY ==========
+    // ========== MEMORI ==========
     console.log('\n[MEMORY USAGE]');
     console.log(`  Input Data: ${formatBytes(memoryEstimate.input)}`);
     console.log(`  Grouped Data: ${formatBytes(memoryEstimate.grouped)}`);
     console.log(`  Total Estimate: ${formatBytes(memoryEstimate.total)}`);
 
-    // ========== DATA INFO ==========
+    // ========== INFORMASI DATA ==========
     console.log('\n[DATA INFO]');
     console.log(`  Total N: ${bartlettResult.totalSampleSize}`);
     console.log(`  Number of Groups: ${bartlettResult.numberOfGroups}`);
@@ -627,7 +627,7 @@ function printDetailedLog(testVariable, factorVariable, groupedData, bartlettRes
     console.log('       END OF BARTLETT TEST LOG');
     console.log('================================================================\n');
 
-    // Return data untuk keperluan lain
+    // Kembalikan data untuk keperluan lain
     return {
         summary: {
             variable: testVariable?.name || testVariable,
@@ -666,12 +666,12 @@ self.onmessage = function(e) {
             const results = [];
 
             // ============================================================
-            // TIMING & MEMORY MEASUREMENT START
+            // MULAI PENGUKURAN WAKTU DAN MEMORI
             // ============================================================
             const totalStartTime = performance.now();
             let inputMemory = 0;
 
-            // Estimate input memory
+            // Perkirakan memori masukan
             for (let i = 0; i < variablesData.length; i++) {
                 inputMemory += estimateMemoryUsage(variablesData[i]);
             }
@@ -685,7 +685,7 @@ self.onmessage = function(e) {
             console.log(`  Input Memory: ${formatBytes(inputMemory)}`);
             console.log('========================================\n');
 
-            // Process each test variable
+            // Proses setiap variabel uji
             for (let i = 0; i < testVariables.length; i++) {
                 const testVariable = testVariables[i];
                 const testData = variablesData[i];
@@ -693,25 +693,25 @@ self.onmessage = function(e) {
                 // Timing untuk grouping
                 const groupingStart = performance.now();
 
-                // Group data by factor
+                // Kelompokkan data berdasarkan faktor
                 const groupedData = groupDataByFactor(testData, factorData, testVariable, factorVariable);
 
                 const groupingEnd = performance.now();
                 const groupingTime = groupingEnd - groupingStart;
 
-                // Estimate grouped data memory
+                // Perkirakan memori data yang telah dikelompokkan
                 const groupedMemory = estimateMemoryUsage(groupedData);
 
-                // Timing untuk calculation
+                // Ukur waktu perhitungan
                 const calcStart = performance.now();
 
-                // Calculate Bartlett test
+                // Hitung Uji Bartlett
                 const bartlettResult = calculateBartlettTest(groupedData);
 
                 const calcEnd = performance.now();
                 const calcTime = calcEnd - calcStart;
 
-                // Format result
+                // Format hasil
                 const result = {
                     variable: testVariable,
                     factorVariable: factorVariable,

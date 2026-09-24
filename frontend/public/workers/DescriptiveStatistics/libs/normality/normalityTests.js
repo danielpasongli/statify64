@@ -7,10 +7,10 @@
  *
  * For regression residual normality testing, see Regression/Assumption Test/normality.js
  *
- * This implementation follows Royston (1995) with:
+ * Implementasi ini mengikuti Royston (1995) dengan:
  * - SPSS-compatible KS p-values (Dallal-Wilkinson + Lilliefors)
  * - Enhanced numerical stability
- * - Comprehensive edge case handling
+ * - Penanganan kasus tepi secara menyeluruh
  *
  * TUJUAN:
  * Menguji apakah data mengikuti distribusi normal menggunakan dua metode:
@@ -97,7 +97,7 @@
  * Pola ini konsisten dengan validasi data di Bartlett Test.
  *
  * Algoritma:
- * 1. Iterasi setiap elemen dalam array input
+ * 1. Iterasi setiap elemen dalam larik masukan
  * 2. Konversi ke Number dan cek apakah finite
  * 3. Kumpulkan statistik jumlah nilai invalid per tipe
  * 4. Log breakdown ke console jika ada nilai yang dibuang
@@ -111,12 +111,12 @@
  * // => [5, 7, 3]
  *
  * @example
- * // Input semua invalid → array kosong
+ * // Semua masukan tidak valid → larik kosong
  * cleanNumericData([NaN, null, undefined, Infinity]);
  * // => []
  *
  * @example
- * // Input bukan array → array kosong
+ * // Masukan bukan larik → larik kosong
  * cleanNumericData("hello");
  * // => []
  */
@@ -124,7 +124,7 @@ function cleanNumericData(values) {
     if (!Array.isArray(values)) return [];
     const cleaned = [];
 
-    // Track counts for each type of invalid value
+    // Catat jumlah setiap jenis nilai tidak valid
     let nullCount = 0;
     let undefinedCount = 0;
     let nanCount = 0;
@@ -134,34 +134,34 @@ function cleanNumericData(values) {
     for (let i = 0; i < values.length; i++) {
         const v = values[i];
 
-        // Check for null
+        // Periksa nilai null
         if (v === null) {
             nullCount++;
             continue;
         }
 
-        // Check for undefined
+        // Periksa nilai undefined
         if (v === undefined) {
             undefinedCount++;
             continue;
         }
 
-        // Convert to number and check validity
+        // Konversi menjadi angka dan periksa validitasnya
         const num = Number(v);
 
-        // Check for NaN (includes non-numeric strings, objects, etc.)
+        // Periksa NaN, termasuk string nonnumerik, objek, dan sebagainya
         if (isNaN(num)) {
             nanCount++;
             continue;
         }
 
-        // Check for Infinity
+        // Periksa Infinity
         if (num === Infinity) {
             infinityCount++;
             continue;
         }
 
-        // Check for -Infinity
+        // Periksa -Infinity
         if (num === -Infinity) {
             negInfinityCount++;
             continue;
@@ -260,7 +260,7 @@ function normalityStandardDeviation(values, valuesMean = undefined) {
  *   r = -1 → korelasi negatif sempurna
  *
  * Catatan: Fungsi ini tersedia sebagai utilitas internal tetapi
- * tidak digunakan langsung dalam rumus W (W menggunakan formula
+ * tidak digunakan langsung dalam rumus W (W menggunakan rumus
  * (Σaᵢxᵢ)²/S² yang lebih efisien dan numerik stabil).
  *
  * @param {number[]} x - Array data pertama
@@ -301,7 +301,7 @@ function normalityPearsonCorrelation(x, y) {
  * Aproksimasi CDF Normal Standar Φ(x).
  *
  * Menghitung probabilitas kumulatif P(Z ≤ x) untuk distribusi normal standar.
- * Menggunakan aproksimasi polinomial Abramowitz & Stegun (1964), Formula 26.2.17.
+ * Menggunakan pendekatan polinomial Abramowitz & Stegun (1964), Rumus 26.2.17.
  * Akurasi: |error| < 7.5 × 10⁻⁸.
  *
  * Digunakan dalam:
@@ -409,12 +409,12 @@ function normalityQuantile(p) {
  * Mengaproksimasi p-value untuk statistik D Kolmogorov-Smirnov dengan Koreksi Lilliefors.
  *
  * METODE:
- *   Menggunakan formula analitik Dallal & Wilkinson (1986) yang diimplementasikan
- *   SPSS untuk koreksi Lilliefors. Formula ini menggantikan distribusi Kolmogorov
+ *   Menggunakan rumus analitik Dallal & Wilkinson (1986) yang diimplementasikan
+ *   SPSS untuk koreksi Lilliefors. Rumus ini menggantikan distribusi Kolmogorov
  *   asimtotik (yang hanya valid jika mean & varians diketahui) dengan aproksimasi
  *   yang tepat ketika parameter diestimasi dari sampel.
  *
- * FORMULA (Dallal & Wilkinson, 1986):
+ * RUMUS (Dallal & Wilkinson, 1986):
  *   p = exp(−7.01256 × D² × (n + 2.78019)
  *            + 2.99587 × D × √(n + 2.78019)
  *            − 0.122119
@@ -422,12 +422,12 @@ function normalityQuantile(p) {
  *            + 1.67997 / n)
  *
  * BATAS P-VALUE:
- *   SPSS melaporkan p-value maksimum 0.200 untuk Lilliefors karena formula
+ *   SPSS melaporkan nilai-p maksimum 0,200 untuk Lilliefors karena rumus
  *   menjadi kurang akurat pada nilai D yang sangat kecil (data sangat normal).
  *   Jika p > 0.200, nilai dilaporkan sebagai ".200*" (lower bound).
  *
  * VALIDITAS:
- *   Formula berlaku untuk n ≥ 5. Untuk n ≤ 4, p-value ditetapkan = 1.0.
+ *   Rumus berlaku untuk n ≥ 5. Untuk n ≤ 4, nilai-p ditetapkan = 1,0.
  *
  * @param {number} d - Statistik D (selisih CDF empiris dan teoritis maksimum, d > 0)
  * @param {number} n - Ukuran sampel (integer ≥ 1)
@@ -456,7 +456,6 @@ function approximateKSPValue(d, n) {
         return { pValue: 1.0, isLowerBound: false };
     }
 
-    // Formula Dallal & Wilkinson (1986)
     let p = Math.exp(
         -7.01256 * d * d * (n + 2.78019) +
         2.99587 * d * Math.sqrt(n + 2.78019) -
@@ -485,7 +484,7 @@ function approximateKSPValue(d, n) {
  *
  * Membandingkan distribusi kumulatif empiris (ECDF) data dengan distribusi normal
  * teoritis. Karena mean dan SD diestimasi dari data sendiri, koreksi Lilliefors
- * diterapkan pada p-value menggunakan formula Dallal-Wilkinson (1986).
+ * diterapkan pada nilai-p menggunakan rumus Dallal-Wilkinson (1986).
  *
  * Algoritma:
  *   1. Bersihkan data (filter NaN, null, Infinity, dll.)
@@ -530,7 +529,6 @@ function calculateKolmogorovSmirnov(values) {
     // LANGKAH 2: Urutkan data dari kecil ke besar
     const sorted = [...cleaned].sort((a, b) => a - b);
 
-    // LANGKAH 3: Hitung mean dan simpangan baku
     const m = normalityMean(sorted);
     const sd = normalityStandardDeviation(sorted, m);
 
@@ -593,7 +591,7 @@ function calculateKolmogorovSmirnov(values) {
  * berdasarkan ukuran sampel:
  *
  * KASUS BERDASARKAN UKURAN SAMPEL:
- *   n = 3    : Formula eksak berbasis arcsin (analitik)
+ *   n = 3    : Rumus eksak berbasis arcsin (analitik)
  *              p = 1 - exp(-(6/π) × arcsin(√W))
  *
  *   4 ≤ n ≤ 11 : Royston (1993) - koefisien polinomial kubik dalam n
@@ -609,17 +607,17 @@ function calculateKolmogorovSmirnov(values) {
  * @returns {number} Aproksimasi p-value dalam rentang [0, 1]
  *
  * @example
- * // n=3 exact formula
+ * // n=3 menggunakan rumus eksak
  * shapiroWilkPValue(0.75, 3);
  * // => ~0.0 (W rendah → strong non-normality)
  *
  * @example
- * // n=30 large sample approximation
+ * // n=30 menggunakan pendekatan sampel besar
  * shapiroWilkPValue(0.98, 30);
  * // => ~0.8 (W tinggi → data likely normal)
  *
  * @example
- * // n=10 small sample approximation
+ * // n=10 menggunakan pendekatan sampel kecil
  * shapiroWilkPValue(0.95, 10);
  * // => ~0.67 (moderate normality)
  *
@@ -635,11 +633,7 @@ function shapiroWilkPValue(W, n) {
     let formulaUsed;
 
     // ========================================================================
-    // Case 1: n = 3 — Exact analytic formula
-    // Reference: Shapiro & Wilk (1965), derived from the exact distribution
     //   of W for 3 observations.
-    // Formula: p = 1 − exp(−(6/π) × arcsin(√W))
-    // This closed-form expression is exact (no approximation needed).
     // ========================================================================
     if (n === 3) {
         formulaUsed = 'n=3 (exact formula)';
@@ -650,23 +644,15 @@ function shapiroWilkPValue(W, n) {
     }
 
     // ========================================================================
-    // Case 2: 4 ≤ n ≤ 11 — Small sample approximation
-    // Reference: Royston, P. (1993). "A toolkit for testing for non-normality
-    //   in complete and censored samples". The Statistician, 42: 37-43.
     //
-    // Method: Transform W via y = ln(1−W), then apply cubic polynomial
     //   approximation in n to obtain μ and σ parameters.
-    // Steps:
-    //   1. Compute boundary g as cubic polynomial in n
     //   2. Transform: y₂ = −ln(g − y)
-    //   3. Compute μ, σ as cubic polynomials in n (Royston 1993, Table 1)
     //   4. Standardize: z = (y₂ − μ) / σ
     //   5. p-value = 1 − Φ(z)
     // ========================================================================
     if (n <= 11) {
         formulaUsed = 'n≤11 (Royston 1993 cubic polynomial)';
         console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
-        // Polynomial coefficients from Royston (1993), Table 1:
         // g(n): boundary polynomial — if y > g, W is too extreme
         const g = -0.0006714 * n ** 3 + 0.025054 * n ** 2 - 0.39978 * n + 0.5440;
         if (y > g) {
@@ -674,9 +660,7 @@ function shapiroWilkPValue(W, n) {
             return 1e-19;
         }
         const y2 = -Math.log(g - y);
-        // μ(n): mean polynomial — Royston (1993), Table 1, row "mean"
         mu = -0.0020322 * n ** 3 + 0.062767 * n ** 2 - 0.77857 * n + 1.3822;
-        // σ(n): standard deviation polynomial — Royston (1993), Table 1, row "sigma"
         sigma = Math.exp(-0.00020322 * n ** 3 + 0.0062767 * n ** 2 - 0.067861 * n + 0.459);
         console.log(`[SW-DEBUG] Transform: y=${y}, g=${g}, y2=${y2}`);
         console.log(`[SW-DEBUG] Distribution params: μ=${mu}, σ=${sigma}`);
@@ -686,28 +670,16 @@ function shapiroWilkPValue(W, n) {
     }
 
     // ========================================================================
-    // Case 3: n > 11 — Large sample approximation
-    // Reference: Royston, P. (1995). "Remark AS R94: A remark on Algorithm
     //   AS 181". Applied Statistics, 44(4): 547-551, Table 2.
     //
-    // Method: Direct transformation of y = ln(1−W) using polynomial
-    //   approximation in ln(n) for the distribution parameters μ and σ.
-    // Steps:
-    //   1. Compute μ as cubic polynomial in ln(n) (Royston 1995, Table 2)
-    //   2. Compute σ = exp(quadratic polynomial in ln(n))
     //   3. Standardize: z = (y − μ) / σ
     //   4. p-value = 1 − Φ(z)
     //
-    // Note: Unlike the n≤11 case, no intermediate boundary check (g) is needed;
-    //   the ln(1−W) transformation directly approximates normality for n > 11.
     // ========================================================================
     formulaUsed = 'n>11 (Royston 1995 ln-based polynomial)';
     console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
     const lnN = Math.log(n);
-    // Polynomial coefficients from Royston (1995), Table 2:
-    // μ(ln n): mean as cubic polynomial in ln(n)
     mu = -1.5861 - 0.31082 * lnN - 0.083751 * lnN ** 2 + 0.0038915 * lnN ** 3;
-    // σ(ln n): standard deviation as exp(quadratic polynomial in ln(n))
     sigma = Math.exp(-0.4803 - 0.082676 * lnN + 0.0030302 * lnN ** 2);
     console.log(`[SW-DEBUG] Transform: y=${y}, ln(n)=${lnN}`);
     console.log(`[SW-DEBUG] Distribution params: μ=${mu}, σ=${sigma}`);
@@ -731,18 +703,18 @@ function shapiroWilkPValue(W, n) {
  *   - W ∈ (0, 1]: mendekati 1 → normal, mendekati 0 → tidak normal
  *
  * ALGORITMA (Royston AS R94):
- *   1. Bersihkan data dan validasi sample size (3 ≤ n ≤ 5000)
+ *   1. Bersihkan data dan validasi ukuran sampel (3 ≤ n ≤ 5000)
  *   2. Urutkan data ascending
  *   3. Hitung expected normal order stats mᵢ via Blom (1958) plotting position
  *   4. Hitung endpoint coefficients aₙ, aₙ₋₁ via Royston polynomials p1, p2
  *   5. Hitung normalization factor φ dan middle coefficients
- *   6. Compute W = (Σaᵢxᵢ)² / S², clamped to [0, 1]
- *   7. Compute p-value via Royston approximation (case-dependent on n)
+ *   6. Hitung W = (Σaᵢxᵢ)² / S², lalu batasi ke rentang [0, 1]
+ *   7. Hitung nilai-p dengan pendekatan Royston sesuai ukuran sampel
  *
  * NUMERICAL STABILITY:
  *   - W is clamped to max 1.0 to prevent floating-point overshoot
- *   - φ uses Math.abs() to prevent NaN from negative sqrt argument
- *   - S² = 0 (constant data) triggers early null return
+ *   - φ menggunakan Math.abs() untuk mencegah NaN akibat akar bilangan negatif
+ *   - S² = 0 pada data konstan akan langsung mengembalikan null
  *   - Global try-catch prevents uncaught exceptions
  *
  * @param {number[]} values - Array berisi nilai-nilai numerik mentah (will be cleaned internally)
@@ -786,7 +758,7 @@ function calculateShapiroWilk(values) {
         const cleaned = cleanNumericData(values);
         const n = cleaned.length;
 
-        // LANGKAH 1a: Sample size boundary checks (Requirements 3.1, 3.2)
+        // LANGKAH 1a: Periksa batas ukuran sampel (persyaratan 3.1 dan 3.2)
         if (n < 3) {
             console.log(`[SW] Sample size n=${n} is below minimum. Shapiro-Wilk requires at least 3 observations.`);
             return null;
@@ -803,18 +775,17 @@ function calculateShapiroWilk(values) {
     const x = [...cleaned].sort((a, b) => a - b);
 
     // ========================================================================
-    // LANGKAH 3: Hitung expected normal order statistics (mᵢ) via Blom (1958)
+    // LANGKAH 3: Hitung statistik urutan normal harapan (mᵢ) menggunakan Blom (1958)
     // ========================================================================
-    // Reference: Blom, G. (1958). "Statistical Estimates and Transformed
     //   Beta-Variables". John Wiley & Sons, New York.
     //
-    // Blom plotting position formula:
+    // Rumus posisi plot Blom:
     //   pᵢ = (i − 0.375) / (n + 0.25)
     //   mᵢ = Φ⁻¹(pᵢ)
     //
-    // The constants 0.375 and 0.25 provide an unbiased approximation of
-    // expected normal order statistics. This is the same formula used by
-    // SPSS and Royston's AS R94 algorithm for computing Shapiro-Wilk weights.
+    // Konstanta 0,375 dan 0,25 memberikan pendekatan tak bias untuk statistik
+    // urutan normal harapan. Rumus yang sama digunakan oleh SPSS dan algoritma
+    // AS R94 Royston untuk menghitung bobot Shapiro-Wilk.
     const m = new Array(n).fill(0).map((_, i) => normalityQuantile((i + 1 - 0.375) / (n + 0.25)));
     const mSumSq = m.reduce((s, v) => s + v * v, 0);
 
@@ -823,45 +794,21 @@ function calculateShapiroWilk(values) {
     // ========================================================================
     // LANGKAH 4: Hitung koefisien bobot aᵢ (Royston AS R94)
     // ========================================================================
-    // Reference: Royston, P. (1995). "Remark AS R94: A remark on Algorithm
     //   AS 181". Applied Statistics, 44(4): 547-551.
     //
-    // The coefficients aᵢ are antisymmetric: aᵢ = −a_{n+1−i}, ensuring Σaᵢ = 0.
-    // Only the upper half is computed; the lower half mirrors it with sign flip.
+    // Koefisien aᵢ bersifat antisimetris: aᵢ = −a_{n+1−i}, sehingga Σaᵢ = 0.
+    // Hanya separuh bagian atas yang dihitung; bagian bawah dicerminkan dengan tanda berlawanan.
     //
-    // Case distinctions for coefficient calculation:
-    //   n = 3:    Fixed coefficients a₁ = −√0.5, a₃ = +√0.5 (exact solution)
-    //   n = 4,5:  End coefficient aₙ via polynomial p1; middle via φ normalization
-    //   n ≥ 6:    End coefficients aₙ, aₙ₋₁ via polynomials p1, p2;
-    //             middle coefficients aᵢ = mᵢ / √|φ|
     //
-    // Key property: W = (Σaᵢ × x₍ᵢ₎)² / S²  where S² = Σ(xᵢ − x̄)²
-    // W is always in the range [0, 1].
+    // W selalu berada dalam rentang [0, 1].
     //
-    // NUMERICAL STABILITY: Antisymmetric property verification.
-    // (Requirements 7.4, 7.5 - documenting numerical stability techniques)
     //
-    // The antisymmetric structure (aᵢ = −a_{n+1−i}) guarantees Σaᵢ = 0 by
-    // construction. This property is critical for numerical stability because:
     //
-    //   1. LOCATION INVARIANCE: Since Σaᵢ = 0, the weighted sum Σaᵢx(ᵢ) is
     //      invariant to location shifts. Adding a constant C to all data:
     //      Σaᵢ(x(ᵢ) + C) = Σaᵢx(ᵢ) + C·Σaᵢ = Σaᵢx(ᵢ) + 0
-    //      This prevents large-magnitude data from causing precision loss.
     //
-    //   2. CANCELLATION PROTECTION: Positive and negative coefficients sum
-    //      to zero, so the weighted sum naturally cancels the mean component,
-    //      operating only on the deviation structure of the sorted data.
     //
-    //   3. VERIFICATION: After coefficient construction, the code implicitly
-    //      relies on this property. A runtime assertion (|Σaᵢ| < 1e-10)
-    //      is logged if violated, catching any floating-point drift in the
-    //      polynomial evaluation or normalization steps.
     //
-    // The property is ENFORCED by:
-    //   - End coefficients: a[0] = -a[n-1], a[1] = -a[n-2]
-    //   - Middle coefficients: aᵢ = mᵢ/√|φ| where mᵢ = −m_{n+1−i} by the
-    //     symmetry of the standard normal distribution's quantile function
     const a = new Array(n).fill(0);
     const u = 1 / Math.sqrt(n);
 
@@ -871,33 +818,25 @@ function calculateShapiroWilk(values) {
 
     if (n === 3) {
         // ----------------------------------------------------------------
-        // Case n = 3: Fixed exact coefficients (no polynomial needed)
-        // For the smallest valid sample, the weights are analytically known:
+        // Untuk sampel valid terkecil, bobotnya diketahui secara analitis:
         //   a₁ = −√(1/2) ≈ −0.7071, a₂ = 0, a₃ = +√(1/2) ≈ +0.7071
-        // Source: Shapiro & Wilk (1965), Table 1; Royston (1995), Section 2.
         // ----------------------------------------------------------------
         a[n - 1] = Math.SQRT1_2;  // a_n positif
         a[0] = -Math.SQRT1_2;     // a_1 negatif
         console.log(`[SW-DEBUG] n=3 special case: aₙ = ${a[n-1]}, a₁ = ${a[0]}`);
     } else {
         // ----------------------------------------------------------------
-        // Case n ≥ 4: Polynomial approximation for end coefficients
-        // Source: Royston, P. (1995). "Remark AS R94", Applied Statistics,
         //   44(4): 547-551, Table 1.
         //
-        // Polynomial p1 computes aₙ (the largest/rightmost weight):
+        // Polinomial p1 menghitung aₙ, yaitu bobot terbesar atau paling kanan:
         //   aₙ = p1[0]·u⁴ + p1[1]·u³ + p1[2]·u² + p1[3]·u + p1[4]
         //   where u = 1/√n
-        // Coefficients from Royston AS R94, evaluated via Horner's method.
         // ----------------------------------------------------------------
         const p1 = [-2.706056, 4.434685, -2.071190, -0.147981, 0.221157];
         // ----------------------------------------------------------------
-        // Polynomial p2 computes aₙ₋₁ (second-to-last weight, used for n ≥ 6):
         //   aₙ₋₁ = p2[0]·u⁴ + p2[1]·u³ + p2[2]·u² + p2[3]·u + p2[4]
-        // Source: Royston (1995), Table 1, second row of polynomial coefficients.
         // ----------------------------------------------------------------
         const p2 = [-3.582633, 5.682633, -1.752461, -0.293762, 0.042981];
-        // Horner's method for polynomial evaluation (numerically stable):
         //   polyVal([c₄,c₃,c₂,c₁,c₀], u) = c₄u⁴ + c₃u³ + c₂u² + c₁u + c₀
         const polyVal = (coeffs, z) => coeffs.reduce((acc, c) => acc * z + c, 0);
 
@@ -919,17 +858,12 @@ function calculateShapiroWilk(values) {
         }
 
         // ----------------------------------------------------------------
-        // Normalization factor φ (phi) for middle coefficients
-        // Reference: Royston (1995), Equation (3).
         //
         // For n ≥ 6:
         //   φ = (Σmᵢ² − 2mₙ² − 2mₙ₋₁²) / (1 − 2aₙ² − 2aₙ₋₁²)
         // For n = 4, 5:
         //   φ = (Σmᵢ² − 2mₙ²) / (1 − 2aₙ²)
         //
-        // Middle coefficients are then: aᵢ = mᵢ / √|φ|
-        // Math.abs(φ) is used as a safety net: in theory φ > 0, but
-        // floating-point rounding can occasionally make it slightly negative.
         // ----------------------------------------------------------------
         let phi;
         if (n >= 6) {
@@ -943,41 +877,22 @@ function calculateShapiroWilk(values) {
         console.log(`[SW-DEBUG] Normalization factor φ = ${phi}`);
 
         // NUMERICAL STABILITY: Math.abs(φ) prevents NaN from negative square root.
-        // (Requirement 4.5)
         //
-        // In theory φ should always be positive because:
-        //   numerator = Σmᵢ² − 2mₙ² − 2mₙ₋₁² ≈ remaining variance in middle order stats
-        //   denominator = 1 − 2aₙ² − 2aₙ₋₁² ≈ remaining weight budget for middle coefficients
         //
-        // However, floating-point rounding in the polynomial evaluation of aₙ and aₙ₋₁
-        // can cause the denominator (1 − 2aₙ² − 2aₙ₋₁²) to become slightly negative
-        // for certain sample sizes, which would make φ negative. Taking Math.abs(φ)
-        // ensures √φ is always real, avoiding NaN propagation through the middle
-        // coefficients. The sign of the middle coefficients is determined by mᵢ (which
-        // is naturally antisymmetric), so the absolute value does not affect the sign
-        // structure of the final weights.
         if (phi < 0) {
-            // Requirement 10.6: log warning when numerical correction applied
             console.warn(`[SW] WARNING: φ = ${phi} < 0 (floating-point rounding in polynomial evaluation), using |φ| for stability`);
         }
         const constDen = Math.sqrt(Math.abs(phi));
 
-        // Middle coefficients: aᵢ = mᵢ / √|φ| for i = 3, ..., n−2
-        // Since mᵢ is antisymmetric (m[i] < 0 for i < n/2, > 0 for i > n/2),
-        // the resulting aᵢ automatically inherits the antisymmetric property.
-        // Reference: Royston (1995), Section 2, "Coefficient normalization".
         if (n >= 6) {
             for (let i = 2; i <= n - 3; i++) {
                 a[i] = m[i] / constDen;
             }
         } else if (n === 5) {
             // For n=5: a[2]=0 (center element of odd-length array),
-            // a[3] = -a[1] (antisymmetry). Since p2 polynomial is NOT applied
             // for n < 6, a[1] remains 0 from initialization, so a[3] = 0 as well.
-            // The only non-zero coefficients are a[0] = -aN and a[4] = +aN.
-            // The phi/constDen computed above is intentionally unused for n=5.
             a[2] = 0;  // elemen tengah untuk n ganjil = 0
-            a[3] = -a[1];  // a[1] = 0 (p2 not used for n < 6)
+            a[3] = -a[1];  // a[1] = 0 karena p2 tidak digunakan untuk n < 6
         } else if (n === 4) {
             a[1] = m[1] / constDen;
             a[2] = -a[1];
@@ -987,36 +902,22 @@ function calculateShapiroWilk(values) {
     // ========================================================================
     // LANGKAH 5: Hitung statistik W = (Σ aᵢ xᵢ)² / S²
     // ========================================================================
-    // Reference: Shapiro & Wilk (1965), Equation (1).
     //   W = (Σ aᵢ × x₍ᵢ₎)² / Σ(xᵢ − x̄)²
     //
-    // W measures the linear correlation between the ordered data x₍ᵢ₎ and the
-    // theoretical normal quantiles embedded in the coefficients aᵢ.
-    // W close to 1 → data consistent with normality
+    // W mengukur korelasi linear antara data terurut x₍ᵢ₎ dan kuantil normal
+    // teoretis yang terkandung dalam koefisien aᵢ.
+    // W mendekati 1 → data konsisten dengan normalitas
     // W close to 0 → strong departure from normality
     //
-    // Note: S² here is the un-normalized sum of squares (NOT divided by n−1).
-    // The numerator² / S² formulation is equivalent to the squared Pearson
+    // Catatan: S² merupakan jumlah kuadrat yang belum dinormalisasi (tidak dibagi n−1).
+    // Bentuk pembilang² / S² setara dengan kuadrat Pearson
     // correlation between x and a, which always yields W ∈ [0, 1].
     console.log('[SW-DEBUG] --------------------------------------------------------');
     console.log('[SW-DEBUG] Statistic W calculation');
     console.log('[SW-DEBUG] --------------------------------------------------------');
 
-    // NUMERICAL STABILITY: Two-pass method for S² calculation.
-    // (Requirement 4.2)
     //
-    // S² = Σ(xᵢ − x̄)² is computed using a TWO-PASS approach:
-    //   Pass 1: Compute x̄ = Σxᵢ / n  (done by normalityMean)
-    //   Pass 2: Compute Σ(xᵢ − x̄)²   (deviations from mean)
     //
-    // This avoids CATASTROPHIC CANCELLATION that occurs with the naive
-    // one-pass formula S² = Σxᵢ² − n·x̄². The naive formula subtracts two
-    // large, nearly equal numbers when data has a large mean relative to its
-    // spread (e.g., data = [1000001, 1000002, 1000003]). The two-pass method
-    // first centers the data by subtracting x̄, so each (xᵢ − x̄) is small,
-    // and squaring small values preserves precision. This is critical for
-    // Shapiro-Wilk because S² appears in the denominator of W; any precision
-    // loss in S² directly corrupts the W statistic.
     const meanX = normalityMean(x);
     let numerator = 0;
     let S2 = 0;  // sum of squares = Σ(xᵢ - x̄)²
@@ -1033,21 +934,10 @@ function calculateShapiroWilk(values) {
     }
 
     // NUMERICAL STABILITY: W clamping to [0, 1] range.
-    // (Requirement 4.4)
     //
-    // Mathematically, W = (Σaᵢx(ᵢ))² / S² should satisfy 0 < W ≤ 1 because
-    // by Cauchy-Schwarz inequality: (Σaᵢx(ᵢ))² ≤ (Σaᵢ²)(Σx(ᵢ)²) and the
-    // coefficients are normalized such that the numerator cannot exceed S².
     //
-    // However, floating-point arithmetic can cause W to slightly exceed 1.0
     // (e.g., W = 1.0000000000000002) due to:
-    //   1. Accumulated rounding in the summation Σaᵢx(ᵢ)
-    //   2. Rounding in the coefficient normalization step (aᵢ = mᵢ/√φ)
-    //   3. Different rounding paths for numerator vs denominator
     //
-    // Without clamping, W > 1 would cause ln(1 - W) to produce NaN in the
-    // p-value calculation (log of negative number). Math.min(1, W) prevents
-    // this edge case while preserving the mathematical semantics (W = 1 means
     // data is perfectly normal).
     const W = Math.min(1, (numerator * numerator) / S2);
 
@@ -1057,11 +947,11 @@ function calculateShapiroWilk(values) {
     console.log(`[SW-DEBUG] S² (Σ(xᵢ-x̄)²) = ${S2}`);
     console.log(`[SW-DEBUG] W = (numerator)² / S² = ${numerator * numerator} / ${S2} = ${W}`);
 
-    // LANGKAH 6: Hitung p-value via Royston approximation
-    // The p-value computation dispatches to one of three cases:
-    //   n = 3:    Exact formula (Shapiro & Wilk, 1965)
-    //   4 ≤ n ≤ 11: Royston (1993) small-sample cubic polynomial approximation
-    //   n > 11:  Royston (1995) large-sample ln(n)-based polynomial approximation
+    // LANGKAH 6: Hitung nilai-p menggunakan pendekatan Royston
+    // Perhitungan nilai-p dibagi menjadi tiga kasus:
+    //   n = 3: rumus eksak (Shapiro & Wilk, 1965)
+    //   4 ≤ n ≤ 11: pendekatan polinomial kubik sampel kecil Royston (1993)
+    //   n > 11: pendekatan polinomial berbasis ln(n) untuk sampel besar Royston (1995)
     console.log('[SW-DEBUG] --------------------------------------------------------');
     console.log('[SW-DEBUG] P-value calculation');
     console.log('[SW-DEBUG] --------------------------------------------------------');
@@ -1077,15 +967,13 @@ function calculateShapiroWilk(values) {
             pValue: Math.max(Math.min(pValue, 1), 0),
         };
     } catch (error) {
-        // LANGKAH 7: Global exception handling (Requirement 3.8)
-        // Catch any unexpected errors during computation and log them
         console.error('[SW] ERROR: Unexpected exception during Shapiro-Wilk calculation');
         console.error('[SW] Error details:', error.message);
         console.error('[SW] Stack trace:', error.stack);
         console.log('[SW] Returning null due to exception');
         console.log('[SW] ============================================================');
 
-        // Return null instead of crashing
+        // Kembalikan null agar program tidak berhenti akibat galat
         return null;
     }
 }
@@ -1171,7 +1059,7 @@ function createNormalityTestEntry({
  *   1. Validasi input dan ukuran sampel
  *   2. Jalankan Kolmogorov-Smirnov (selalu, jika n ≥ 3)
  *   3. Jalankan Shapiro-Wilk (hanya jika n ≤ 5000)
- *   4. Cetak log detail ke console (ASCII table format)
+ *   4. Cetak log terperinci ke konsol dalam format tabel ASCII
  *   5. Kembalikan hasil terstruktur + backward compatibility keys
  *
  * @param {number[]} values - Array data numerik yang akan diuji
@@ -1199,7 +1087,7 @@ function createNormalityTestEntry({
  * const result = runNormalityTests(bigData);
  * console.log(result.tests[1].available); // false
  * console.log(result.tests[1].unavailableReason);
- * // 'Shapiro-Wilk is only reported for sample sizes up to 5000.'
+ * // 'Shapiro-Wilk hanya dilaporkan untuk ukuran sampel hingga 5000.'
  *
  * @example
  * // Custom alpha
@@ -1214,7 +1102,7 @@ function runNormalityTests(values, options = {}) {
 
     console.log('[DEBUG] Normality Runner - Memulai uji normalitas, n =', sampleSize, 'alpha =', alpha);
 
-    // Guard clause: data minimum untuk normality testing.
+    // Klausa penjaga: jumlah data minimum untuk pengujian normalitas.
     if (!Array.isArray(values) || sampleSize < 3) {
         const reason = 'Normality tests require at least 3 valid observations.';
         console.log('[DEBUG] Normality Runner - Data tidak cukup:', sampleSize);
@@ -1331,7 +1219,7 @@ function formatNormalityNumber(num, decimals = 6) {
 }
 
 /**
- * Cetak laporan detail uji normalitas ke Console dalam format ASCII table.
+ * Cetak laporan terperinci uji normalitas ke konsol dalam format tabel ASCII.
  *
  * Mengikuti pola printDetailedLog() pada Bartlett Test Worker.
  * Mencetak tabel ASCII yang rapi berisi:
@@ -1450,7 +1338,7 @@ function printNormalityLog(sampleSize, alpha, ksResult, swResult, executionTime)
 // EXPOSE FUNGSI KE BERBAGAI ENVIRONMENT
 // =============================================================================
 
-// Expose ke worker global scope (Web Worker environment)
+// Sediakan fungsi pada cakupan global worker (lingkungan Web Worker)
 if (typeof self !== 'undefined') {
     self.calculateKolmogorovSmirnov = calculateKolmogorovSmirnov;
     self.calculateShapiroWilk = calculateShapiroWilk;

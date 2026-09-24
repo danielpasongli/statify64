@@ -77,10 +77,10 @@ const BartlettTestContent: FC<Omit<BaseModalProps, 'containerType'> & { containe
         resetSettings,
     } = useTestSettings();
 
-    // Wrapper onClose yang navigasi ke result
+    // Pembungkus onClose yang mengarahkan pengguna ke hasil
     const handleCloseWithNavigation = useCallback(() => {
         onClose();
-        // Navigate ke result page setelah modal ditutup
+        // Arahkan pengguna ke halaman hasil setelah modal ditutup
         router.push('/dashboard/result');
     }, [onClose, router]);
 

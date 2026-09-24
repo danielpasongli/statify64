@@ -45,10 +45,10 @@
  *     menggunakan Fisher's Exact Test atau menggabungkan kategori).
  *
  * LANGKAH ALGORITMA DI DALAM KODE INI:
- * 1. Build Table: Mengumpulkan seluruh data mentah dan membangun matriks
+ * 1. Bangun tabel: Kumpulkan seluruh data mentah dan bangun matriks
  *    kontingensi RxC beserta total baris (Row Totals) dan total kolom (Col Totals).
- * 2. Expected Calculation: Untuk setiap sel, hitung nilai (Row Total * Col Total) / N.
- * 3. Residual Calculation: Hitung selisih (O - E) untuk mendapat Residual.
+ * 2. Hitung frekuensi harapan: Untuk setiap sel, hitung (Total Baris * Total Kolom) / N.
+ * 3. Hitung residual: Hitung selisih (O - E) untuk memperoleh residual.
  * 4. Chi-Square Accumulation: Kuadratkan selisih, bagi dengan E, dan jumlahkan
  *    untuk seluruh sel di dalam tabel.
  * 5. P-Value: Dihitung dari fungsi distribusi kumulatif (CDF) Gamma/Chi-Square.
@@ -80,7 +80,7 @@
  *   → Implementasi: `getCategoryLabel()` di crosstabulationFormatter.ts
  *     membaca `variable.values` untuk mengonversi kode ke label tampilan.
  *
- * LANGKAH 2 — Input Data & Definisi Variabel:
+ * LANGKAH 2 — Masukan Data dan Definisi Variabel:
  *   Data dimasukkan beserta label variabel, value labels, dan tipe measure.
  *   → Implementasi: Data dibaca dari IndexedDB via `useAnalysisData()` hook.
  *     Variabel didefinisikan di `useVariableStore` (nama, label, values, missing).
@@ -110,12 +110,12 @@
  *     Formatter `crosstabulationFormatter.ts` membaca opsi ini untuk menentukan
  *     kolom mana yang ditampilkan di tabel Crosstabulation.
  *
- * LANGKAH 7 — Jalankan dan Baca Output:
- *   SPSS: Klik OK → muncul output tiga tabel.
+ * LANGKAH 7 — Jalankan dan Baca Keluaran:
+ *   SPSS: Klik OK → muncul keluaran tiga tabel.
  *   → Implementasi: Klik tombol OK di modal → `useCrosstabsAnalysis.ts` mengirim
  *     data ke `crosstabs.worker.js` → `CrosstabsCalculator.getStatistics()` (file ini).
  *     Hasil diformat oleh tiga formatter dan disimpan ke `useResultStore`:
- *       a) Case Processing Summary  → `caseProcessingFormatter.ts`
+ *       a) Ringkasan Pemrosesan Kasus → `caseProcessingFormatter.ts`
  *       b) [RowVar] * [ColVar] Crosstabulation → `crosstabulationFormatter.ts`
  *       c) Chi-Square Tests (Pearson + N of Valid Cases) → `chiSquareFormatter.ts`
  *
@@ -129,7 +129,7 @@ if (typeof self !== 'undefined' && typeof self.importScripts === 'function') {
 }
 
 // =========================
-// Numerical utilities for Chi-square p-value
+// Utilitas numerik untuk nilai-p Chi-Square
 // =========================
 function logGamma(x) {
     const coeff = [
@@ -378,11 +378,11 @@ class CrosstabsCalculator {
             for (let j = 0; j < this.C; j++) {
                 const f_ij = this.table[i][j];
 
-                // 1) Expected count – keep both exact (for computation) and rounded (for display)
+                // 1) Frekuensi harapan – simpan nilai tepat untuk perhitungan dan nilai bulat untuk tampilan
                 const expectedExact = (this.rowTotals[i] * this.colTotals[j]) / this.W;
                 const expectedRounded = toSPSSFixed(expectedExact, 1);
 
-                // 2) Residuals based on the *exact* expected count (matches SPSS behaviour)
+                // 2) Residual berdasarkan frekuensi harapan tepat agar sesuai dengan perilaku SPSS
                 const residual = toSPSSFixed(f_ij - expectedExact, 1);
 
                 let standardizedResidual = null;
@@ -405,10 +405,10 @@ class CrosstabsCalculator {
 
                 cellStats[i][j] = {
                     count: f_ij,
-                    expected: expectedRounded,      // display value (1-decimal rounded)
-                    residual,                       // unstandardized residual (1-dec)
-                    standardizedResidual,           // 3-dec
-                    adjustedResidual,               // 3-dec
+                    expected: expectedRounded,      // nilai tampilan, dibulatkan menjadi 1 desimal
+                    residual,                       // residual tidak terstandardisasi, 1 desimal
+                    standardizedResidual,           // 3 desimal
+                    adjustedResidual,               // 3 desimal
                     rowPercent: this.rowTotals[i] > 0 ? 100 * (f_ij / this.rowTotals[i]) : 0,
                     colPercent: this.colTotals[j] > 0 ? 100 * (f_ij / this.colTotals[j]) : 0,
                     totalPercent: this.W > 0 ? 100 * (f_ij / this.W) : 0,
@@ -491,7 +491,7 @@ class CrosstabsCalculator {
     *   5) Sekaligus kumpulkan diagnostik expected (minimum expected, jumlah sel < 5).
     *   6) Hitung p-value dari distribusi Chi-Square(df).
     *
-    * CARA MEMBACA OUTPUT RETURN FUNCTION:
+    * CARA MEMBACA NILAI KEMBALIAN FUNGSI:
     *   - value  : Nilai statistik χ² (semakin besar -> deviasi O vs E semakin besar).
     *   - df     : Derajat bebas distribusi uji.
     *   - pValue : Probabilitas mendapatkan χ² setidaknya sebesar nilai observasi
