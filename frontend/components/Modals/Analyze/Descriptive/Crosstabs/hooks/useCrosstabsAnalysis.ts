@@ -93,18 +93,6 @@ export const useCrosstabsAnalysis = (params: CrosstabsAnalysisParams, onClose: (
             return;
         }
 
-        // === Performance Monitoring: Start ===
-        const startTime = performance.now();
-        const totalVariablePairs = rowVariables.length * columnVariables.length;
-        const caseCount = data?.length || 0;
-        console.log(`[Crosstabs Analysis] Starting analysis:`);
-        console.log(`  - Row variables: ${rowVariables.length}`);
-        console.log(`  - Column variables: ${columnVariables.length}`);
-        console.log(`  - Total variable pairs: ${totalVariablePairs}`);
-        console.log(`  - Cases: ${caseCount}`);
-        console.log(`  - Start time: ${new Date().toISOString()}`);
-        // === Performance Monitoring: End ===
-
         setIsCalculating(true);
         setError(null);
 
@@ -210,19 +198,6 @@ export const useCrosstabsAnalysis = (params: CrosstabsAnalysisParams, onClose: (
             }
 
             if (resultCount === totalJobs) {
-                // === Performance Monitoring: End ===
-                const endTime = performance.now();
-                const executionTime = endTime - startTime;
-                console.log(`[Crosstabs Analysis] Analysis completed:`);
-                console.log(`  - Variable pairs processed: ${resultCount}/${totalVariablePairs}`);
-                console.log(`  - Cases analyzed: ${caseCount}`);
-                console.log(`  - Execution time: ${executionTime.toFixed(2)}ms`);
-                console.log(`  - End time: ${new Date().toISOString()}`);
-                if (error) {
-                    console.log(`  - Errors encountered: Yes`);
-                }
-                // === Performance Monitoring: End ===
-
                 setIsCalculating(false);
                 if (!error) onClose();
                 // Release the worker back to the pool

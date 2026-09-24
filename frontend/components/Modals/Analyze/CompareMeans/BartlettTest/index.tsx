@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { HelpCircle, InfoIcon, Loader2 } from "lucide-react";
+import { HelpCircle, Loader2 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +38,8 @@ import type { TabType, TabControlProps } from "./types";
 
 import VariablesTab from "./components/VariablesTab";
 import OptionsTab from "./components/OptionsTab";
+import BartlettInfo from "./components/BartlettInfo";
+import { getBartlettSelectionError } from "./utils/validation";
 
 /**
  * Komponen konten utama Bartlett Test
@@ -119,14 +121,9 @@ const BartlettTestContent: FC<Omit<BaseModalProps, 'containerType'> & { containe
      * Melakukan validasi sebelum menjalankan analisis
      */
     const handleOkClick = useCallback(() => {
-        // Validasi
-        if (testVariables.length === 0) {
-            toast.error('Please select at least one test variable');
-            return;
-        }
-
-        if (!factorVariable) {
-            toast.error('Please select a grouping variable');
+        const selectionError = getBartlettSelectionError(testVariables.length, Boolean(factorVariable));
+        if (selectionError) {
+            toast.error(selectionError);
             return;
         }
 
@@ -331,24 +328,7 @@ const BartlettTest: FC<BaseModalProps> = ({
                     <DialogTitle className="text-[22px] font-semibold">
                         Bartlett&apos;s Test of Homogeneity of Variances
                     </DialogTitle>
-                    <TooltipProvider delayDuration={100}>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <button
-                                    type="button"
-                                    aria-label="Syarat penggunaan uji Bartlett"
-                                    className="text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-                                >
-                                    <InfoIcon className="h-4 w-4" />
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="max-w-xs space-y-1 text-xs">
-                                <p>Gunakan variabel numerik berskala pada dua atau lebih kelompok independen.</p>
-                                <p>Data dalam setiap kelompok harus berdistribusi normal.</p>
-                                <p>Setiap kelompok memerlukan minimal dua observasi valid dan varians lebih dari nol.</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
+                    <BartlettInfo />
                 </div>
             </DialogHeader>
 

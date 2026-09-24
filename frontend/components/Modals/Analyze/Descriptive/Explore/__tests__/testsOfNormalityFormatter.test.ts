@@ -1,4 +1,4 @@
-import { formatTestsOfNormalityTable } from '../utils/testsOfNormalityFormatter';
+import { formatTestsOfNormalityTable } from '../utils/normality/formatter';
 import type { ExploreAnalysisParams } from '../types';
 
 const baseParams: ExploreAnalysisParams = {
