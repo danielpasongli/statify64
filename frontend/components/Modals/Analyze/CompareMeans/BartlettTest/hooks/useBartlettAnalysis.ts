@@ -19,8 +19,8 @@ interface UseBartlettAnalysisProps {
  *
  * Hook ini mengelola seluruh proses analisis Bartlett Test:
  * 1. Inisialisasi Web Worker
- * 2. Persiapan data dari store
- * 3. Pengiriman data ke worker untuk kalkulasi
+ * 2. Persiapan data dari penyimpanan state
+ * 3. Pengiriman data ke worker untuk perhitungan
  * 4. Menerima hasil dan menyimpan ke result store
  */
 export function useBartlettAnalysis({
@@ -35,7 +35,7 @@ export function useBartlettAnalysis({
     const resultsRef = useRef<BartlettTestResult[]>([]);
     const requestIdRef = useRef(0);
 
-    // Menggunakan useAnalysisData untuk mendapatkan data dari store
+    // Gunakan useAnalysisData untuk mendapatkan data dari penyimpanan state
     const { data: analysisData, weightVariable } = useAnalysisData();
     const { addLog, addAnalytic, addStatistic } = useResultStore();
 
@@ -58,7 +58,7 @@ export function useBartlettAnalysis({
      * 1. Simpan hasil ke resultsRef
      * 2. Buat log entry
      * 3. Buat analytic entry
-     * 4. Format dan simpan tabel hasil
+     * 4. Formatkan dan simpan tabel hasil
      * 5. Tambahkan descriptive statistics jika diminta
      */
     const handleCalculationComplete = useCallback(async (results: BartlettTestResult[]) => {
@@ -66,7 +66,7 @@ export function useBartlettAnalysis({
             resultsRef.current = results;
 
             // Add log entry first
-            // Format: BARTLETT testVars BY groupVar /STATISTICS DESCRIPTIVES
+            // Bentuk sintaks: BARTLETT testVars BY groupVar /STATISTICS DESCRIPTIVES
             const variableNames = testVariables.map(v => v.name).join(' ');
             let logMsg = `BARTLETT ${variableNames} BY ${factorVariable?.name}`;
             if (options.includeDescriptives) {
@@ -81,7 +81,7 @@ export function useBartlettAnalysis({
                 note: 'Tests equality of variances across groups'
             });
 
-            // Format dan simpan tabel Bartlett Test
+            // Formatkan dan simpan tabel Uji Bartlett
             const bartlettTable = formatBartlettTestTable(results);
             // Validasi struktur tabel sebelum menyimpan
             if (bartlettTable.rows && bartlettTable.rows.length > 0) {
@@ -169,9 +169,9 @@ export function useBartlettAnalysis({
      * Jalankan analisis Bartlett Test
      *
      * Menjalankan analisis Bartlett Test:
-     * 1. Validasi input (test variables dan grouping variable)
+     * 1. Validasi masukan (variabel uji dan variabel pengelompokan)
      * 2. Simpan perubahan pending ke store
-     * 3. Persiapkan data untuk setiap test variable
+     * 3. Persiapkan data untuk setiap variabel uji
      * 4. Kirim data ke worker untuk kalkulasi
      */
     const runAnalysis = useCallback(async () => {
@@ -200,7 +200,7 @@ export function useBartlettAnalysis({
             await useDataStore.getState().checkAndSave();
             if (requestId !== requestIdRef.current) return;
 
-            // Persiapkan data untuk setiap test variable
+            // Persiapkan data untuk setiap variabel uji
             // analysisData adalah array of rows, setiap row adalah object dengan key=columnIndex
             const variablesData = testVariables.map(variable => {
                 return analysisData.map((row: any) => row[variable.columnIndex]);

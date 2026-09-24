@@ -46,13 +46,13 @@ const VariablesTab: FC<VariablesTabProps> = ({
      * Menentukan apakah variabel di-disable (tidak bisa dipilih)
      *
      * @param variable - Variabel yang dicek
-     * @param targetList - Target list: 'test' untuk Test Variables, 'factor' untuk Grouping Variable
+     * @param targetList - Daftar tujuan: 'test' untuk variabel uji, 'factor' untuk variabel pengelompokan
      * @returns true jika variabel harus di-disable
      */
     const isVariableDisabled = useCallback((variable: Variable, targetList?: string): boolean => {
-        // Untuk Test Variables: harus scale (numerik/kontinu)
+        // Variabel uji harus berskala numerik atau kontinu
         if (targetList === 'test') {
-            // Jika measure unknown, fallback ke pengecekan tipe - hanya NUMERIC yang diizinkan
+            // Jika skala pengukuran tidak diketahui, gunakan pemeriksaan tipe; hanya NUMERIC yang diizinkan
             if (!variable.measure || variable.measure === 'unknown') {
                 return variable.type !== 'NUMERIC';
             }
@@ -60,14 +60,14 @@ const VariablesTab: FC<VariablesTabProps> = ({
             return variable.measure !== 'scale';
         }
 
-        // Untuk Grouping Variable: bisa nominal, ordinal, atau bahkan scale (untuk kode numerik)
+        // Variabel pengelompokan dapat berskala nominal, ordinal, atau scale untuk kode numerik
         if (!targetList || targetList === 'factor') {
             // Jika measure unknown, izinkan STRING dan NUMERIC
             if (!variable.measure || variable.measure === 'unknown') {
                 return !['STRING', 'NUMERIC'].includes(variable.type || '');
             }
             // Jika measure didefinisikan, izinkan nominal, ordinal, atau scale
-            // Scale diizinkan karena grouping variable bisa berupa kode numerik (1,2,3)
+            // Scale diizinkan karena variabel pengelompokan dapat berupa kode numerik (1,2,3)
             return !['nominal', 'ordinal', 'scale'].includes(variable.measure || '');
         }
 
@@ -83,17 +83,17 @@ const VariablesTab: FC<VariablesTabProps> = ({
 
             // Untuk measure unknown, tentukan berdasarkan tipe
             if (!variable.measure || variable.measure === 'unknown') {
-                // Tipe STRING kemungkinan kategorik -> grouping variable
+                // Tipe STRING kemungkinan kategorik sehingga menjadi variabel pengelompokan
                 if (variable.type === 'STRING' && !factorVariable) {
                     moveToFactorVariable(variable);
                 } else if (variable.type === 'NUMERIC') {
-                    // NUMERIC dengan measure unknown -> test variable
+                    // NUMERIC dengan skala pengukuran tidak diketahui menjadi variabel uji
                     moveToTestVariables(variable);
                 }
                 return;
             }
 
-            // Untuk measure yang didefinisikan: scale -> test, nominal/ordinal -> factor
+            // Untuk skala yang ditentukan: scale menjadi variabel uji, nominal/ordinal menjadi faktor
             if (variable.measure === 'scale') {
                 moveToTestVariables(variable);
             } else if (['nominal', 'ordinal'].includes(variable.measure)) {
