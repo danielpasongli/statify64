@@ -33,7 +33,7 @@ const ChiSquareOptions = ({ checked, onCheckedChange, highlighted }: ChiSquareOp
             </button>
           </TooltipTrigger>
           <TooltipContent side="right" className="max-w-xs text-xs">
-            Uji asosiasi untuk proporsi lebih dari dua populasi (binomial/multinomial) melalui tabel kontingensi.
+            Untuk uji proporsi binomial/multinomial dan uji kebebasan Chi-Square dibutuhkan minimal 2 variabel bertipe kategorik.
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
