@@ -22,9 +22,25 @@ describe('Chi-Square interpretation', () => {
 
   it('builds independence and binomial conclusions from one Pearson result', () => {
     const description = buildChiSquareDescription({ ...baseInput, outcomeCategoryCount: 2 });
-    expect(description.join(' ')).toContain('Kelompok dan Pilihan memiliki hubungan');
+    expect(description.join(' ')).toContain('terdapat hubungan antara Kelompok dan Pilihan');
     expect(description.join(' ')).toContain('Konteks proporsi binomial');
     expect(description.join(' ')).toContain('Proporsi Pilihan berbeda secara signifikan');
+  });
+
+  it('explains a non-significant independence result as cause, decision, and conclusion', () => {
+    const description = buildChiSquareDescription({
+      ...baseInput,
+      rowName: 'Tingkat pendidikan',
+      columnName: 'Lama waktu mencari pekerjaan',
+      value: 8.25,
+      df: 4,
+      pValue: 0.083,
+      outcomeCategoryCount: 3,
+    });
+
+    expect(description.join(' ')).toContain(
+      'Karena nilai statistik uji Chi-Square sebesar χ²(4) = 8.250 menghasilkan p-value = 0,083 yang lebih besar atau sama dengan tingkat signifikansi yang digunakan (0,05), maka diperoleh keputusan gagal menolak H₀. Dengan demikian dapat disimpulkan bahwa dari data tersebut tidak terdapat hubungan antara Tingkat pendidikan dan Lama waktu mencari pekerjaan.',
+    );
   });
 
   it('escapes variable labels inserted into HTML', () => {

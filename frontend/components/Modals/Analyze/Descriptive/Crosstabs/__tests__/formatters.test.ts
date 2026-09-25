@@ -196,7 +196,7 @@ describe('Crosstabs Formatters', () => {
                 '<p><strong>Hipotesis uji kebebasan</strong></p>',
                 '<p>H₀: Pᵢⱼ = Pᵢ·P·ⱼ — Gender dan Job Category saling bebas.</p>',
                 '<p><strong>Konteks proporsi multinomial</strong></p>',
-                '<p>Pearson Chi-Square: χ²(2) = 67.149, p < 0.001; H₀ ditolak. Terdapat hubungan yang signifikan antara Gender dan Job Category.</p>',
+                '<p>Karena nilai statistik uji Chi-Square sebesar χ²(2) = 67.149 menghasilkan p-value < 0,001 yang lebih kecil dari tingkat signifikansi yang digunakan (0,05), maka diperoleh keputusan menolak H₀. Dengan demikian dapat disimpulkan bahwa dari data tersebut terdapat hubungan antara Gender dan Job Category.</p>',
                 '<p>Dalam konteks proporsi multinomial, H₀ ditolak. Distribusi proporsi Job Category berbeda secara signifikan pada minimal satu kelompok Gender.</p>',
             ]));
         });
