@@ -65,6 +65,7 @@ export const formatChiSquareTestsTable = (
       value: pearson.value,
       df: pearson.df,
       pValue: pearson.pValue,
+      sampleSize: result.summary?.valid,
       diagnostics,
     }),
   };
