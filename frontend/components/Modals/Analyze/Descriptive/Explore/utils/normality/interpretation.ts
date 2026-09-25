@@ -13,10 +13,10 @@ export const buildNormalityInterpretation = (
   const numericPValue = pValue as number;
   const significant = numericPValue < alpha;
   const decision = significant
-    ? 'H₀ ditolak. Data tidak berdistribusi normal.'
-    : 'gagal menolak H₀. Tidak terdapat bukti bahwa data menyimpang dari distribusi normal.';
+    ? 'H₀ ditolak, artinya data tidak berdistribusi normal.'
+    : 'gagal menolak H₀, artinya tidak terdapat cukup bukti untuk membuktikan bahwa data tidak berdistribusi normal (data berdistribusi normal).';
 
-  return `${safeTestName} — ${safeSubject}: p = ${numericPValue.toFixed(3)} ${significant ? '<' : '≥'} α = ${alpha.toFixed(3)}; ${decision}`;
+  return `${safeTestName} — ${safeSubject}: p-value = ${numericPValue.toFixed(3)} ${significant ? '<' : '≥'} α = ${alpha.toFixed(3)}; ${decision}`;
 };
 
 export const buildNormalityDescription = (interpretations: string[]): string[] | undefined => {

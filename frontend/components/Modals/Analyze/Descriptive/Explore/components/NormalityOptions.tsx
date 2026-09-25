@@ -27,9 +27,8 @@ const NormalityOptions = ({ checked, onCheckedChange }: NormalityOptionsProps) =
             </button>
           </TooltipTrigger>
           <TooltipContent side="right" className="max-w-xs space-y-1 text-xs">
-            <p>Gunakan variabel numerik dengan observasi yang independen.</p>
-            <p>Diperlukan minimal 3 observasi valid dan varians lebih dari nol.</p>
-            <p>Shapiro-Wilk tersedia hingga 5.000 observasi.</p>
+            <p>Syarat:</p>
+            <p>Data numerik dan bisa digunakan hanya dengan 1 variabel.</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
