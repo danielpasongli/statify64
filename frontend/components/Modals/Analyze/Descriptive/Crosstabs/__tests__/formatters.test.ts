@@ -197,7 +197,7 @@ describe('Crosstabs Formatters', () => {
                 '<p>H₀: Pᵢⱼ = Pᵢ·P·ⱼ — Gender dan Job Category saling bebas.</p>',
                 '<p><strong>Konteks proporsi multinomial</strong></p>',
                 '<p>Karena nilai statistik uji Chi-Square sebesar χ²(2) = 67.149 menghasilkan p-value < 0,001 yang lebih kecil dari tingkat signifikansi yang digunakan (0,05), maka diperoleh keputusan menolak H₀. Dengan demikian dapat disimpulkan bahwa dari data tersebut terdapat hubungan antara Gender dan Job Category.</p>',
-                '<p>Dalam konteks proporsi multinomial, H₀ ditolak. Distribusi proporsi Job Category berbeda secara signifikan pada minimal satu kelompok Gender.</p>',
+                '<p>Nilai statistik Pearson Chi-Square pada output menunjukkan angka 67,149. Nilai statistik tersebut lebih besar daripada nilai kritis χ²<sub>0,05;2</sub> sebesar 5,991. Hal ini menunjukkan bahwa diperoleh keputusan menolak H₀. Dengan demikian dapat disimpulkan bahwa pada tingkat signifikansi 5% dan jumlah sampel sebanyak 474 yang digunakan, terdapat cukup bukti untuk menyatakan bahwa proporsi Job Category antar kelompok Gender berbeda.</p>',
             ]));
         });
 
@@ -215,7 +215,7 @@ describe('Crosstabs Formatters', () => {
 
             expect(formatted?.description?.join(' ')).toContain('Konteks proporsi binomial');
             expect(formatted?.description?.join(' ')).toContain('p₁ = p₂ = ⋯ = pₖ');
-            expect(formatted?.description?.join(' ')).toContain('Proporsi Job Category berbeda secara signifikan pada minimal satu kelompok Gender.');
+            expect(formatted?.description?.join(' ')).toContain('terdapat cukup bukti untuk menyatakan bahwa proporsi Job Category antar kelompok Gender berbeda.');
         });
 
         it('should return null when chi-square option is disabled', () => {
