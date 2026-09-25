@@ -11,7 +11,7 @@ describe('NormalityOptions', () => {
 
     await user.hover(screen.getByRole('button', { name: 'Syarat penggunaan uji normalitas' }));
     const tooltip = await screen.findByRole('tooltip');
-    expect(within(tooltip).getByText(/minimal 3 observasi valid/i)).toBeVisible();
+    expect(within(tooltip).getByText(/data numerik dan bisa digunakan hanya dengan 1 variabel/i)).toBeVisible();
 
     await user.click(screen.getByLabelText('Normality plots with tests'));
     expect(onCheckedChange).toHaveBeenCalledWith(true);

@@ -43,11 +43,11 @@ export const buildChiSquareDescription = ({
       ? `H₀ ditolak. Terdapat hubungan yang signifikan antara ${safeRowName} dan ${safeColumnName}.`
       : `gagal menolak H₀. Belum terdapat bukti hubungan yang signifikan antara ${safeRowName} dan ${safeColumnName}.`;
   const proportionHypothesis = context === 'binomial'
-    ? '<p>H₀: p₁ = p₂ = ⋯ = pₖ — proporsi hasil binomial sama pada seluruh kelompok.</p>'
+    ? '<p>H₀: p₁ = p₂ = ⋯ = pₖ — proporsi semua kelompok sama.</p>'
     : '<p>H₀: p₁ⱼ = p₂ⱼ = ⋯ = pₖⱼ untuk setiap kategori j — distribusi proporsi multinomial sama pada seluruh kelompok.</p>';
   const proportionAlternative = context === 'binomial'
-    ? '<p>H₁: minimal satu kelompok memiliki proporsi hasil binomial yang berbeda.</p>'
-    : '<p>H₁: minimal satu kelompok memiliki distribusi proporsi multinomial yang berbeda.</p>';
+    ? '<p>H₁: minimal terdapat satu kelompok memiliki proporsi yang berbeda/tidak semua proporsi sama.</p>'
+    : '<p>H₁: minimal terdapat satu kelompok memiliki proporsi yang berbeda/tidak semua proporsi sama.</p>';
   const proportionDecision = pValue === null
     ? `Dalam konteks proporsi ${context}, keputusan uji tidak dapat ditentukan.`
     : significant
@@ -55,8 +55,8 @@ export const buildChiSquareDescription = ({
         ? `Dalam konteks proporsi binomial, H₀ ditolak. Proporsi ${safeColumnName} berbeda secara signifikan pada minimal satu kelompok ${safeRowName}.`
         : `Dalam konteks proporsi multinomial, H₀ ditolak. Distribusi proporsi ${safeColumnName} berbeda secara signifikan pada minimal satu kelompok ${safeRowName}.`
       : context === 'binomial'
-        ? `Dalam konteks proporsi binomial, gagal menolak H₀. Belum terdapat bukti bahwa proporsi ${safeColumnName} berbeda antar kelompok ${safeRowName}.`
-        : `Dalam konteks proporsi multinomial, gagal menolak H₀. Belum terdapat bukti bahwa distribusi proporsi ${safeColumnName} berbeda antar kelompok ${safeRowName}.`;
+        ? `Dalam konteks proporsi binomial, gagal menolak H₀, artinya belum terdapat bukti bahwa proporsi ${safeColumnName} berbeda antar kelompok ${safeRowName}.`
+        : `Dalam konteks proporsi multinomial, gagal menolak H₀, artinya belum terdapat bukti bahwa proporsi ${safeColumnName} berbeda antar kelompok ${safeRowName}.`;
 
   return [
     '<p><strong>Hipotesis uji kebebasan</strong></p>',
