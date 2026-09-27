@@ -1,5 +1,3 @@
-import type React from "react";
-
 export type DiscriminantMainType = {
     GroupingVariable: string | null;
     IndependentVariables: string[] | null;
@@ -8,56 +6,13 @@ export type DiscriminantMainType = {
     SelectionVariable: string | null;
 };
 
-export type DiscriminantDialogProps = {
-    isMainOpen: boolean;
-    setIsMainOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    setIsDefineRangeOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    setIsSetValueOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    setIsStatisticsOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    setIsMethodOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    setIsClassifyOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    setIsSaveOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    setIsBootstrapOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    updateFormData: (
-        field: keyof DiscriminantMainType,
-        value: string | string[] | boolean | null
-    ) => void;
-    data: DiscriminantMainType;
-    globalVariables: string[];
-    onContinue: (mainState: DiscriminantMainType) => void;
-    onReset: () => void;
-    onClose: () => void;
-    isLoading?: boolean;
-    error?: string | null;
-};
-
 export type DiscriminantDefineRangeType = {
     minRange: number | null;
     maxRange: number | null;
 };
 
-export type DiscriminantDefineRangeProps = {
-    isDefineRangeOpen: boolean;
-    setIsDefineRangeOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    updateFormData: (
-        field: keyof DiscriminantDefineRangeType,
-        value: number | null
-    ) => void;
-    data: DiscriminantDefineRangeType;
-};
-
 export type DiscriminantSetValueType = {
     Value: number | null;
-};
-
-export type DiscriminantSetValueProps = {
-    isSetValueOpen: boolean;
-    setIsSetValueOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    updateFormData: (
-        field: keyof DiscriminantSetValueType,
-        value: number | null
-    ) => void;
-    data: DiscriminantSetValueType;
 };
 
 export type DiscriminantStatisticsType = {

@@ -6,6 +6,10 @@ import dynamic from "next/dynamic";
 import { useResultStore } from "@/stores/useResultStore";
 import GeneralChartContainer from "@/components/Output/Chart/GeneralChartContainer";
 import KNNKPredictorSelectionChart from "@/components/Modals/Analyze/Classify/nearest-neighbor/components/KNNKPredictorSelectionChart";
+import KNNOutputDownloadMenu, {
+  getKnnDownloadKind,
+} from "@/components/Modals/Analyze/Classify/nearest-neighbor/components/KNNOutputDownloadMenu";
+import { KNN_RESULT_ANALYTIC_TITLE } from "@/components/Modals/Analyze/Classify/nearest-neighbor/constants/nearest-neighbor-output";
 // KNN predictor space chart is a bit heavy to load, so we dynamically import it with a loading state
 const KNNPredictorSpaceChart = dynamic(
   () => import("@/components/Modals/Analyze/Classify/nearest-neighbor/components/KNNPredictorSpaceChart"),
@@ -176,9 +180,14 @@ const ResultOutput: React.FC = () => {
                         const statId = stat.id ?? 0;
                         const isEditing = editingDescriptionId === statId;
                         const status = saveStatus[statId] ?? "";
-                        const isFactorAnalysisChart = (stat.components === 'ScreePlot' || stat.components === 'LoadingPlot') && 
+                        const isFactorAnalysisChart = (stat.components === 'ScreePlot' || stat.components === 'LoadingPlot') &&
                           analytic.title?.toLowerCase().includes('factor analysis');
-                        
+                        const outputElementId = `output-${analytic.id}-${stat.id}`;
+                        const knnDownloadKind =
+                          analytic.title === KNN_RESULT_ANALYTIC_TITLE
+                            ? getKnnDownloadKind(stat.output_data)
+                            : null;
+
                         return (
                           <div key={stat.id} className={`space-y-4 ${
                             isFactorAnalysisChart ? 'mt-16' : ''
@@ -191,8 +200,15 @@ const ResultOutput: React.FC = () => {
                                 {stat.components}
                               </div>
                             )}
+                            {knnDownloadKind && (
+                              <KNNOutputDownloadMenu
+                                kind={knnDownloadKind}
+                                title={stat.title}
+                                targetId={outputElementId}
+                              />
+                            )}
                             <div
-                              id={`output-${analytic.id}-${stat.id}`}
+                              id={outputElementId}
                               className={`${
                                 isFactorAnalysisChart ? 'mb-16' : 'mb-6'
                               } rounded-md ${

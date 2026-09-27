@@ -137,6 +137,8 @@ export const buildDefaultOutputOptions = (
     goodnessOfFit: params.display.goodnessOfFit,
     summaryStatistics: params.display.summaryStatistics,
     parameterEstimates: params.display.parameterEstimates,
+    asymptoticCovariance: params.display.asymptoticCovariance,
+    asymptoticCorrelation: params.display.asymptoticCorrelation,
     testOfParallelLines: params.display.testOfParallelLines,
     iterationHistory: printIterationHistory,
     iterationHistoryStep: iterationHistoryEvery,

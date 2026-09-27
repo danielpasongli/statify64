@@ -46,6 +46,7 @@ export const useAnalyzeHook = (
             }
 
             console.log(`Running ${modelType}(${pOrder},${qOrder}) with ${returns.length} observations`);
+            console.time(`Statify ${modelType} Execution Time`);
 
             const client = getTimeSeriesWorker();
 
@@ -53,6 +54,7 @@ export const useAnalyzeHook = (
                 const { status, result, error } = e.data;
                 
                 if (status === "success") {
+                    console.timeEnd(`Statify ${modelType} Execution Time`);
                     console.log(`${modelType} Results:`, result);
                     
                     toast.success(`${modelType} estimation completed!`);
@@ -284,7 +286,7 @@ export const useAnalyzeHook = (
                 type: modelType, 
                 payload: {
                     data: returns,
-                    p: pOrder,
+                    p: modelType === "ARCH" ? 0 : pOrder,
                     q: qOrder
                 }
             });

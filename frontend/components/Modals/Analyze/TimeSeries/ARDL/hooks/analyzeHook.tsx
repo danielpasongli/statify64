@@ -86,6 +86,7 @@ export const useAnalyzeHook = (
             }
 
             console.log(`Running ARDL Analysis (AutoSelect=${autoSelect}) with ${nObs} observations`);
+            console.time("Statify ARDL Execution Time");
             
             // Ensure qOrders matches number of X variables
             const qOrdersArray = qOrders.length === independentVariables.length 
@@ -98,6 +99,7 @@ export const useAnalyzeHook = (
                 const { status, result, error } = e.data;
                 
                 if (status === "success") {
+                    console.timeEnd("Statify ARDL Execution Time");
                     console.log("ARDL Results:", result);
                     
                     toast.success("ARDL estimation completed!");
@@ -126,28 +128,30 @@ export const useAnalyzeHook = (
                                     { header: "Prob.", key: "prob" }
                                 ],
                                 rows: uRows,
-                                footer: `R-squared: ${u.diagnostics.rSquared} | Adjusted R-squared: ${u.diagnostics.adjRSquared} | F-statistic: ${u.diagnostics.fStatistic} | Included observations: ${u.effObs}`
+                                footer: `R-squared: ${u.diagnostics?.rSquared ?? ''} | Adjusted R-squared: ${u.diagnostics?.adjRSquared ?? ''} | F-statistic: ${u.diagnostics?.fStatistic ?? ''} | Included observations: ${u.effObs ?? ''}`
                             });
 
-                            const d = u.diagnostics;
-                            tables.push({
-                                title: "Unrestricted ARDL Fit & Diagnostics",
-                                columnHeaders: [
-                                    { header: "Statistic", key: "col1" },
-                                    { header: "Value", key: "val1" },
-                                    { header: "Statistic", key: "col2" },
-                                    { header: "Value", key: "val2" }
-                                ],
-                                rows: [
-                                    { col1: "R-squared", val1: d.rSquared, col2: "Mean dependent var", val2: d.meanDependentVar },
-                                    { col1: "Adjusted R-squared", val1: d.adjRSquared, col2: "S.D. dependent var", val2: d.sdDependentVar },
-                                    { col1: "S.E. of regression", val1: d.seRegression, col2: "Akaike info criterion", val2: d.aic },
-                                    { col1: "Sum squared resid", val1: d.sumSquaredResid, col2: "Schwarz criterion", val2: d.bic },
-                                    { col1: "Log likelihood", val1: d.logLikelihood, col2: "Hannan-Quinn criter.", val2: d.hq },
-                                    { col1: "F-statistic", val1: d.fStatistic, col2: "Durbin-Watson stat", val2: d.durbinWatson },
-                                    { col1: "Prob(F-statistic)", val1: d.probFStatistic, col2: "Evaluated Models", val2: result.evaluatedModelsCount || 1 }
-                                ]
-                            });
+                            if (u.diagnostics) {
+                                const d = u.diagnostics;
+                                tables.push({
+                                    title: "Unrestricted ARDL Fit & Diagnostics",
+                                    columnHeaders: [
+                                        { header: "Statistic", key: "col1" },
+                                        { header: "Value", key: "val1" },
+                                        { header: "Statistic", key: "col2" },
+                                        { header: "Value", key: "val2" }
+                                    ],
+                                    rows: [
+                                        { col1: "R-squared", val1: d.rSquared, col2: "Mean dependent var", val2: d.meanDependentVar },
+                                        { col1: "Adjusted R-squared", val1: d.adjRSquared, col2: "S.D. dependent var", val2: d.sdDependentVar },
+                                        { col1: "S.E. of regression", val1: d.seRegression, col2: "Akaike info criterion", val2: d.aic },
+                                        { col1: "Sum squared resid", val1: d.sumSquaredResid, col2: "Schwarz criterion", val2: d.bic },
+                                        { col1: "Log likelihood", val1: d.logLikelihood, col2: "Hannan-Quinn criter.", val2: d.hq },
+                                        { col1: "F-statistic", val1: d.fStatistic, col2: "Durbin-Watson stat", val2: d.durbinWatson },
+                                        { col1: "Prob(F-statistic)", val1: d.probFStatistic, col2: "Evaluated Models", val2: result.evaluatedModelsCount || 1 }
+                                    ]
+                                });
+                            }
                         }
 
                         // 1. Long Run Equation
@@ -218,7 +222,7 @@ export const useAnalyzeHook = (
                             ]
                         });
                         
-                        // 3. Short Run ARDL-ECM Table
+                        // 3. Short Run ARDL Table
                         const srRows = [];
                         let srVarIdx = 0;
                         srRows.push({
@@ -239,8 +243,13 @@ export const useAnalyzeHook = (
                         });
                         srVarIdx++;
 
+                        const actualP = result.selectedP !== undefined ? result.selectedP : pOrder;
+                        const actualQ = result.selectedQ !== undefined 
+                            ? (Array.isArray(result.selectedQ) ? result.selectedQ : [result.selectedQ])
+                            : qOrdersArray;
+
                         // Lags of D(Y)
-                        for (let i = 1; i <= pOrder; i++) {
+                        for (let i = 1; i <= actualP; i++) {
                             srRows.push({
                                 var: `D(${yVar.name}(-${i}))`,
                                 coef: result.shortRun.coefficients[srVarIdx],
@@ -253,7 +262,8 @@ export const useAnalyzeHook = (
 
                         // Lags of D(X)
                         for (let k = 0; k < independentVariables.length; k++) {
-                            for (let j = 0; j <= qOrdersArray[k]; j++) {
+                            const qVal = actualQ[k] !== undefined ? actualQ[k] : 1;
+                            for (let j = 0; j <= qVal; j++) {
                                 const lagSuffix = j === 0 ? "" : `(-${j})`;
                                 srRows.push({
                                     var: `D(${independentVariables[k].name}${lagSuffix})`,
@@ -267,7 +277,7 @@ export const useAnalyzeHook = (
                         }
 
                         let srFormulaStr = `D(${yVar.name}) ~ C + ECT(-1)`;
-                        if (pOrder > 0) srFormulaStr += ` + D(${yVar.name}) lags`;
+                        if (actualP > 0) srFormulaStr += ` + D(${yVar.name}) lags`;
                         srFormulaStr += ` + D(Xs) lags`;
 
                         tables.push({

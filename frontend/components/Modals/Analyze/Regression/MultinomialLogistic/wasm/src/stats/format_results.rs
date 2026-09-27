@@ -1,7 +1,7 @@
 use crate::models::config::MultinomialConfig;
 use crate::models::result::{
-    ClassificationTable, GoodnessOfFit, LikelihoodRatioTest, MultinomialResult, PseudoRSquare,
-    StepwiseStep,
+    CellProbabilityItem, ClassificationTable, GoodnessOfFit, LikelihoodRatioTest, MultinomialResult,
+    PseudoRSquare, StepwiseStep,
 };
 use crate::stats::core::PrimaryResults;
 use nalgebra::{DMatrix, DVector};
@@ -24,6 +24,7 @@ pub fn format_results(
     goodness_of_fit: GoodnessOfFit,
     lr_tests: Vec<LikelihoodRatioTest>,
     stepwise_trace: Vec<StepwiseStep>,
+    cell_probabilities: Vec<CellProbabilityItem>,
 ) -> MultinomialResult {
     let J = primary.n_categories;
     let p = primary.n_params;
@@ -171,5 +172,6 @@ pub fn format_results(
         stepwise_trace,
         asymptotic_covariance,
         asymptotic_correlation,
+        cell_probabilities,
     }
 }

@@ -37,7 +37,15 @@ jest.mock('sonner', () => ({
 }));
 
 jest.mock('@/services/chart/ChartService', () => ({
-    ChartService: { createChartJSON: jest.fn(() => ({ type: 'line', data: [] })) },
+    ChartService: {
+        createChartJSON: jest.fn((config) => ({
+            chartType: config.chartType,
+            chartData: config.chartData,
+            chartVariables: config.chartVariables,
+            chartMetadata: config.chartMetadata,
+            chartConfig: config.chartConfig,
+        })),
+    },
 }));
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -126,10 +134,10 @@ const mockARDLResult = {
     },
     cointegration: { isCointegrated: true, statistic: '-3.5', pValue: '0.01' },
     shortRun: {
-        coefficients: ['0.5', '-0.3', '0.2'],
-        stdErrors: ['0.1', '0.05', '0.08'],
-        tStats: ['5.0', '-6.0', '2.5'],
-        pValues: ['0.000', '0.01', '0.015'],
+        coefficients: ['0.5', '-0.3', '0.2', '0.15', '-0.05'],
+        stdErrors: ['0.1', '0.05', '0.08', '0.04', '0.02'],
+        tStats: ['5.0', '-6.0', '2.5', '3.75', '-2.5'],
+        pValues: ['0.000', '0.01', '0.015', '0.001', '0.015'],
         rSquared: '0.75',
         adjRSquared: '0.73',
         fStat: '30.1',
@@ -331,6 +339,21 @@ describe('useAnalyzeHook ARDL – Respons Worker (P6–P8)', () => {
                 tStats: ['8.0', '5.0'],
                 pValues: ['0.001', '0.001'],
                 effObs: 5,
+                diagnostics: {
+                    rSquared: '0.99',
+                    adjRSquared: '0.98',
+                    seRegression: '0.5',
+                    sumSquaredResid: '1.2',
+                    logLikelihood: '-10.5',
+                    fStatistic: '100.0',
+                    probFStatistic: '0.000',
+                    meanDependentVar: '14.0',
+                    sdDependentVar: '3.0',
+                    aic: '1.4',
+                    bic: '1.5',
+                    hq: '1.45',
+                    durbinWatson: '2.0',
+                },
                 actual: [10, 12, 14, 16, 18],
                 fitted: [9.8, 12.1, 13.9, 16.2, 17.8],
                 residuals: [0.2, -0.1, 0.1, -0.2, 0.2]
@@ -349,20 +372,20 @@ describe('useAnalyzeHook ARDL – Respons Worker (P6–P8)', () => {
         expect(outputPayload.charts.length).toBe(3); // Actual vs Fitted, Residuals, Correlogram
         
         // Actual vs Fitted chart test
-        const actualFitted = outputPayload.charts[0].charts[0];
+        const actualFitted = outputPayload.charts[0];
         expect(actualFitted.chartType).toBe("Multiple Line Chart");
         expect(actualFitted.chartData[0]).toHaveProperty("category");
         expect(actualFitted.chartData[0]).toHaveProperty("subcategory");
         expect(actualFitted.chartData[0]).toHaveProperty("value");
         
         // Residuals chart test
-        const resChart = outputPayload.charts[1].charts[0];
+        const resChart = outputPayload.charts[1];
         expect(resChart.chartType).toBe("Line Chart");
         expect(resChart.chartData[0]).toHaveProperty("category");
         expect(resChart.chartData[0]).toHaveProperty("value");
 
         // Correlogram chart test
-        const correloChart = outputPayload.charts[2].charts[0];
+        const correloChart = outputPayload.charts[2];
         expect(correloChart.chartType).toBe("Multiple Line Chart");
         expect(correloChart.chartData[0]).toHaveProperty("category");
         expect(correloChart.chartData[0]).toHaveProperty("subcategory");

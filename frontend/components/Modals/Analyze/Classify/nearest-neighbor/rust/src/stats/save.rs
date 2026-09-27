@@ -42,6 +42,7 @@ pub fn calculate_saved_variables(
 
     if config.save.random_assign_to_partition {
         variables.push(build_partition_variable(
+            saved_variable_name(config, SavedVariableKind::Partition),
             total_cases,
             &knn_data.processed_case_indices,
             &knn_data.training_indices,
@@ -51,6 +52,7 @@ pub fn calculate_saved_variables(
 
     if config.save.random_assign_to_fold {
         variables.push(build_fold_variable(
+            saved_variable_name(config, SavedVariableKind::Fold),
             total_cases,
             &knn_data.processed_case_indices,
             &knn_data.cross_validation_folds,
@@ -93,6 +95,7 @@ pub fn build_saved_variables(
 
     if config.save.has_target_var {
         variables.push(build_predicted_value_variable(
+            saved_variable_name(config, SavedVariableKind::PredictedValue),
             total_cases,
             &knn_data.processed_case_indices,
             &computation.predicted_values,
@@ -103,6 +106,7 @@ pub fn build_saved_variables(
     if config.save.is_cate_target_var && target_is_categorical {
         let max_categories = config.save.max_cats_to_save.unwrap_or(25).max(0) as usize;
         variables.extend(build_probability_variables(
+            &saved_variable_name(config, SavedVariableKind::Probability),
             total_cases,
             &knn_data.processed_case_indices,
             &computation.category_probabilities,
@@ -112,6 +116,7 @@ pub fn build_saved_variables(
 
     if config.save.random_assign_to_partition {
         variables.push(build_partition_variable(
+            saved_variable_name(config, SavedVariableKind::Partition),
             total_cases,
             &knn_data.processed_case_indices,
             &knn_data.training_indices,
@@ -121,6 +126,7 @@ pub fn build_saved_variables(
 
     if config.save.random_assign_to_fold {
         variables.push(build_fold_variable(
+            saved_variable_name(config, SavedVariableKind::Fold),
             total_cases,
             &knn_data.processed_case_indices,
             &knn_data.cross_validation_folds,
@@ -135,6 +141,7 @@ pub fn build_saved_variables(
 }
 
 fn build_predicted_value_variable(
+    name: String,
     total_cases: usize,
     processed_case_indices: &[usize],
     predictions: &[DataValue],
@@ -167,7 +174,7 @@ fn build_predicted_value_variable(
     };
 
     SavedVariable {
-        name: "KNN_PredictedValue".to_string(),
+        name,
         label: "KNN predicted value or category".to_string(),
         variable_type: if numeric_prediction {
             "NUMERIC"
@@ -182,6 +189,7 @@ fn build_predicted_value_variable(
 }
 
 fn build_probability_variables(
+    name_prefix: &str,
     total_cases: usize,
     processed_case_indices: &[usize],
     category_probabilities: &HashMap<String, Vec<f64>>,
@@ -206,7 +214,7 @@ fn build_probability_variables(
             }
 
             SavedVariable {
-                name: format!("KNN_Probability_{}", sanitize_name_part(category)),
+                name: format!("{}_{}", name_prefix, sanitize_name_part(category)),
                 label: format!("KNN predicted probability for {}", category),
                 variable_type: "NUMERIC".to_string(),
                 measure: "scale".to_string(),
@@ -218,6 +226,7 @@ fn build_probability_variables(
 }
 
 fn build_partition_variable(
+    name: String,
     total_cases: usize,
     processed_case_indices: &[usize],
     training_indices: &[usize],
@@ -240,7 +249,7 @@ fn build_partition_variable(
     }
 
     SavedVariable {
-        name: "KNN_Partition".to_string(),
+        name,
         label: "KNN training or holdout partition".to_string(),
         variable_type: "NUMERIC".to_string(),
         measure: "nominal".to_string(),
@@ -250,6 +259,7 @@ fn build_partition_variable(
 }
 
 fn build_fold_variable(
+    name: String,
     total_cases: usize,
     processed_case_indices: &[usize],
     folds: &[usize],
@@ -275,13 +285,47 @@ fn build_fold_variable(
     }
 
     SavedVariable {
-        name: "KNN_Fold".to_string(),
+        name,
         label: "KNN cross-validation fold".to_string(),
         variable_type: "NUMERIC".to_string(),
         measure: "nominal".to_string(),
         decimals: 0,
         values,
     }
+}
+
+#[derive(Clone, Copy)]
+enum SavedVariableKind {
+    PredictedValue,
+    Probability,
+    Partition,
+    Fold,
+}
+
+/// Nama variabel yang disimpan ke dataset. Nama kustom hanya dipakai jika
+/// opsi "Use custom names" aktif dan namanya tidak kosong; selain itu nama
+/// bawaan dipakai. Untuk probabilitas, nama ini adalah awalan per kategori.
+fn saved_variable_name(config: &KnnConfig, kind: SavedVariableKind) -> String {
+    let (custom, default) = match kind {
+        SavedVariableKind::PredictedValue => {
+            (&config.save.predicted_value_name, "KNN_PredictedValue")
+        }
+        SavedVariableKind::Probability => (&config.save.probability_name, "KNN_Probability"),
+        SavedVariableKind::Partition => (&config.save.partition_name, "KNN_Partition"),
+        SavedVariableKind::Fold => (&config.save.fold_name, "KNN_Fold"),
+    };
+
+    resolve_saved_name(config.save.custom_name, custom.as_deref(), default)
+}
+
+fn resolve_saved_name(use_custom_name: bool, custom: Option<&str>, default: &str) -> String {
+    if use_custom_name {
+        if let Some(name) = custom.map(str::trim).filter(|name| !name.is_empty()) {
+            return name.to_string();
+        }
+    }
+
+    default.to_string()
 }
 
 fn count_raw_cases(data: &AnalysisData) -> usize {
@@ -325,4 +369,24 @@ fn sanitize_name_part(value: &str) -> String {
     }
 
     sanitized.chars().take(48).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_saved_name;
+
+    #[test]
+    fn custom_name_is_used_only_when_enabled_and_not_empty() {
+        assert_eq!(resolve_saved_name(true, Some("Pred"), "KNN_PredictedValue"), "Pred");
+        assert_eq!(resolve_saved_name(true, Some("  Pred  "), "KNN_PredictedValue"), "Pred");
+        assert_eq!(
+            resolve_saved_name(false, Some("Pred"), "KNN_PredictedValue"),
+            "KNN_PredictedValue"
+        );
+        assert_eq!(
+            resolve_saved_name(true, Some("   "), "KNN_PredictedValue"),
+            "KNN_PredictedValue"
+        );
+        assert_eq!(resolve_saved_name(true, None, "KNN_Fold"), "KNN_Fold");
+    }
 }

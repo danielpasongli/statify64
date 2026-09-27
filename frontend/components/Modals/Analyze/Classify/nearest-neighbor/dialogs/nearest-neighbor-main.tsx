@@ -23,6 +23,9 @@ import { useVariableStore } from "@/stores/useVariableStore";
 import { useDataStore } from "@/stores/useDataStore";
 
 import { analyzeKNN } from "@/components/Modals/Analyze/Classify/nearest-neighbor/services/nearest-neighbor-analysis";
+import { getUserFriendlyKNNError } from "@/components/Modals/Analyze/Classify/nearest-neighbor/services/nearest-neighbor-error-messages";
+import { useNearestNeighborValidation } from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborValidation";
+import { validateCustomSavedNames } from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborSaveRules";
 import { clearFormData, getFormData, saveFormData } from "@/hooks/useIndexedDB";
 
 import { toast } from "sonner";
@@ -31,75 +34,6 @@ type KNNFormValue = string[] | string | number | boolean | null;
 
 const KNN_SETTINGS_LOAD_ERROR_TOAST_ID = "knn-settings-load-error";
 const KNN_VALIDATION_ERROR_TOAST_ID = "knn-validation-error";
-
-const getUserFriendlyKNNError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  const normalizedMessage = message.toLowerCase();
-
-  if (normalizedMessage.includes("target variable")) {
-    return "Select a target variable before running the KNN analysis.";
-  }
-
-  if (
-    normalizedMessage.includes("feature variable") ||
-    normalizedMessage.includes("at least one feature") ||
-    normalizedMessage.includes("no valid features") ||
-    normalizedMessage.includes("no predictors")
-  ) {
-    return "Select at least one feature variable before running the KNN analysis.";
-  }
-
-  if (
-    normalizedMessage.includes("no cases found") ||
-    normalizedMessage.includes("no data available") ||
-    normalizedMessage.includes("no valid data records")
-  ) {
-    return "No valid cases are available for analysis. Check the selected variables for missing or invalid values.";
-  }
-
-  if (normalizedMessage.includes("no focal cases")) {
-    return "No matching focal cases were found. Check the focal case identifier values.";
-  }
-
-  if (
-    normalizedMessage.includes("partition variable") &&
-    normalizedMessage.includes("no training cases")
-  ) {
-    return "The selected partition variable does not contain any training cases. Use positive values for training cases.";
-  }
-
-  if (normalizedMessage.includes("partition variable")) {
-    return "Select a partition variable or switch to random partitioning.";
-  }
-
-  if (
-    normalizedMessage.includes("cross-validation fold variable") ||
-    normalizedMessage.includes("fold variable")
-  ) {
-    return "Select a cross-validation fold variable or switch to automatic fold assignment.";
-  }
-
-  if (
-    normalizedMessage.includes("cross-validation") ||
-    normalizedMessage.includes("fold")
-  ) {
-    return "Review the cross-validation settings. Use at least two valid folds and ensure the number of folds does not exceed the available training cases.";
-  }
-
-  if (normalizedMessage.includes("training case")) {
-    return "There are not enough valid training cases for this analysis. Review the partition settings and selected variables.";
-  }
-
-  if (
-    normalizedMessage.includes("worker") ||
-    normalizedMessage.includes("wasm") ||
-    normalizedMessage.includes("module")
-  ) {
-    return "The KNN analysis engine could not be loaded. Please refresh the page and try again.";
-  }
-
-  return "The KNN analysis could not be completed. Review the selected variables and settings, then try again.";
-};
 
 const stripRemovedConfig = <T extends object>(
   data: T & { options?: unknown },
@@ -327,49 +261,8 @@ export const KNNContainer = ({ onClose }: KNNContainerProps) => {
   const isUsingPartitionVariable = formData.partition.UseVariable;
   const isUsingFoldVariable = formData.partition.VFoldUsePartitioningVar;
 
-  const validation = useMemo(() => {
-    const errors: string[] = [];
-
-    const featureVars = formData.main.FeatureVar ?? [];
-
-    if (!formData.main.TargetVar) {
-      errors.push("Select a target variable.");
-    }
-
-    if (featureVars.length === 0) {
-      errors.push("Select at least one feature variable.");
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-    };
-  }, [formData.main]);
-
-  const validateFeatureSelection = () => {
-    const f = formData.features;
-
-    if (!f.PerformSelection) return null;
-
-    const forwardCount = (f.ForwardSelection ?? []).filter(
-      (v) => !(f.ForcedEntryVar ?? []).includes(v),
-    ).length;
-    const usesFixedNumber = f.MaxReached && !f.BelowMin;
-
-    if (usesFixedNumber && (!f.MaxToSelect || f.MaxToSelect <= 0)) {
-      return "Enter a positive whole number for the number of features to select.";
-    }
-
-    if (
-      usesFixedNumber &&
-      f.MaxToSelect !== null &&
-      f.MaxToSelect > forwardCount
-    ) {
-      return "The number of features to select cannot exceed the number of features in the Forward Selection list.";
-    }
-
-    return null;
-  };
+  const { validation, validateFeatureSelection, validateNumericInputs } =
+    useNearestNeighborValidation(formData);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -533,7 +426,10 @@ export const KNNContainer = ({ onClose }: KNNContainerProps) => {
         <div className="flex items-center justify-end gap-4">
         <Button
           onClick={() => {
-            const error = validateFeatureSelection();
+            const error =
+              validateFeatureSelection() ??
+              validateNumericInputs() ??
+              validateCustomSavedNames(formData.save);
 
             if (error) {
               toast.error(error, { id: KNN_VALIDATION_ERROR_TOAST_ID });

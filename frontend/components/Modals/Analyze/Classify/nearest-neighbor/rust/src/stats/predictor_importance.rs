@@ -36,6 +36,13 @@ pub fn calculate_predictor_importance(
 
     let predictor_count = predictors.len();
     let minimum_importance = 1.0 / predictor_count as f64;
+    // SPSS adds 1/m to the error rate as a proportion (0-1), not a percent;
+    // evaluate_subset reports the error rate in percent for display.
+    let error_scale = if knn_data.target_is_numeric_scale() {
+        1.0
+    } else {
+        0.01
+    };
     let mut raw_entries = Vec::with_capacity(predictor_count);
 
     for predictor in &predictors {
@@ -50,7 +57,7 @@ pub fn calculate_predictor_importance(
         } else {
             evaluate_subset(data, &unweighted_config, &remaining_features)?
         };
-        let raw_feature_importance = error_without_feature + minimum_importance;
+        let raw_feature_importance = error_without_feature * error_scale + minimum_importance;
 
         raw_entries.push((
             predictor.clone(),

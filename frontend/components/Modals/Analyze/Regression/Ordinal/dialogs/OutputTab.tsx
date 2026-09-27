@@ -60,6 +60,14 @@ export const OutputTab: React.FC<Props> = ({ params, onChange }) => {
                     <Label htmlFor="param">Parameter estimates</Label>
                 </div>
                 <div className="flex items-center space-x-2">
+                    <Checkbox id="asymptotic-covariance" checked={params.display.asymptoticCovariance} onCheckedChange={(c) => handleDisplayChange('asymptoticCovariance', !!c)} />
+                    <Label htmlFor="asymptotic-covariance">Asymptotic covariances of parameter estimates</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                    <Checkbox id="asymptotic-correlation" checked={params.display.asymptoticCorrelation} onCheckedChange={(c) => handleDisplayChange('asymptoticCorrelation', !!c)} />
+                    <Label htmlFor="asymptotic-correlation">Asymptotic correlations of parameter estimates</Label>
+                </div>
+                <div className="flex items-center space-x-2">
                     <Checkbox id="parallel" checked={params.display.testOfParallelLines} onCheckedChange={(c) => handleDisplayChange('testOfParallelLines', !!c)} />
                     <Label htmlFor="parallel">Test of parallel lines</Label>
                 </div>

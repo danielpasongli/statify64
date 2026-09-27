@@ -1,5 +1,6 @@
-use crate::models::config::MultinomialConfig;
+use crate::models::config::{AnalysisData, MultinomialConfig};
 use crate::models::result::MultinomialResult;
+use crate::stats::cell_probabilities::calculate_cell_probabilities;
 use crate::stats::classification::calculate_classification_table;
 use crate::stats::core::PrimaryResults;
 use crate::stats::format_results::format_results;
@@ -64,6 +65,7 @@ fn invert_information_matrix(
 }
 
 pub fn estimate_parameters(
+    data: &AnalysisData,
     primary: &PrimaryResults,
     config: &MultinomialConfig,
 ) -> Result<MultinomialResult, String> {
@@ -99,6 +101,7 @@ pub fn estimate_parameters(
     let goodness_of_fit = calculate_goodness_of_fit(X, &beta, primary, config);
     let lr_tests =
         calculate_likelihood_ratio_tests(X, primary, config, &beta, current_log_likelihood);
+    let cell_probabilities = calculate_cell_probabilities(data, primary, &beta, config);
 
     Ok(format_results(
         beta,
@@ -113,5 +116,6 @@ pub fn estimate_parameters(
         goodness_of_fit,
         lr_tests,
         primary.stepwise_trace.clone(),
+        cell_probabilities,
     ))
 }

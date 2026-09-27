@@ -475,6 +475,51 @@ describe("Nearest Neighbor Constructor Test", () => {
         analysis.free();
     });
 
+    it("T24b: Fitur forced dengan error 0 -> fixed number tetap menambah J_add fitur, minimum change berhenti", () => {
+        // Fitur "a" memisahkan kategori sempurna sehingga error training fitur forced = 0.
+        const zeroErrorInput = {
+            targetData: [["A", "A", "A", "B", "B", "B"].map((target) => ({ target }))],
+            featuresData: [
+                [1, 1, 1, 10, 10, 10].map((a) => ({ a })),
+                [3, 7, 1, 8, 2, 5].map((b) => ({ b })),
+            ],
+            caseData: null,
+            targetDefs: [[variableDefinition("target", 0, "nominal")]],
+            featuresDefs: [[variableDefinition("a", 1)], [variableDefinition("b", 2)]],
+            caseDefs: [],
+        };
+        const selectionConfig = (features: Record<string, unknown>) => ({
+            ...validConfig,
+            main: { ...validConfig.main, FeatureVar: ["a", "b"], CaseIdenVar: null },
+            features: {
+                ...validConfig.features,
+                ForwardSelection: ["a", "b"],
+                ForcedEntryVar: ["a"],
+                PerformSelection: true,
+                ...features,
+            },
+            output: { ...validConfig.output, FeatureSelectionSummary: true },
+        });
+
+        const fixed = createAnalysis({
+            ...zeroErrorInput,
+            config: selectionConfig({ MaxReached: true, BelowMin: false, MaxToSelect: 1 }),
+        });
+        const fixedSummary = fixed.get_results().feature_selection_summary;
+        expect(fixedSummary.selected_features).toEqual(["a", "b"]);
+        expect(fixedSummary.stopping_reason).toBe("max_features_reached");
+        fixed.free();
+
+        const minimumChange = createAnalysis({
+            ...zeroErrorInput,
+            config: selectionConfig({ MaxReached: false, BelowMin: true, MinChange: 0.01 }),
+        });
+        const minimumChangeSummary = minimumChange.get_results().feature_selection_summary;
+        expect(minimumChangeSummary.selected_features).toEqual(["a"]);
+        expect(minimumChangeSummary.stopping_reason).toBe("zero_error");
+        minimumChange.free();
+    });
+
     it("T25: Harus mencatat error saat mode partition variable dipilih tanpa variabel", () => {
         const analysis = createAnalysis({
             config: {
@@ -738,6 +783,353 @@ describe("Nearest Neighbor Constructor Test", () => {
 
         expect(results.nearest_neighbors.focal_neighbor_sets).toHaveLength(3);
         expect(analysis.get_all_errors()).toBe("No errors occurred.");
+
+        analysis.free();
+    });
+
+    it("T35: Harus tetap gagal parsing config tanpa detail tambahan saat config_data mengandung referensi sirkular (JSON.stringify gagal)", () => {
+        const circularConfig: Record<string, unknown> = {
+            ...validConfig,
+            neighbors: {}, // field wajib hilang -> parsing config tetap gagal
+        };
+        circularConfig.self = circularConfig; // referensi sirkular -> JSON.stringify melempar exception
+
+        const error = runAnalysisTest({ config: circularConfig });
+
+        expect(error).toContain("Failed to parse configuration");
+        expect(error).not.toContain("Raw config:");
+    });
+
+    it("T36: Harus tetap gagal parsing config tanpa detail tambahan saat config_data adalah undefined (JSON.stringify(undefined) bukan string)", () => {
+        let error: unknown = null;
+
+        try {
+            const analysis = new KNNAnalysis(
+                validTargetData,
+                validFeaturesData,
+                [],
+                validCaseData,
+                validTargetDefs,
+                validFeaturesDefs,
+                [],
+                validCaseDefs,
+                undefined
+            );
+            analysis.free();
+        } catch (caught) {
+            error = caught;
+        }
+
+        expect(error).toContain("Failed to parse configuration");
+        expect(error).not.toContain("Raw config:");
+    });
+
+    it("T37: Harus mencatat error ringkasan kasus saat CaseSummary aktif namun partisi tidak valid", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                partition: {
+                    ...validConfig.partition,
+                    UseVariable: true,
+                },
+                output: {
+                    ...validConfig.output,
+                    CaseSummary: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(analysis.get_all_errors()).toContain(
+            "No partition variable specified"
+        );
+        expect(results.case_processing_summary).toBeUndefined();
+
+        analysis.free();
+    });
+
+    it("T38: Harus mencatat error feature selection saat PerformSelection aktif namun partisi tidak valid", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                features: {
+                    ...validConfig.features,
+                    ForwardSelection: ["score"],
+                    PerformSelection: true,
+                    MaxToSelect: 1,
+                },
+                partition: {
+                    ...validConfig.partition,
+                    UseVariable: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(analysis.get_all_errors()).toContain(
+            "No partition variable specified"
+        );
+        expect(results.feature_selection_summary).toBeUndefined();
+
+        analysis.free();
+    });
+
+    it("T39: Harus tetap menjalankan feature selection walau FeatureSelectionSummary dimatikan", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                features: {
+                    ...validConfig.features,
+                    ForwardSelection: ["score"],
+                    PerformSelection: true,
+                    MaxToSelect: 1,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(results.feature_selection_summary).toBeUndefined();
+        expect(analysis.get_all_errors()).toBe("No errors occurred.");
+
+        analysis.free();
+    });
+
+    it("T40: Harus tetap memilih k otomatis walau KSelectionChart dimatikan", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                neighbors: {
+                    ...validConfig.neighbors,
+                    Specify: false,
+                    AutoSelection: true,
+                    MinK: 1,
+                    MaxK: 2,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(results.k_selection_chart).toBeUndefined();
+        expect(analysis.get_all_errors()).toBe("No errors occurred.");
+
+        analysis.free();
+    });
+
+    it("T41: Harus mencatat error detail tetangga saat ShowNeighborDetail aktif namun partisi tidak valid", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                partition: {
+                    ...validConfig.partition,
+                    UseVariable: true,
+                },
+                output: {
+                    ...validConfig.output,
+                    ShowNeighborDetail: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(analysis.get_all_errors()).toContain(
+            "No partition variable specified"
+        );
+        expect(results.nearest_neighbors).toBeUndefined();
+
+        analysis.free();
+    });
+
+    it("T42: Harus mencatat error prediction_results saat PredictionResults aktif namun partisi tidak valid", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                partition: {
+                    ...validConfig.partition,
+                    UseVariable: true,
+                },
+                output: {
+                    ...validConfig.output,
+                    PredictionResults: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(analysis.get_all_errors()).toContain(
+            "No partition variable specified"
+        );
+        expect(results.prediction_results).toBeUndefined();
+
+        analysis.free();
+    });
+
+    it("T43: Harus mencatat error saved_variables saat HasTargetVar aktif namun partisi tidak valid", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                partition: {
+                    ...validConfig.partition,
+                    UseVariable: true,
+                },
+                save: {
+                    ...validConfig.save,
+                    HasTargetVar: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(analysis.get_all_errors()).toContain(
+            "No partition variable specified"
+        );
+        expect(results.saved_variables).toBeUndefined();
+
+        analysis.free();
+    });
+
+    it("T44: Harus mencatat error saved_variables saat IsCateTargetVar aktif namun partisi tidak valid", () => {
+        const analysis = createAnalysis({
+            targetData: categoricalTargetData,
+            targetDefs: categoricalTargetDefs,
+            config: {
+                ...validConfig,
+                partition: {
+                    ...validConfig.partition,
+                    UseVariable: true,
+                },
+                save: {
+                    ...validConfig.save,
+                    IsCateTargetVar: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(analysis.get_all_errors()).toContain(
+            "No partition variable specified"
+        );
+        expect(results.saved_variables).toBeUndefined();
+
+        analysis.free();
+    });
+
+    it("T45: Harus mencatat error predictor importance saat Weight aktif namun partisi tidak valid", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                neighbors: {
+                    ...validConfig.neighbors,
+                    Weight: true,
+                },
+                partition: {
+                    ...validConfig.partition,
+                    UseVariable: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(analysis.get_all_errors()).toContain(
+            "No partition variable specified"
+        );
+        expect(results.predictor_importance).toBeUndefined();
+
+        analysis.free();
+    });
+
+    it("T46: Harus menyimpan variabel partisi acak saat RandomAssignToPartition aktif sendirian", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                save: {
+                    ...validConfig.save,
+                    RandomAssignToPartition: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+        const variableNames = results.saved_variables.variables.map(
+            (variable: { name: string }) => variable.name
+        );
+
+        expect(variableNames).toEqual(["KNN_Partition"]);
+        expect(analysis.get_all_errors()).toBe("No errors occurred.");
+
+        analysis.free();
+    });
+
+    it("T47: Harus menyimpan variabel fold acak saat RandomAssignToFold aktif sendirian", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                save: {
+                    ...validConfig.save,
+                    RandomAssignToFold: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+        const variableNames = results.saved_variables.variables.map(
+            (variable: { name: string }) => variable.name
+        );
+
+        expect(variableNames).toEqual(["KNN_Fold"]);
+        expect(analysis.get_all_errors()).toBe("No errors occurred.");
+
+        analysis.free();
+    });
+
+    it("T48: Harus mencatat error saved_variables saat RandomAssignToPartition aktif sendirian namun partisi tidak valid", () => {
+        const analysis = createAnalysis({
+            config: {
+                ...validConfig,
+                save: {
+                    ...validConfig.save,
+                    RandomAssignToPartition: true,
+                },
+                partition: {
+                    ...validConfig.partition,
+                    UseVariable: true,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(analysis.get_all_errors()).toContain(
+            "No partition variable specified"
+        );
+        expect(results.saved_variables).toBeUndefined();
+
+        analysis.free();
+    });
+
+    it("T49: Harus mencatat error classification table dan error summary saat Weight aktif dengan partisi acak training kosong (target kategorikal)", () => {
+        const analysis = createAnalysis({
+            targetData: categoricalTargetData,
+            targetDefs: categoricalTargetDefs,
+            config: {
+                ...validConfig,
+                neighbors: {
+                    ...validConfig.neighbors,
+                    Weight: true,
+                },
+                partition: {
+                    ...validConfig.partition,
+                    UseRandomly: true,
+                    TrainingNumber: 0,
+                },
+            },
+        });
+        const results = analysis.get_results();
+
+        expect(results.classification_table).toBeUndefined();
+        expect(results.error_summary).toBeUndefined();
+        expect(analysis.get_all_errors()).toContain(
+            "Feature selection requires at least one training case"
+        );
+        expect(analysis.get_all_errors()).toContain(
+            "Classification table not available for error summary calculation"
+        );
 
         analysis.free();
     });

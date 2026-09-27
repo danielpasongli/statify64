@@ -1,27 +1,24 @@
 use std::collections::HashMap;
 
-// Tipe data untuk menghimpun error dari berbagai fungsi
-pub type AnalysisResult<T> = Result<T, String>;
-
-// Struktur data untuk error collector
+/// Errors and warnings of one analysis, grouped by the context that raised them.
 #[derive(Debug, Clone, Default)]
 pub struct ErrorCollector {
     errors: HashMap<String, Vec<String>>,
 }
 
 impl ErrorCollector {
-    // Menambahkan error baru ke collector
+    /// Record a message under `context`.
     pub fn add_error(&mut self, context: &str, message: &str) {
         let entry = self.errors.entry(context.to_string()).or_insert_with(Vec::new);
         entry.push(message.to_string());
     }
 
-    // Mengecek apakah ada error
+    /// True when any message was recorded.
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
     }
 
-    // Mendapatkan seluruh error sebagai formatted string
+    /// Every recorded message as text, grouped by context.
     pub fn get_error_summary(&self) -> String {
         if !self.has_errors() {
             return "No errors occurred.".to_string();
@@ -38,7 +35,7 @@ impl ErrorCollector {
         summary
     }
 
-    // Reset error collector
+    /// Remove every recorded message.
     pub fn clear(&mut self) {
         self.errors.clear();
     }

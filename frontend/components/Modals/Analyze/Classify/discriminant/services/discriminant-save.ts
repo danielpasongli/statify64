@@ -9,22 +9,28 @@
  *   Dis1_2  Probabilities of Group 1 Membership for Analysis 1
  *
  * Why the per-case values are recomputed here instead of being read out of the
- * WASM result: the Rust side returns its per-case output re-ordered by group and
- * numbered with a running counter (`casewise_statistics.case_number`), so there
- * is no way back to the dataset row a value came from. Walking the raw rows here
- * keeps the row index in hand. The arithmetic below mirrors `classify_case_safe`
- * in rust/src/stats/classification_result.rs exactly, so the saved columns agree
- * with the Classification Results and Casewise Statistics tables.
+ * WASM result: the result carries per-case values only for the Casewise Statistics
+ * table, which is computed only when Display → Casewise results is checked and can
+ * be limited to the first n cases, while Save needs every dataset row. Walking the
+ * raw rows here covers all of them. The arithmetic below mirrors `classify_case_safe`
+ * in rust/src/stats/classification_result.rs (and `fit_groups` in
+ * separate_covariance.rs for the Separate-groups option) exactly, so the saved
+ * columns agree with the Classification Results and Casewise Statistics tables.
  */
 
 import type { Variable } from "@/types/Variable";
 import type { DiscriminantType } from "@/components/Modals/Analyze/Classify/discriminant/types/discriminant";
+import { compareGroupLabels } from "@/components/Modals/Analyze/Classify/discriminant/services/discriminant-number-format";
 
 /** The slice of the WASM `get_formatted_results()` payload this service needs. */
 export type DiscriminantModelInfo = {
     canonical_functions?: {
         coefficients?: Array<{ variable: string; values: number[] }>;
         function_at_centroids?: Array<{ group: string; values: number[] }>;
+    } | null;
+    /** Present only for Classify → Use Covariance Matrix → Separate-groups. */
+    separate_groups_classification?: {
+        groups?: Array<{ group: string; inverse: number[][]; log_determinant: number }>;
     } | null;
 };
 
@@ -39,7 +45,7 @@ export type CaseResult = {
 };
 
 export type CaseResults = {
-    /** Group labels in the same order Rust uses (lexicographic). */
+    /** Group labels in the same order Rust uses (numeric codes by value). */
     groupLabels: string[];
     /** Number of canonical discriminant functions. */
     numFunctions: number;
@@ -68,12 +74,13 @@ function groupLabelOf(value: string | number): string {
  * Recompute each dataset row's predicted group, discriminant scores, and
  * posterior probabilities from the fitted model.
  *
- * A row takes part only when its grouping value falls inside the defined range
- * and every analyzed predictor holds a number — the same listwise rule the
- * analysis itself applies. With "Replace missing values with mean", a row missing
- * a predictor is still classified, with that predictor's mean over the analysis
- * rows substituted (as Rust does). Everything else comes back as `null` and is
- * left blank in the saved columns.
+ * A row is classified when every analyzed predictor holds a number — the same
+ * listwise rule the analysis itself applies. With "Replace missing values with
+ * mean", a row missing a predictor is still classified, with that predictor's mean
+ * over the analysis rows substituted (as Rust does). A row whose group code is
+ * missing or outside the defined range is classified too (an ungrouped case, as in
+ * SPSS), but never counts as an analysis row. Everything else comes back as `null`
+ * and is left blank in the saved columns.
  */
 export function computeDiscriminantCaseResults(
     dataVariables: string[][],
@@ -102,9 +109,9 @@ export function computeDiscriminantCaseResults(
     );
     if (!Number.isFinite(numFunctions) || numFunctions < 1) return null;
 
-    // Rust sorts its group labels as strings; match that so the probability
-    // columns come out in the same order as the result tables' group columns.
-    const groupLabels = centroidRows.map((c) => c.group).slice().sort();
+    // Same group order as Rust (compare_group_labels: numeric codes by value), so
+    // the probability columns follow the result tables' group columns.
+    const groupLabels = centroidRows.map((c) => c.group).slice().sort(compareGroupLabels);
     const centroidOf = new Map(centroidRows.map((c) => [c.group, c.values]));
 
     const columnOf = new Map<string, number>();
@@ -140,29 +147,50 @@ export function computeDiscriminantCaseResults(
         return false;
     };
 
-    // Pass 1a — collect the rows with a valid group code, with each predictor cell
-    // read as a number or `null` when missing.
+    // The rows the engine receives as cases: up to the last row holding a value in
+    // the grouping, independent or selection variables (the rule of getSlicedData,
+    // whose slices the discriminant hook pads to that common length). Rows after it
+    // are empty, not cases, and must not be classified as ungrouped ones.
+    const caseColumns = [
+        groupingColumn,
+        ...(config.main.IndependentVariables ?? []).map((name) => columnOf.get(name)),
+        selectionName ? columnOf.get(selectionName) : undefined,
+    ].filter((col): col is number => col !== undefined);
+    let lastRow = -1;
+    dataVariables.forEach((row, rowIndex) => {
+        if (row && caseColumns.some((col) => row[col] !== undefined && row[col] !== null && row[col] !== "")) {
+            lastRow = rowIndex;
+        }
+    });
+
+    // Pass 1a — collect the rows, with each predictor cell read as a number or `null`
+    // when missing. `label` is `null` for an ungrouped row (missing or out-of-range
+    // group code).
     type Candidate = {
         rowIndex: number;
-        label: string;
+        label: string | null;
         cells: Array<number | null>;
         selected: boolean;
     };
     const candidates: Candidate[] = [];
 
-    for (let rowIndex = 0; rowIndex < dataVariables.length; rowIndex++) {
+    for (let rowIndex = 0; rowIndex <= lastRow; rowIndex++) {
         const row = dataVariables[rowIndex];
         if (!row) continue;
 
         const groupValue = parseCell(row[groupingColumn]);
-        if (groupValue === null) continue;
-        if (typeof groupValue === "number") {
-            if (minRange !== null && groupValue < minRange) continue;
-            if (maxRange !== null && groupValue > maxRange) continue;
+        const inRange =
+            groupValue !== null &&
+            !(
+                typeof groupValue === "number" &&
+                ((minRange !== null && groupValue < minRange) ||
+                    (maxRange !== null && groupValue > maxRange))
+            );
+        let label: string | null = null;
+        if (inRange) {
+            label = groupLabelOf(groupValue as string | number);
+            if (!centroidOf.has(label)) continue;
         }
-
-        const label = groupLabelOf(groupValue);
-        if (!centroidOf.has(label)) continue;
 
         const cells = predictorColumns.map((col) => {
             const cell = parseCell(row[col]);
@@ -172,10 +200,10 @@ export function computeDiscriminantCaseResults(
         candidates.push({ rowIndex, label, cells, selected: isSelected(row) });
     }
 
-    // Analysis rows are the selected, complete ones — the cases Rust estimates the
-    // functions, the priors and the substituted means from.
+    // Analysis rows are the selected, complete ones with a valid group code — the
+    // cases Rust estimates the functions, the priors and the substituted means from.
     const isComplete = (c: Candidate) => c.cells.every((v) => v !== null);
-    const isAnalysisRow = (c: Candidate) => c.selected && isComplete(c);
+    const isAnalysisRow = (c: Candidate) => c.label !== null && c.selected && isComplete(c);
 
     const predictorMeans = predictors.map((_, v) => {
         let sum = 0;
@@ -190,7 +218,7 @@ export function computeDiscriminantCaseResults(
 
     // Pass 1b — score the rows. Incomplete rows are scored only with "Replace
     // missing values with mean", each missing predictor replaced by its mean.
-    type Scored = { rowIndex: number; label: string; scores: number[]; analysis: boolean };
+    type Scored = { rowIndex: number; label: string | null; scores: number[]; analysis: boolean };
     const scored: Scored[] = [];
 
     for (const c of candidates) {
@@ -199,6 +227,7 @@ export function computeDiscriminantCaseResults(
         const values = c.cells.map((v, i) => v ?? predictorMeans[i]);
         if (values.some((v) => !Number.isFinite(v))) continue;
 
+        // Discriminant scores fⱼ = a₀ⱼ + Σᵢ aᵢⱼ xᵢ (unstandardized coefficients).
         const scores = new Array<number>(numFunctions).fill(0);
         for (let f = 0; f < numFunctions; f++) {
             let s = constants[f] ?? 0;
@@ -213,9 +242,10 @@ export function computeDiscriminantCaseResults(
 
     if (scored.length === 0) return null;
 
-    // Priors, following the Prior Probabilities table (prior_probabilities.rs), which
-    // every Rust classification path now uses: group sizes are counted over the
-    // analysis sample (selected, complete rows), with equal priors if it is empty.
+    // Priors πₖ = 1/g or nₖ/n, following the Prior Probabilities table
+    // (prior_probabilities.rs), which every Rust classification path uses: group sizes
+    // are counted over the analysis sample (selected, complete rows), with equal priors
+    // if it is empty.
     const priors: number[] = [];
     if (config.classify.AllGroupEqual) {
         priors.push(...new Array<number>(groupLabels.length).fill(1 / groupLabels.length));
@@ -223,7 +253,7 @@ export function computeDiscriminantCaseResults(
         const counts = new Map<string, number>(groupLabels.map((g) => [g, 0]));
         let analysisCases = 0;
         for (const c of scored) {
-            if (!c.analysis) continue;
+            if (!c.analysis || c.label === null) continue;
             counts.set(c.label, (counts.get(c.label) ?? 0) + 1);
             analysisCases++;
         }
@@ -234,25 +264,46 @@ export function computeDiscriminantCaseResults(
         }
     }
 
+    // Separate-groups: each group's inverse covariance matrix of the functions and
+    // its log determinant, as computed by separate_covariance.rs.
+    const separateOf = new Map(
+        (model.separate_groups_classification?.groups ?? []).map((g) => [g.group, g]),
+    );
+    const useSeparate = config.classify.SepGroup && separateOf.size > 0;
+
     // Pass 2 — distances, posterior probabilities, predicted group.
     const rows: Array<CaseResult | null> = new Array(dataVariables.length).fill(null);
 
     for (const c of scored) {
-        // log P(g|x) up to a constant: ln(prior) - 0.5 * squared distance to the
-        // group centroid in discriminant space.
+        // ℓₖ = ln πₖ − ½ ln|Σₖ| − ½ D²ₖ, the log posterior up to a shared constant.
+        // D²ₖ is the squared distance of the scores to group k's centroid: Euclidean in
+        // function space, or (f − f̄ₖ)ᵀ Σₖ⁻¹ (f − f̄ₖ) with the group's own covariance
+        // matrix Σₖ under Separate-groups (ln|Σₖ| = 0 otherwise).
         const logProbs = groupLabels.map((g, gIdx) => {
             const centroid = centroidOf.get(g) ?? [];
+            const diff = new Array<number>(numFunctions);
+            for (let f = 0; f < numFunctions; f++) diff[f] = c.scores[f] - (centroid[f] ?? 0);
+
             let d2 = 0;
-            for (let f = 0; f < numFunctions; f++) {
-                const diff = c.scores[f] - (centroid[f] ?? 0);
-                d2 += diff * diff;
+            let logDet = 0;
+            const sep = useSeparate ? separateOf.get(g) : undefined;
+            if (sep) {
+                for (let i = 0; i < numFunctions; i++) {
+                    for (let j = 0; j < numFunctions; j++) {
+                        d2 += diff[i] * (sep.inverse[i]?.[j] ?? 0) * diff[j];
+                    }
+                }
+                logDet = sep.log_determinant;
+            } else {
+                for (let f = 0; f < numFunctions; f++) d2 += diff[f] * diff[f];
             }
             if (Number.isNaN(d2)) d2 = Number.MAX_VALUE;
             const prior = priors[gIdx];
-            return prior > 0 ? Math.log(prior) - 0.5 * d2 : -Infinity;
+            return prior > 0 ? Math.log(prior) - 0.5 * logDet - 0.5 * d2 : -Infinity;
         });
 
-        // Softmax with the max subtracted out, the same underflow guard Rust uses.
+        // P(G=k | x) = exp(ℓₖ − max ℓ) / Σⱼ exp(ℓⱼ − max ℓ); subtracting the largest ℓ
+        // keeps the exponentials from underflowing, as in Rust.
         const maxLog = Math.max(...logProbs);
         const exps = logProbs.map((lp) => Math.exp(lp - maxLog));
         const sumExp = exps.reduce((a, b) => a + b, 0);
@@ -298,9 +349,9 @@ function numericVariable(name: string, label: string, decimals: number): Partial
  *
  * SPSS numbers the saved columns per set: the predicted group and the
  * discriminant scores share one suffix (Dis_1, Dis1_1, Dis2_1) and the
- * probabilities take the next (Dis1_2, Dis2_2). We search for the lowest
- * starting suffix whose whole name set is still free, so re-running the
- * analysis appends rather than colliding.
+ * probabilities take the next (Dis1_2, Dis2_2). The lowest starting suffix
+ * whose whole name set is still free is used, so re-running the analysis
+ * appends rather than colliding.
  */
 function allocateNames(
     save: DiscriminantType["save"],
@@ -376,7 +427,8 @@ export function prepareDiscriminantSaveVariables(
         prepared.push({
             definition: numericVariable(
                 name,
-                `Probabilities of Group ${g + 1} Membership for Analysis ${names.analysis}`,
+                // The group's own code, not its position (codes need not be 1..k).
+                `Probabilities of Group ${groupLabels[g]} Membership for Analysis ${names.analysis}`,
                 5,
             ),
             values: rows.map((r) => (r ? r.probabilities[g] ?? null : null)),

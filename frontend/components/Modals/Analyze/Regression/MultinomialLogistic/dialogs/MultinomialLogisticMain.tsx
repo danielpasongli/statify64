@@ -627,13 +627,85 @@ export const MultinomialLogisticMain = () => {
 
             console.log("[Multinomial UI] Worker options:", workerOptions);
 
+            // ═══════════════════════════════════════════════════════════
+            // 📊 PERFORMANCE LOGGER – Multinomial Logistic Regression
+            // Mengukur 5 indikator: preprocessing, WASM wait, post-proc,
+            // total pipeline, dan responsiveness (frame timing)
+            // ═══════════════════════════════════════════════════════════
+            const _perfMark = (name: string) => {
+                try { performance.mark(`mnl:${name}`); } catch { /* ignore */ }
+            };
+            const _perfMeasure = (label: string, from: string, to: string): number => {
+                try {
+                    const entry = performance.measure(`mnl:${label}`, `mnl:${from}`, `mnl:${to}`);
+                    return entry.duration;
+                } catch { return 0; }
+            };
+
+            // Catat titik: data selesai disiapkan, Worker akan diluncurkan
+            _perfMark("worker-start");
+            const _uiInteractionStart = performance.now();
+
+            const _dataShape = {
+                rows: formattedData.dependent.length,
+                predictors: formattedData.independent.length,
+                categories: dependentCategories.length,
+            };
+
+            console.group(
+                `%c[Multinomial Logistic] 🚀 Analisis dimulai`,
+                "color:#6ee7b7;font-weight:bold;font-size:13px"
+            );
+            console.table({
+                "📦 Baris data": _dataShape.rows,
+                "📊 Prediktor": _dataShape.predictors,
+                "🏷 Kategori dependen": _dataShape.categories,
+            });
+            console.groupEnd();
+
             worker.postMessage({
                 data: formattedData,
                 options: workerOptions
             });
 
             worker.onmessage = (e) => {
-                const { type, payload, error } = e.data;
+                const { type, payload, error, timing } = e.data;
+
+                // ─── ⏱ Ukur waktu komputasi WASM (Worker phase) ───────
+                _perfMark("worker-end");
+                const workerRoundTripMs = _perfMeasure("worker-round-trip", "worker-start", "worker-end");
+                const _postProcStart = performance.now();
+
+                // ─── Log responsiveness: apakah frame di-drop? ───────
+                const _frameCheck = () => {
+                    if (typeof requestAnimationFrame === "undefined") return;
+                    const rafStart = performance.now();
+                    requestAnimationFrame(() => {
+                        const frameMs = performance.now() - rafStart;
+                        console.log(`[Multinomial] Responsiveness: frame setelah analisis = ${frameMs.toFixed(1)} ms`);
+                    });
+                };
+
+                console.group("[Multinomial Logistic] Laporan Performa");
+
+                // ─── Tabel 1: PERFORMANCE (waktu komputasi) ──────────
+                console.log("PERFORMANCE — Waktu Komputasi");
+                console.table({
+                    "Worker round-trip (UI->Worker->UI)": `${workerRoundTripMs.toFixed(1)} ms`,
+                    "WASM init (cold start)": timing?.wasmInitMs != null ? `${Number(timing.wasmInitMs).toFixed(1)} ms` : "ter-cache",
+                    "WASM computation murni": timing?.analysisMs != null ? `${Number(timing.analysisMs).toFixed(1)} ms` : "-",
+                    "Total dalam Worker": timing?.totalMs != null ? `${Number(timing.totalMs).toFixed(1)} ms` : "-",
+                });
+
+                // ─── Tabel 2: Data yang diproses ─────────────────────
+                console.log("DATA — Ukuran Data");
+                console.table({
+                    "Baris": timing?.dataRows ?? _dataShape.rows,
+                    "Prediktor": timing?.independentCount ?? _dataShape.predictors,
+                    "Kategori dependen": _dataShape.categories,
+                    "Waktu eksekusi": timing?.timestamp ?? new Date().toISOString(),
+                });
+
                 console.log("[Multinomial UI] Worker response:", { type, hasPayload: !!payload, error });
 
                 if (type === "SUCCESS") {
@@ -892,6 +964,60 @@ export const MultinomialLogisticMain = () => {
                             const nonReferenceCategories = dependentCategoryMap.filter(
                                 (cat) => cat !== referenceCategoryValue
                             );
+
+                            const referenceCategoryIndex = (() => {
+                                if (dependentCategoryMap.length === 0) return 0;
+                                if (options.referenceCategory === "first") return 0;
+                                if (options.referenceCategory === "last") return dependentCategoryMap.length - 1;
+
+                                const normalizedCustom = normalizeCategory(options.referenceCategory);
+                                const customEncoded = dependentValueToCode.get(normalizedCustom);
+                                if (customEncoded !== undefined && dependentCategoryMap.includes(customEncoded)) {
+                                    return dependentCategoryMap.indexOf(customEncoded);
+                                }
+
+                                const parsed = Number(options.referenceCategory);
+                                return Number.isFinite(parsed) && dependentCategoryMap.includes(parsed)
+                                    ? dependentCategoryMap.indexOf(parsed)
+                                    : dependentCategoryMap.length - 1;
+                            })();
+
+                            const predictRowProbabilities = (rowIndex: number) => {
+                                const features = [
+                                    1,
+                                    ...allPredictorColumns.map((col) => {
+                                        const rawValue = Number(col.values[rowIndex]);
+                                        return Number.isFinite(rawValue) ? rawValue : 0;
+                                    }),
+                                ];
+
+                                const logits = new Array(dependentCategoryMap.length).fill(0);
+                                let coefficientRow = 0;
+                                let maxLogit = 0;
+
+                                for (let categoryIndex = 0; categoryIndex < dependentCategoryMap.length; categoryIndex += 1) {
+                                    if (categoryIndex === referenceCategoryIndex) {
+                                        logits[categoryIndex] = 0;
+                                        continue;
+                                    }
+
+                                    const row = coeffs[coefficientRow] ?? [];
+                                    let logit = 0;
+                                    for (let featureIndex = 0; featureIndex < features.length; featureIndex += 1) {
+                                        logit += (Number(row[featureIndex]) || 0) * features[featureIndex];
+                                    }
+
+                                    logits[categoryIndex] = logit;
+                                    if (logit > maxLogit) {
+                                        maxLogit = logit;
+                                    }
+                                    coefficientRow += 1;
+                                }
+
+                                const expValues = logits.map((logit) => Math.exp(logit - maxLogit));
+                                const sumExp = expValues.reduce((sum, value) => sum + value, 0) || 1;
+                                return expValues.map((value) => value / sumExp);
+                            };
 
                             const formatPValue = (p: number | undefined) => {
                                 if (p === undefined || Number.isNaN(p)) return "";
@@ -1306,28 +1432,155 @@ export const MultinomialLogisticMain = () => {
                                 })(),
                             } : null;
 
-                            const cellProbabilitiesTable = result?.classificationTable ? {
-                                title: "Cell Probabilities",
-                                columnHeaders: [
-                                    { header: "Observed" },
-                                    ...Array.from(
-                                        { length: result.classificationTable.confusionMatrix.length },
-                                        (_, i) => ({ header: `Predicted ${formatDependentCategory(dependentCategoryMap[i])}` })
-                                    ),
-                                ],
-                                rows: result.classificationTable.confusionMatrix.map((row: number[], idx: number) => {
-                                    const total = row.reduce((sum, value) => sum + value, 0);
+                            const cellProbabilitiesTable = (() => {
+                                if (validData.length === 0 || dependentCategories.length === 0) return null;
+
+                                // Jika data tidak di-weight (raw data), tampilkan pesan bahwa cell probabilities tidak didukung untuk raw data
+                                if (!isWeightedAnalysis) {
                                     return {
-                                        rowHeader: [formatDependentCategory(dependentCategoryMap[idx])],
-                                        ...row.reduce((acc, value, predIdx) => {
-                                            acc[`Predicted ${formatDependentCategory(dependentCategoryMap[predIdx])}`] = total > 0
-                                                ? (value / total).toFixed(4)
-                                                : "0.0000";
-                                            return acc;
-                                        }, {} as Record<string, string>),
+                                        title: "Observed and Predicted Frequencies",
+                                        columnHeaders: [],
+                                        rows: [{ rowHeader: [""] }],
+                                        footer: "Cell probabilities is not supported for raw data.",
                                     };
-                                }),
-                            } : null;
+                                }
+
+                                const allPredictors = [...factorVars, ...covariateVars];
+                                const subpopVars = options.statistics.subpopulationMode === 'variableList' && options.statistics.subpopulationVariables && options.statistics.subpopulationVariables.length > 0
+                                    ? options.statistics.subpopulationVariables.map((vName: string) => {
+                                        return allPredictors.find((p) => p.name === vName || (p as any).id === vName) || { name: vName, columnIndex: -1 } as any;
+                                    })
+                                    : allPredictors;
+
+                                const columnHeaders = [
+                                    ...subpopVars.map((v) => ({ header: v.name })),
+                                    { header: dependentVar.name },
+                                    {
+                                        header: "Frequency",
+                                        children: [
+                                            { header: "Observed", key: "observed" },
+                                            { header: "Predicted", key: "predicted" },
+                                            { header: "Pearson Residual", key: "pearsonResidual" },
+                                        ],
+                                    },
+                                    {
+                                        header: "Percentage",
+                                        children: [
+                                            { header: "Observed", key: "obsPercentage" },
+                                            { header: "Predicted", key: "predPercentage" },
+                                        ],
+                                    },
+                                ];
+
+                                // Group rows by subpopulation defined by subpopVars
+                                interface SubpopData {
+                                    rawValues: any[];
+                                    totalWeight: number;
+                                    observedCounts: number[];
+                                    expectedCounts: number[];
+                                }
+
+                                const subpopMap = new Map<string, SubpopData>();
+                                const subpopOrder: string[] = [];
+
+                                for (let rowIdx = 0; rowIdx < validData.length; rowIdx += 1) {
+                                    const row = validData[rowIdx];
+                                    const rawVals = subpopVars.map((v) => row[v.columnIndex]);
+                                    const subpopKey = rawVals.map((val) => normalizeCategory(val)).join("\u0001");
+
+                                    const probs = predictRowProbabilities(rowIdx);
+                                    const actualCategory = normalizeCategory(row[dependentIndex]);
+                                    const catIdx = dependentCategories.findIndex((c) => c === actualCategory);
+                                    const weight = Number.isFinite(validWeights[rowIdx]) && validWeights[rowIdx] > 0
+                                        ? validWeights[rowIdx]
+                                        : 1;
+
+                                    if (!subpopMap.has(subpopKey)) {
+                                        subpopOrder.push(subpopKey);
+                                        subpopMap.set(subpopKey, {
+                                            rawValues: rawVals,
+                                            totalWeight: 0,
+                                            observedCounts: new Array(dependentCategories.length).fill(0),
+                                            expectedCounts: new Array(dependentCategories.length).fill(0),
+                                        });
+                                    }
+
+                                    const entry = subpopMap.get(subpopKey)!;
+                                    entry.totalWeight += weight;
+                                    if (catIdx >= 0) {
+                                        entry.observedCounts[catIdx] += weight;
+                                    }
+                                    probs.forEach((p, j) => {
+                                        entry.expectedCounts[j] += weight * p;
+                                    });
+                                }
+
+                                // Sort subpopulations deterministically by raw predictor values
+                                const sortedSubpopKeys = [...subpopOrder].sort((keyA, keyB) => {
+                                    const entryA = subpopMap.get(keyA)!;
+                                    const entryB = subpopMap.get(keyB)!;
+                                    for (let k = 0; k < entryA.rawValues.length; k += 1) {
+                                        const strA = normalizeCategory(entryA.rawValues[k]);
+                                        const strB = normalizeCategory(entryB.rawValues[k]);
+                                        const cmp = compareCategory(strA, strB);
+                                        if (cmp !== 0) return cmp;
+                                    }
+                                    return 0;
+                                });
+
+                                const rows: any[] = [];
+                                sortedSubpopKeys.forEach((key) => {
+                                    const entry = subpopMap.get(key)!;
+                                    const predHeaderLabels = subpopVars.map((v, pIdx) =>
+                                        formatCategoryWithLabel(v, entry.rawValues[pIdx])
+                                    );
+
+                                    dependentCategories.forEach((catVal, j) => {
+                                        const depCatLabel = formatCategoryWithLabel(dependentVar, catVal);
+                                        const rowHeader = [...predHeaderLabels, depCatLabel];
+
+                                        const obsCount = entry.observedCounts[j];
+                                        const expCount = entry.expectedCounts[j];
+                                        const predProb = entry.totalWeight > 0 ? expCount / entry.totalWeight : 0;
+                                        const variance = expCount * (1 - predProb);
+                                        const residual = variance > 1e-10
+                                            ? (obsCount - expCount) / Math.sqrt(variance)
+                                            : 0;
+
+                                        const obsPct = entry.totalWeight > 0
+                                            ? (obsCount / entry.totalWeight) * 100
+                                            : 0;
+                                        const predPct = entry.totalWeight > 0
+                                            ? (expCount / entry.totalWeight) * 100
+                                            : 0;
+
+                                        const formattedObserved = Math.abs(obsCount - Math.round(obsCount)) < 1e-9
+                                            ? String(Math.round(obsCount))
+                                            : formatSpssNumber(obsCount, 3);
+
+                                        const formattedPredicted = formatSpssNumber(expCount, 3);
+                                        const formattedResidual = formatSpssNumber(residual, 3);
+                                        const formattedObsPct = `${obsPct.toFixed(1)}%`;
+                                        const formattedPredPct = `${predPct.toFixed(1)}%`;
+
+                                        rows.push({
+                                            rowHeader,
+                                            observed: formattedObserved,
+                                            predicted: formattedPredicted,
+                                            pearsonResidual: formattedResidual,
+                                            obsPercentage: formattedObsPct,
+                                            predPercentage: formattedPredPct,
+                                        });
+                                    });
+                                });
+
+                                return {
+                                    title: "Observed and Predicted Frequencies",
+                                    columnHeaders,
+                                    rows,
+                                    footer: "The percentages are based on total observed frequencies in each subpopulation.",
+                                };
+                            })();
 
                             // NEW: Goodness-of-Fit Tests
                             const goodnessOfFitTable = result?.goodnessOfFit ? {
@@ -1661,12 +1914,12 @@ export const MultinomialLogisticMain = () => {
                                     formattedCatNames
                                 );
                                 await addStatistic(analyticId, {
-                                    title: "Cell Probabilities",
+                                    title: "Observed and Predicted Frequencies",
                                     description: cellProbabilitiesDescription,
                                     output_data: JSON.stringify({ tables: [cellProbabilitiesTable] }),
-                                    components: "Cell Probabilities",
+                                    components: "Observed and Predicted Frequencies",
                                 });
-                                console.log("[Multinomial UI] Cell Probabilities statistic added");
+                                console.log("[Multinomial UI] Observed and Predicted Frequencies statistic added");
                             }
 
                             // NEW: Save Classification Table (if enabled)
@@ -1802,10 +2055,36 @@ export const MultinomialLogisticMain = () => {
                             await loadResults();
                             console.log("[Multinomial UI] Results loaded, closing modal");
 
+                            // ─── Ringkasan Performa Akhir ───────────────────────
+                            _perfMark("postproc-end");
+                            const postProcMs = performance.now() - _postProcStart;
+                            const totalPipelineMs = performance.now() - _uiInteractionStart;
+
+                            console.log("POST-PROCESSING — Rendering Hasil");
+                            console.table({
+                                "Post-processing (save + render)": `${postProcMs.toFixed(0)} ms`,
+                                "Total pipeline end-to-end": `${totalPipelineMs.toFixed(0)} ms`,
+                            });
+
+                            // ─── Tabel 3: RESPONSIVENESS ─────────────────────
+                            console.log("RESPONSIVENESS — Waktu Respon UI");
+                            console.table({
+                                "INP target browser": "< 200 ms",
+                                "Worker di background thread": "Ya (tidak memblokir UI)",
+                                "Waktu Post-processing": `${postProcMs.toFixed(0)} ms`,
+                                "Waktu Total Pipeline": `${totalPipelineMs.toFixed(0)} ms`,
+                            });
+
+                            console.groupEnd();
+
+                            // Cek responsiveness frame setelah render selesai
+                            _frameCheck();
+
                             closeModal("MULTINOMIAL_LOGISTIC");
                             worker.terminate();
                             setIsLoading(false);
                         } catch (saveError: any) {
+                            console.groupEnd(); // tutup grup [Laporan Performa] jika error
                             console.error("[Multinomial UI] Failed to save result:", saveError);
                             setErrorMsg("Gagal menyimpan hasil: " + saveError.message);
                             setIsLoading(false);

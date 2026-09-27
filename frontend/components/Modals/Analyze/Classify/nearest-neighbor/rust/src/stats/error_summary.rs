@@ -1,51 +1,69 @@
 // error_summary.rs
-use crate::models::result::{ClassificationTable, ErrorSummary};
+use crate::models::result::{ClassificationPartition, ClassificationTable, ErrorSummary};
+
+use super::common::error_rate_percent;
 
 /// Calculate error summary based on classification table results
 pub fn calculate_error_summary(
     classification_table: &Option<ClassificationTable>,
 ) -> Result<ErrorSummary, String> {
     match classification_table {
-        Some(table) => {
-            // Calculate overall accuracy for training set
-            let training_total: usize = table.training.observed.iter().sum();
-            let training_correct: f64 = table
-                .training
-                .observed
-                .iter()
-                .zip(table.training.percent_correct.iter())
-                .map(|(&obs, &pct)| ((obs as f64) * pct) / 100.0)
-                .sum();
-            let training_accuracy = if training_total > 0 {
-                (training_correct * 100.0) / (training_total as f64)
-            } else {
-                0.0
-            };
-
-            // Calculate overall accuracy for holdout set
-            let holdout_total: usize = table.holdout.observed.iter().sum();
-            let holdout_correct: f64 = table
-                .holdout
-                .observed
-                .iter()
-                .zip(table.holdout.percent_correct.iter())
-                .map(|(&obs, &pct)| ((obs as f64) * pct) / 100.0)
-                .sum();
-            let holdout_accuracy = if holdout_total > 0 {
-                (holdout_correct * 100.0) / (holdout_total as f64)
-            } else {
-                0.0
-            };
-
-            // Convert accuracies to error rates
-            let training_error = 100.0 - training_accuracy;
-            let holdout_error = 100.0 - holdout_accuracy;
-
-            Ok(ErrorSummary {
-                training: training_error,
-                holdout: holdout_error,
-            })
-        }
+        Some(table) => Ok(ErrorSummary {
+            training: partition_error_percent(&table.training),
+            holdout: partition_error_percent(&table.holdout),
+        }),
         None => Err("Classification table not available for error summary calculation".to_string()),
+    }
+}
+
+/// Error rate (1 - sum of correct / N) x 100%, taken directly from the counts
+/// in the confusion matrix rather than back from rounded percentages.
+fn partition_error_percent(partition: &ClassificationPartition) -> f64 {
+    let total: usize = partition.observed.iter().sum();
+    if total == 0 {
+        return 100.0;
+    }
+
+    let correct: usize = partition
+        .confusion_matrix
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, row)| row.get(idx))
+        .sum();
+
+    error_rate_percent(total - correct.min(total), total)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::models::result::{ClassificationPartition, ClassificationTable};
+
+    use super::calculate_error_summary;
+
+    fn partition(confusion_matrix: Vec<Vec<usize>>) -> ClassificationPartition {
+        let observed = confusion_matrix.iter().map(|row| row.iter().sum()).collect();
+        ClassificationPartition {
+            confusion_matrix,
+            observed,
+            predicted: Vec::new(),
+            missing: Vec::new(),
+            overall_percent: Vec::new(),
+            percent_correct: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn error_summary_uses_counts_from_the_confusion_matrix() {
+        let table = ClassificationTable {
+            categories: vec!["A".to_string(), "B".to_string()],
+            // 1 of 3 correct; the old path via percentages gave 66.66666666666667.
+            training: partition(vec![vec![1, 1], vec![1, 0]]),
+            // 63 of 70 correct.
+            holdout: partition(vec![vec![40, 3], vec![4, 23]]),
+        };
+
+        let summary = calculate_error_summary(&Some(table)).unwrap();
+        assert_eq!(summary.training, 2.0 / 3.0 * 100.0);
+        assert_eq!(summary.holdout, 10.0);
     }
 }

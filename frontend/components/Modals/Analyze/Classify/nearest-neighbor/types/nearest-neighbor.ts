@@ -116,13 +116,17 @@ export type KNNSaveType = {
     IsCateTargetVar: boolean;
     RandomAssignToPartition: boolean;
     RandomAssignToFold: boolean;
+    PredictedValueName?: string | null;
+    ProbabilityName?: string | null;
+    PartitionName?: string | null;
+    FoldName?: string | null;
 };
 
 export type KNNSaveProps = {
     data: KNNSaveType;
     updateFormData: (
         field: keyof KNNSaveType,
-        value: number | boolean | null
+        value: number | boolean | string | null
     ) => void;
     hasTarget: boolean;
     targetType: "scale" | "nominal" | "ordinal" | null;

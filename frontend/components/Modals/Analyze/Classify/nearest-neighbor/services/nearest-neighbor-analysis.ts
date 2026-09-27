@@ -2,10 +2,15 @@ import { getSlicedData, getVarDefs } from "@/hooks/useVariable";
 import type { KNNAnalysisType } from "@/components/Modals/Analyze/Classify/nearest-neighbor/types/nearest-neighbor-worker";
 import { transformNearestNeighborResult } from "./nearest-neighbor-analysis-formatter";
 import { resultNearestNeighbor } from "./nearest-neighbor-analysis-output";
+import { createKnnPerformanceTracker } from "./nearest-neighbor-performance";
 import { useDataStore, type CellUpdate } from "@/stores/useDataStore";
 import { useVariableStore } from "@/stores/useVariableStore";
 import type { Variable } from "@/types/Variable";
 import type { ResultJson } from "@/types/Table";
+import {
+  DEFAULT_SAVED_VARIABLE_NAMES,
+  resolveSavedVariableName,
+} from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborSaveRules";
 
 type SavedVariableResult = {
   name: string;
@@ -36,7 +41,7 @@ const hiddenViewerOutputKeys = new Set([
   "neighbor_details",
 ]);
 
-function isResultJson(result: unknown): result is ResultJson {
+export function isResultJson(result: unknown): result is ResultJson {
   return (
     typeof result === "object" &&
     result !== null &&
@@ -44,18 +49,18 @@ function isResultJson(result: unknown): result is ResultJson {
   );
 }
 
-function hasWorkerErrors(errors: unknown): errors is string {
+export function hasWorkerErrors(errors: unknown): errors is string {
   return typeof errors === "string" && !errors.includes("No errors occurred.");
 }
 
-function filterViewerOutput(result: ResultJson): ResultJson {
+export function filterViewerOutput(result: ResultJson): ResultJson {
   return {
     ...result,
     tables: result.tables.filter((table) => !hiddenViewerOutputKeys.has(table.key)),
   };
 }
 
-function normalizeKnnVarDefsForWorker(defs: unknown[][]) {
+export function normalizeKnnVarDefsForWorker(defs: unknown[][]) {
   return defs.map((group) =>
     group.map((definition) => {
       const varDef = definition as VariableDefinitionPayload;
@@ -73,11 +78,12 @@ function normalizeKnnVarDefsForWorker(defs: unknown[][]) {
   );
 }
 
-function withInternalChartOutputs(configData: KNNAnalysisType["configData"]) {
+export function withInternalChartOutputs(configData: KNNAnalysisType["configData"]) {
   const needsKSelectionErrorChart =
     configData.neighbors.AutoSelection && !configData.features.PerformSelection;
-  const needsKAndPredictorSelectionChart =
-    configData.neighbors.AutoSelection && configData.features.PerformSelection;
+  // Feature selection always needs its summary for the selection chart, both
+  // with fixed k and automatic k; the dialog has no toggle for this output.
+  const needsKAndPredictorSelectionChart = configData.features.PerformSelection;
 
   return {
     ...configData,
@@ -98,6 +104,7 @@ export async function analyzeKNN({
   dataVariables,
   variables,
 }: KNNAnalysisType) {
+  const performanceTracker = createKnnPerformanceTracker();
   const uniqueVariables = (items: Array<string | null | undefined>) =>
     Array.from(new Set(items.filter((item): item is string => Boolean(item))));
 
@@ -154,7 +161,7 @@ export async function analyzeKNN({
   const workerConfigData = withInternalChartOutputs(configData);
 
   const worker = new Worker(
-    "/workers/Classify/NearestNeighbor/nearest-neighbor.worker.js?v=knn-predictor-space-axis-picker-20260521",
+    "/workers/Classify/NearestNeighbor/nearest-neighbor.worker.js?v=knn-float-tolerance-20260926",
     { type: "module" },
   );
 
@@ -174,8 +181,10 @@ export async function analyzeKNN({
       caseDefs: varDefsForCaseIdentifier,
       config: workerConfigData,
     });
+    performanceTracker.markWorkerPosted(slicedDataForFeatures);
 
     worker.onmessage = async (e) => {
+      performanceTracker.markWorkerResponded();
       try {
         if (!e.data.success) {
           reject(new Error(e.data.error ?? "KNN worker failed."));
@@ -210,8 +219,13 @@ export async function analyzeKNN({
         await saveKnnVariablesToDataViewer(
           result.saved_variables,
           configData.save.CustomName,
+          [
+            resolveSavedVariableName(configData.save, "PartitionName"),
+            resolveSavedVariableName(configData.save, "FoldName"),
+          ],
         );
 
+        performanceTracker.report(e.data.timing);
         worker.terminate();
         resolve();
       } catch (error) {
@@ -228,9 +242,13 @@ export async function analyzeKNN({
 
 }
 
-async function saveKnnVariablesToDataViewer(
+export async function saveKnnVariablesToDataViewer(
   savedVariables: SavedVariablesResult | null | undefined,
   useCustomNames: boolean,
+  partitionRoleNames: string[] = [
+    DEFAULT_SAVED_VARIABLE_NAMES.PartitionName,
+    DEFAULT_SAVED_VARIABLE_NAMES.FoldName,
+  ],
 ) {
   const variablesToSave = savedVariables?.variables ?? [];
   if (!variablesToSave.length) return;
@@ -280,11 +298,9 @@ async function saveKnnVariablesToDataViewer(
       columns: 64,
       align: savedVariable.variable_type === "STRING" ? "left" : "right",
       measure: savedVariable.measure,
-      role:
-        savedVariable.name === "KNN_Partition" ||
-        savedVariable.name === "KNN_Fold"
-          ? "partition"
-          : "none",
+      role: partitionRoleNames.includes(savedVariable.name)
+        ? "partition"
+        : "none",
     });
 
     savedVariable.values.forEach((value, rowIndex) => {
@@ -308,7 +324,7 @@ async function saveKnnVariablesToDataViewer(
   }
 }
 
-function normalizeSavedValue(value: string | number | boolean | null | undefined) {
+export function normalizeSavedValue(value: string | number | boolean | null | undefined) {
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") return value ? "true" : "false";
   return value;

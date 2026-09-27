@@ -170,8 +170,12 @@ fn group_case_matrix(
 // ── 1. Multicollinearity ────────────────────────────────────────────────────
 
 /// Tolerance/VIF from the inverse pooled within-groups correlation matrix, plus
-/// condition indices from that matrix's eigenvalues. VIF ≥ 10 (tolerance ≤ 0.1)
-/// or condition index ≥ 30 flags problematic multicollinearity.
+/// condition indices from that matrix's eigenvalues:
+///
+/// rᵢⱼ = sᵢⱼ / √(sᵢᵢ sⱼⱼ),   VIFᵢ = (R⁻¹)ᵢᵢ,   toleranceᵢ = 1 / VIFᵢ,   CIₖ = √(λ_max / λₖ)
+///
+/// VIF ≥ 10 (tolerance ≤ 0.1) or condition index ≥ 30 flags problematic
+/// multicollinearity.
 fn compute_multicollinearity(
     dataset: &AnalyzedDataset,
     variables: &[String],
@@ -273,10 +277,16 @@ struct HzStat {
     p_value: f64,
 }
 
-/// Henze–Zirkler multivariate normality statistic for an n×p case matrix.
-/// Uses the MLE (÷n) covariance. The statistic is approximately lognormal under
-/// multivariate normality, so the returned p-value is its upper tail. Returns
-/// `None` when n ≤ p (covariance not invertible).
+/// Henze–Zirkler multivariate normality statistic for an n×p case matrix, with the
+/// MLE (÷n) covariance S, Dᵢ = (xᵢ − x̄)ᵀ S⁻¹ (xᵢ − x̄) and Dᵢⱼ = (xᵢ − xⱼ)ᵀ S⁻¹ (xᵢ − xⱼ):
+///
+/// β  = (1/√2) · [n(2p + 1) / 4]^(1/(p+4))
+/// HZ = (1/n) Σᵢ Σⱼ e^(−β²Dᵢⱼ/2) − 2(1 + β²)^(−p/2) Σᵢ e^(−β²Dᵢ/(2(1+β²))) + n(1 + 2β²)^(−p/2)
+///
+/// Under multivariate normality HZ is approximately lognormal. From its mean μ and
+/// variance σ² (Henze & Zirkler, 1990): meanlog = ln(μ² / √(σ² + μ²)),
+/// sdlog = √ln((σ² + μ²) / μ²), and p = 1 − Φ((ln HZ − meanlog) / sdlog).
+/// Returns `None` when n ≤ p or n < 3 (covariance not invertible).
 fn henze_zirkler(x: &DMatrix<f64>) -> Option<HzStat> {
     let n = x.nrows();
     let p = x.ncols();
@@ -497,7 +507,8 @@ fn compute_henze_zirkler(dataset: &AnalyzedDataset, variables: &[String]) -> Hen
 
 // ── 3. Univariate normality (Anderson–Darling per variable) ─────────────────
 
-/// Natural log of the standard-normal CDF, floored to avoid -∞ in the tails.
+/// ln Φ(z), the natural log of the standard-normal CDF; −700 where Φ(z) underflows
+/// to 0, so the far tail never gives −∞.
 fn ln_std_normal_cdf(normal: &Normal, z: f64) -> f64 {
     let c = normal.cdf(z);
     if c <= 0.0 {
@@ -507,12 +518,16 @@ fn ln_std_normal_cdf(normal: &Normal, z: f64) -> f64 {
     }
 }
 
-/// Anderson–Darling test for normality on a pooled column, matching R's
-/// `nortest::ad.test` (used internally by `MVN::mvn`). Returns the raw A²
-/// statistic and the p-value from the small-sample-corrected A*². The sample
-/// standard deviation uses the (n−1) denominator, as in R. Returns `None` when
-/// n < 8 or the column is constant.
-fn anderson_darling(values: &[f64]) -> Option<(f64, f64)> {
+/// Anderson–Darling test for normality of one column, matching R's
+/// `nortest::ad.test` (used internally by `MVN::mvn`). With zᵢ = (x₍ᵢ₎ − x̄) / s for
+/// the sorted values (s with the n − 1 denominator, as in R):
+///
+/// A²  = −n − (1/n) Σᵢ (2i − 1) [ln Φ(zᵢ) + ln Φ(−zₙ₊₁₋ᵢ)]
+/// A*² = A² · (1 + 0.75/n + 2.25/n²)
+///
+/// Returns the raw A² and the p-value of A*² from the D'Agostino–Stephens piecewise
+/// formula, or `None` when n < 8 or the column is constant.
+pub fn anderson_darling(values: &[f64]) -> Option<(f64, f64)> {
     let n = values.len();
     if n < 8 {
         return None;

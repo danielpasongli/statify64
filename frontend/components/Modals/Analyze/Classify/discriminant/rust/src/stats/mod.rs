@@ -13,6 +13,7 @@ pub mod log_determinant;
 pub mod matrix_calculation;
 pub mod pairwise_comparison;
 pub mod prior_probabilities;
+pub mod separate_covariance;
 pub mod statistical_test;
 pub mod stepwise_method;
 pub mod stepwise_statistics;

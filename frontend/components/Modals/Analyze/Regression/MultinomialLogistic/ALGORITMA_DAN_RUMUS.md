@@ -278,6 +278,32 @@ $$
 
 Dengan m = jumlah pola kovariat unik.
 
+## 11.1 Cell Probabilities (Observed and Predicted Frequencies)
+
+Modul menghitung frekuensi teramati, frekuensi ekspektasi, residual Pearson, serta persentase teramati dan ekspektasi per subpopulasi $m$ dan kategori dependen $j$:
+
+- **Observed Frequency ($O_{mj}$)**:
+  $$O_{mj} = \sum_{i \in S_m, y_i = j} w_i$$
+
+- **Predicted Frequency ($E_{mj}$)**:
+  $$E_{mj} = \sum_{i \in S_m} w_i \pi_{ij}$$
+
+- **Pearson Residual ($r_{mj}$)**:
+  $$r_{mj} = \frac{O_{mj} - E_{mj}}{\sqrt{E_{mj}(1 - \hat{\pi}_{mj})}}$$
+  dengan $\hat{\pi}_{mj} = \frac{E_{mj}}{N_m}$. Formula ini memperhitungkan varians multinomial $\text{Var}(O_{mj}) = N_m \hat{\pi}_{mj}(1 - \hat{\pi}_{mj}) = E_{mj}(1 - \hat{\pi}_{mj})$ sesuai spesifikasi SPSS NOMREG.
+
+- **Observed Percentage**:
+  $$\text{Observed \%} = \frac{O_{mj}}{N_m} \times 100\%$$
+
+- **Predicted Percentage**:
+  $$\text{Predicted \%} = \frac{E_{mj}}{N_m} \times 100\%$$
+
+- **Penanganan Data Unweighted (Raw Data)**:
+  Untuk data mentah unweighted (`!isWeightedAnalysis`), modul tidak menjalankan komputasi baris *cell probabilities* per observasi dan langsung menampilkan catatan berikut pada kartu output **Observed and Predicted Frequencies**:
+  > *"Cell probabilities is not supported for raw data."*
+
+dimana $N_m = \sum_j O_{mj}$ adalah total frekuensi teramati pada subpopulasi $m$.
+
 ## 12. Classification Table
 
 Untuk setiap observasi:

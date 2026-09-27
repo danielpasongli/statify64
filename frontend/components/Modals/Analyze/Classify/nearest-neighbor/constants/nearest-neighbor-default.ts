@@ -62,6 +62,10 @@ export const KNNSaveDefault: KNNSaveType = {
     IsCateTargetVar: false,
     RandomAssignToPartition: false,
     RandomAssignToFold: false,
+    PredictedValueName: "KNN_PredictedValue",
+    ProbabilityName: "KNN_Probability",
+    PartitionName: "KNN_Partition",
+    FoldName: "KNN_Fold",
 };
 
 export const KNNOutputDefault: KNNOutputType = {

@@ -159,7 +159,7 @@ pub fn calculate_between_within_matrices(
 /// which is used in discriminant analysis for classification and testing.
 ///
 /// The matrix is calculated as:
-/// W = Σ(nᵢ-1)Sᵢ / (n-g)
+/// S = Σ(nᵢ − 1)Sᵢ / (n − g), plus EPSILON on the diagonal
 ///
 /// # Parameters
 /// * `dataset` - The analyzed dataset
@@ -189,7 +189,7 @@ pub fn calculate_pooled_within_matrix(
 /// - Box's M test (pooled log determinant must match table value)
 ///
 /// The matrix is calculated as:
-/// W = Σ(nᵢ-1)Sᵢ / (n-g)
+/// S = Σ(nᵢ − 1)Sᵢ / (n − g)
 ///
 /// # Parameters
 /// * `dataset` - The analyzed dataset
@@ -213,7 +213,9 @@ pub fn calculate_pooled_within_matrix_no_epsilon(
 }
 
 /// Calculate the total covariance matrix: covariance of all cases pooled
-/// together, ignoring group membership (SPSS "Total" covariance, df = N - 1).
+/// together, ignoring group membership (SPSS "Total" covariance, df = N - 1):
+///
+/// T = Σ (x − x̄)(x − x̄)ᵀ / (N − 1)
 ///
 /// Values for variables i and j are concatenated across groups in the same
 /// group order, so each case's (xᵢ, xⱼ) pair stays aligned. The deviations are
@@ -261,8 +263,9 @@ pub fn calculate_total_covariance_matrix(
 
 /// Calculate pooled within-groups covariance and correlation matrices
 ///
-/// This function computes both the pooled within-groups covariance matrix and
-/// the corresponding correlation matrix for discriminant analysis.
+/// This function computes both the pooled within-groups covariance matrix
+/// S = Σ(nᵢ − 1)Sᵢ / (n − g) and the corresponding correlation matrix
+/// rᵢⱼ = sᵢⱼ / √(sᵢᵢ sⱼⱼ).
 ///
 /// # Parameters
 /// * `data` - The analysis data
@@ -472,8 +475,7 @@ pub fn calculate_covariance_matrices(
 /// constant 4 is the between-centroid variance of two equally-weighted means at
 /// distance D — i.e. (D/2)² → D²/4 — so unexplained = within / (within + between)
 /// = 1 / (1 + D²/4). It is NOT weighted by the group sizes (no Hotelling T² and
-/// no pair degrees of freedom). Verified to match SPSS exactly for every
-/// predictor (e.g. {Fe2O3} → 1.137, {CaO} → 1.402, {BaO} → 2.911).
+/// no pair degrees of freedom).
 ///
 /// Residual Variance = Σ_{i<j} U_ij; lower = better separation.
 pub fn calculate_total_unexplained_variation(
@@ -532,8 +534,8 @@ pub struct MinMahalanobisResult {
 
 /// Calculate minimum Mahalanobis distance between any two groups
 ///
-/// Mahalanobis distance accounts for correlations in the data and
-/// is scale-invariant, making it useful for multivariate analysis.
+/// min over the group pairs (i, j) of D²ᵢⱼ = (x̄ᵢ − x̄ⱼ)ᵀ S⁻¹ (x̄ᵢ − x̄ⱼ), with S the
+/// pooled within-groups covariance matrix of `variables`.
 pub fn calculate_min_mahalanobis_distance(dataset: &AnalyzedDataset, variables: &[String]) -> f64 {
     calculate_min_mahalanobis_distance_with_groups(dataset, variables).min_d2
 }
@@ -665,11 +667,6 @@ pub fn calculate_min_f_ratio_with_groups(
     } else {
         best
     }
-}
-
-/// Calculate minimum F ratio between any two groups (value only).
-pub fn calculate_min_f_ratio(dataset: &AnalyzedDataset, variables: &[String]) -> f64 {
-    calculate_min_f_ratio_with_groups(dataset, variables).min_f
 }
 
 /// Pooled within-groups inverse S⁻¹ (EPSILON-regularized), computed ONCE per

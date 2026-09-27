@@ -7,6 +7,7 @@ import type { CheckedState } from "@radix-ui/react-checkbox";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FieldHelp } from "./field-help";
+import { normalizeOutputCheckboxValue } from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborOutputRules";
 
 export const KNNOutput = ({
   updateFormData,
@@ -27,10 +28,7 @@ export const KNNOutput = ({
     field: keyof KNNOutputType,
     value: CheckedState | undefined | boolean | string | null,
   ) => {
-    const nextValue =
-      value === "indeterminate" || typeof value === "undefined" ? false : value;
-
-    updateFormData(field, nextValue);
+    updateFormData(field, normalizeOutputCheckboxValue(value));
   };
 
   const viewerOutputOptions: Array<{

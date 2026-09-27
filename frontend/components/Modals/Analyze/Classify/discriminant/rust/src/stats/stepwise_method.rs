@@ -66,10 +66,13 @@ pub fn calculate_variable_f_to_remove(
     }
 }
 
-/// Calculate F-to-enter using Wilks' lambda method
+/// F to Enter of a candidate: the partial F shared by every stepwise method,
 ///
-/// This method minimizes Wilks' lambda by selecting the variable
-/// that produces the greatest reduction in lambda.
+/// F = [(Λ_q − Λ_{q+1}) / Λ_{q+1}] · (n − g − q) / (g − 1),   df = (g − 1, n − g − q)
+///
+/// Λ_q = Wilks' lambda of the q variables in the model, Λ_{q+1} = with the candidate
+/// added. At q = 0 this is the univariate F. The Wilks method enters the candidate
+/// with the smallest Λ_{q+1}.
 ///
 /// # Parameters
 /// * `variable` - The variable to test
@@ -102,7 +105,7 @@ fn calculate_f_to_enter_wilks(
         - dataset.num_groups as f64
         - current_variables.len() as f64;
 
-    // [PERBAIKAN KRUSIAL]: Pembagi harus new_wilks!
+    // Divided by Λ_{q+1}, the lambda after entry.
     let f_value = if df1 > 0.0 && df2 > 0.0 && new_wilks < current_wilks && new_wilks > 0.0 {
         (((current_wilks - new_wilks) / new_wilks) * df2) / df1
     } else {
@@ -112,7 +115,13 @@ fn calculate_f_to_enter_wilks(
     Ok((f_value, new_wilks))
 }
 
-/// Calculate F-to-remove using Wilks' lambda method
+/// F to Remove of a variable in the model: the partial F shared by every stepwise
+/// method,
+///
+/// F = [(Λ_{p−1} − Λ_p) / Λ_p] · (n − g − p + 1) / (g − 1),   df = (g − 1, n − g − p + 1)
+///
+/// Λ_p = Wilks' lambda of the p variables in the model, Λ_{p−1} = without the
+/// variable (1 when it is the only one).
 ///
 /// # Parameters
 /// * `variable` - The variable to test
@@ -231,17 +240,17 @@ fn calculate_f_to_enter_mahalanobis(
     dataset: &AnalyzedDataset,
     current_variables: &[String],
 ) -> Result<(f64, f64), String> {
-    // 1. Gatekeeper: Dapatkan F-to-enter murni dengan mendelegasikan tugas ke Wilks
-    // (Ini otomatis menangani df1, df2, dan pengecekan saat array kosong)
+    // 1. Entry gate: the partial Wilks F to Enter (df and the empty model are handled
+    //    there).
     let (f_value, _) = calculate_f_to_enter_wilks(variable, dataset, current_variables)?;
 
-    // 2. Ranking: Hitung Mahalanobis D² dengan simulasi penambahan variabel ini
+    // 2. Ranking: smallest D² between two groups with the candidate added.
     let mut new_variables = current_variables.to_vec();
     new_variables.push(variable.to_string());
 
     let new_min_d2 = calculate_min_mahalanobis_distance(dataset, &new_variables);
 
-    // 3. Kembalikan F-to-enter standar, dan proxy -min_d2 agar sorting Mahalanobis bekerja benar
+    // 3. Returned as −min D², so that a smaller value ranks better, as with Wilks' lambda.
     let wilks_lambda = -new_min_d2;
 
     Ok((f_value, wilks_lambda))
@@ -265,10 +274,10 @@ fn calculate_f_to_remove_mahalanobis(
     dataset: &AnalyzedDataset,
     current_variables: &[String],
 ) -> Result<(f64, f64), String> {
-    // 1. Dapatkan nilai Standard Partial F (sebagai Gatekeeper)
+    // 1. Removal gate: the partial Wilks F to Remove.
     let (f_value, _) = calculate_f_to_remove_wilks(variable, dataset, current_variables)?;
 
-    // 2. Dapatkan nilai Mahalanobis D² (sebagai Ranking)
+    // 2. Ranking: smallest D² between two groups without the variable.
     let reduced_variables: Vec<String> = current_variables
         .iter()
         .filter(|&v| v != variable)

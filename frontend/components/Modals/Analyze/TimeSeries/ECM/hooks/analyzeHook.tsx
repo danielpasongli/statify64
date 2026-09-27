@@ -72,6 +72,9 @@ export const useAnalyzeHook = (
                 throw new Error("Insufficient data points (minimum 10 required)");
             }
 
+            console.log(`Running ECM Analysis with ${yData.length} observations`);
+            console.time("Statify ECM Execution Time");
+
             const client = getTimeSeriesWorker();
 
             client.post({
@@ -89,6 +92,7 @@ export const useAnalyzeHook = (
                 const { status, result, error } = e.data;
                 
                 if (status === "success") {
+                    console.timeEnd("Statify ECM Execution Time");
                     console.log("ECM Results:", result);
                     
                     const isCointegrated = result.cointegration.isCointegrated;

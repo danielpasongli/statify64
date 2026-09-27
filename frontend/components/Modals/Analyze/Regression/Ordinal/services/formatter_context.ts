@@ -8,6 +8,8 @@ export interface OrdinalFormatterContext {
   wantGoodnessOfFit: boolean;
   wantSummaryStatistics: boolean;
   wantParameterEstimates: boolean;
+  wantAsymptoticCovariance: boolean;
+  wantAsymptoticCorrelation: boolean;
   wantTestOfParallelLines: boolean;
   wantIterationHistory: boolean;
   savedVariableColumns: any[];
@@ -92,6 +94,12 @@ export const buildOrdinalFormatterContext = (
     ),
     wantParameterEstimates: Boolean(
       readOutputFlag("parameterEstimates", "parameter_estimates"),
+    ),
+    wantAsymptoticCovariance: Boolean(
+      readOutputFlag("asymptoticCovariance", "asymptotic_covariance", false),
+    ),
+    wantAsymptoticCorrelation: Boolean(
+      readOutputFlag("asymptoticCorrelation", "asymptotic_correlation", false),
     ),
     wantTestOfParallelLines: Boolean(
       readOutputFlag("testOfParallelLines", "test_of_parallel_lines"),

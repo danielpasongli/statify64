@@ -280,7 +280,7 @@ function buildErrorSummary(summary: any): Table {
     columnHeaders: [
       { header: "Partition", key: "partition" },
       {
-        header: "Percent of Records in Incorrectly Classified",
+        header: "Percent of Records Incorrectly Classified",
         key: "percent_incorrectly_classified",
       },
     ],
@@ -288,14 +288,14 @@ function buildErrorSummary(summary: any): Table {
       {
         rowHeader: ["Training"],
         partition: "Training",
-        percent_incorrectly_classified: optionalPercent3Decimals(
+        percent_incorrectly_classified: optionalPercent1Decimal(
           summary.training,
         ),
       },
       {
         rowHeader: ["Holdout"],
         partition: "Holdout",
-        percent_incorrectly_classified: optionalPercent3Decimals(
+        percent_incorrectly_classified: optionalPercent1Decimal(
           summary.holdout,
         ),
       },
@@ -329,7 +329,7 @@ function partitionRows(
 
   const overallPercentRow: Row = {
     rowHeader: [partitionName, "Overall Percent"],
-    percent_correct: "",
+    percent_correct: overallPercentCorrect(partition?.confusion_matrix),
   };
 
   categories.forEach((_, index) => {
@@ -392,7 +392,30 @@ function formatDistance3(value: number) {
 
 function percent(numerator: number, denominator: number) {
   if (denominator <= 0) return "";
-  return `${formatDisplayNumber((numerator / denominator) * 100)}%`;
+  const value = Math.round((numerator / denominator) * 1000) / 10;
+  return `${value.toFixed(1)}%`;
+}
+
+// Persentase klasifikasi benar keseluruhan: jumlah diagonal confusion matrix
+// dibagi seluruh kasus pada partition tersebut.
+function overallPercentCorrect(confusionMatrix: any): string {
+  if (!Array.isArray(confusionMatrix)) return "";
+
+  let correct = 0;
+  let total = 0;
+
+  confusionMatrix.forEach((row: any, rowIndex: number) => {
+    if (!Array.isArray(row)) return;
+    row.forEach((cell: any, columnIndex: number) => {
+      const count = Number(cell ?? 0);
+      if (!Number.isFinite(count)) return;
+      total += count;
+      if (rowIndex === columnIndex) correct += count;
+    });
+  });
+
+  if (total <= 0) return "";
+  return optionalPercent1Decimal((correct / total) * 100);
 }
 
 function optionalNumber(value: any) {
@@ -422,18 +445,6 @@ function optionalPercent1Decimal(value: any) {
       : scaledToTenths;
 
   return `${((sign * rounded) / 10).toFixed(1)}%`;
-}
-
-function optionalPercent3Decimals(value: any) {
-  if (
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(Number(value))
-  ) {
-    return "";
-  }
-
-  return `${Number(value).toFixed(3)}%`;
 }
 
 function normalizePredictorImportanceEntries(predictors: any) {

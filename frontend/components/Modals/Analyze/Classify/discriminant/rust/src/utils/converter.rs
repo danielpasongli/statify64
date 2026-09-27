@@ -14,11 +14,10 @@ use crate::models::result::{
     VariableInAnalysis,
     PairwiseComparison,
     HighestGroupStatistics,
-    GroupHistogram,
     ScoreValue,
 };
 
-// Konversi dari String error ke JsValue untuk interaksi WASM
+/// Error message as a JavaScript value, for errors returned across the WASM boundary.
 pub fn string_to_js_error(error: String) -> JsValue {
     JsValue::from_str(&error)
 }
@@ -51,7 +50,6 @@ struct FormatResult {
     casewise_statistics: Option<FormattedCasewiseStatistics>,
     prior_probabilities: Option<FormattedPriorProbabilities>,
     classification_function_coefficients: Option<FormattedClassificationFunctionCoefficients>,
-    discriminant_histograms: Option<FormattedDiscriminantHistograms>,
     scatter_data: Option<FormattedScatterData>,
     bootstrap_results: Option<crate::models::result::BootstrapResults>,
     // Already display-shaped (Vec-based), so passed straight through.
@@ -59,6 +57,9 @@ struct FormatResult {
     territorial_map: bool,
     combined_groups_plot: bool,
     separate_groups_plot: bool,
+    unstandardized_coefficients: bool,
+    // Vec-based already; rows follow the analysis group order.
+    separate_groups_classification: Option<crate::models::result::SeparateGroupsClassification>,
 }
 
 /// Convert a `"Function k" → scores` map into a Vec ordered Function 1, 2, …
@@ -234,6 +235,13 @@ struct FormattedClassificationResults {
     cross_validated_classification: Option<Vec<GroupClassification>>,
     original_percentage: Vec<GroupPercentage>,
     cross_validated_percentage: Option<Vec<GroupPercentage>>,
+    unselected_classification: Option<Vec<GroupClassification>>,
+    unselected_percentage: Option<Vec<GroupPercentage>>,
+    // "Ungrouped cases" rows; counts and percentages are in group order.
+    ungrouped_classification: Option<Vec<i32>>,
+    ungrouped_percentage: Option<Vec<f64>>,
+    unselected_ungrouped_classification: Option<Vec<i32>>,
+    unselected_ungrouped_percentage: Option<Vec<f64>>,
 }
 
 #[derive(Serialize)]
@@ -292,14 +300,16 @@ struct FormattedStepwiseStatistics {
     wilks_lambda: Vec<f64>,
     f_to_enter: Vec<f64>,
     f_to_enter_df1: Vec<i32>,
-    f_to_enter_df2: Vec<i32>,
+    f_to_enter_df2: Vec<f64>,
     significance: Vec<f64>,
     wilks_exact_f: Vec<f64>,
     wilks_exact_df1: Vec<i32>,
-    wilks_exact_df2: Vec<i32>,
+    wilks_exact_df2: Vec<f64>,
     wilks_exact_sig: Vec<f64>,
+    wilks_f_exact: Vec<bool>,
     raos_v: Vec<f64>,
     raos_v_sig: Vec<f64>,
+    raos_v_df: Vec<f64>,
     change_in_v: Vec<f64>,
     change_sig: Vec<f64>,
     variables_in_analysis: Vec<StepVariables>,
@@ -362,7 +372,7 @@ struct GroupCases {
 
 #[derive(Serialize)]
 struct FormattedClassificationFunctionCoefficients {
-    groups: Vec<usize>,
+    groups: Vec<String>,
     variables: Vec<String>,
     coefficients: Vec<GroupCoefficient>,
     constant_terms: Vec<f64>,
@@ -374,80 +384,79 @@ struct GroupCoefficient {
     values: Vec<f64>,
 }
 
-#[derive(Serialize)]
-struct FormattedDiscriminantHistograms {
-    functions: Vec<String>,
-    groups: Vec<String>,
-    histograms: Vec<HistogramEntry>,
-}
-
-#[derive(Serialize)]
-struct HistogramEntry {
-    function: String,
-    group: String,
-    histogram: GroupHistogram,
-}
-
 impl FormatResult {
     fn from_analysis_result(result: &DiscriminantResult) -> Self {
         // Transform GroupStatistics
         let group_statistics = result.group_statistics.as_ref().map(|stats| {
-            // Debug: log raw stats to see if unweighted_n/weighted_n are populated
-            web_sys::console::log_1(&format!("Raw GroupStatistics - groups: {:?}", stats.groups).into());
-            web_sys::console::log_1(&format!("Raw GroupStatistics - variables: {:?}", stats.variables).into());
-            web_sys::console::log_1(&format!("Raw GroupStatistics - unweighted_n keys: {:?}", stats.unweighted_n.keys().collect::<Vec<_>>()).into());
-            web_sys::console::log_1(&format!("Raw GroupStatistics - weighted_n keys: {:?}", stats.weighted_n.keys().collect::<Vec<_>>()).into());
+            // Debug-build log of the raw group statistics.
+            crate::debug_log!("Raw GroupStatistics - groups: {:?}", stats.groups);
+            crate::debug_log!("Raw GroupStatistics - variables: {:?}", stats.variables);
+            crate::debug_log!("Raw GroupStatistics - unweighted_n keys: {:?}", stats.unweighted_n.keys().collect::<Vec<_>>());
+            crate::debug_log!("Raw GroupStatistics - weighted_n keys: {:?}", stats.weighted_n.keys().collect::<Vec<_>>());
 
             for var in &stats.variables {
                 if let Some(n_values) = stats.unweighted_n.get(var) {
-                    web_sys::console::log_1(&format!("  {} unweighted_n: {:?}", var, n_values).into());
+                    crate::debug_log!("  {} unweighted_n: {:?}", var, n_values);
                 }
                 if let Some(n_values) = stats.weighted_n.get(var) {
-                    web_sys::console::log_1(&format!("  {} weighted_n: {:?}", var, n_values).into());
+                    crate::debug_log!("  {} weighted_n: {:?}", var, n_values);
                 }
             }
 
-            let means = stats.variables
-                .iter()
-                .map(|var| {
-                    let values = stats.groups
-                        .iter()
-                        .enumerate()
-                        .map(|(j, _group)| {
-                            stats.means.get(var)
-                                .and_then(|v| v.get(j))
-                                .copied()
-                                .unwrap_or(0.0)
-                        })
-                        .collect();
+            // Means and standard deviations exist only with Statistics → Means; without
+            // it both lists stay empty (no zeros), so the formatter leaves the Mean and
+            // Std. Deviation columns out and the table shows only the Valid N counts.
+            let has_means = stats.means.values().any(|values| !values.is_empty());
 
-                    GroupValue {
-                        variable: var.clone(),
-                        values,
-                    }
-                })
-                .collect();
+            let means: Vec<GroupValue> = if has_means {
+                stats.variables
+                    .iter()
+                    .map(|var| {
+                        let values = stats.groups
+                            .iter()
+                            .enumerate()
+                            .map(|(j, _group)| {
+                                stats.means.get(var)
+                                    .and_then(|v| v.get(j))
+                                    .copied()
+                                    .unwrap_or(0.0)
+                            })
+                            .collect();
 
-            let std_deviations = stats.variables
-                .iter()
-                .map(|var| {
-                    let values = stats.groups
-                        .iter()
-                        .enumerate()
-                        .map(|(j, _group)| {
-                            stats.std_deviations.get(var)
-                                .and_then(|v| v.get(j))
-                                .copied()
-                                .unwrap_or(0.0)
-                        })
-                        .collect();
+                        GroupValue {
+                            variable: var.clone(),
+                            values,
+                        }
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
-                    GroupValue {
-                        variable: var.clone(),
-                        values,
-                    }
-                })
-                .collect();
+            let std_deviations: Vec<GroupValue> = if has_means {
+                stats.variables
+                    .iter()
+                    .map(|var| {
+                        let values = stats.groups
+                            .iter()
+                            .enumerate()
+                            .map(|(j, _group)| {
+                                stats.std_deviations.get(var)
+                                    .and_then(|v| v.get(j))
+                                    .copied()
+                                    .unwrap_or(0.0)
+                            })
+                            .collect();
+
+                        GroupValue {
+                            variable: var.clone(),
+                            values,
+                        }
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
             let unweighted_n = stats.variables
                 .iter()
@@ -573,11 +582,41 @@ impl FormatResult {
                         .collect()
                 });
 
+            let unselected_classification = results.unselected_classification
+                .as_ref()
+                .map(|unselected| {
+                    unselected
+                        .iter()
+                        .map(|(group, counts)| GroupClassification {
+                            group: group.clone(),
+                            counts: counts.clone(),
+                        })
+                        .collect()
+                });
+
+            let unselected_percentage = results.unselected_percentage
+                .as_ref()
+                .map(|unselected| {
+                    unselected
+                        .iter()
+                        .map(|(group, percentages)| GroupPercentage {
+                            group: group.clone(),
+                            percentages: percentages.clone(),
+                        })
+                        .collect()
+                });
+
             FormattedClassificationResults {
                 original_classification,
                 cross_validated_classification,
                 original_percentage,
                 cross_validated_percentage,
+                unselected_classification,
+                unselected_percentage,
+                ungrouped_classification: results.ungrouped_classification.clone(),
+                ungrouped_percentage: results.ungrouped_percentage.clone(),
+                unselected_ungrouped_classification: results.unselected_ungrouped_classification.clone(),
+                unselected_ungrouped_percentage: results.unselected_ungrouped_percentage.clone(),
             }
         });
 
@@ -709,8 +748,8 @@ impl FormatResult {
                         variables: vars
                             .iter()
                             .map(|v| {
-                                // Convert VariableNotInAnalysis to VariableInAnalysis for simplicity
-                                // This is just a placeholder, you might need actual conversion logic
+                                // Rows of Variables Not in the Analysis share the output shape of
+                                // Variables in the Analysis; their F to Enter fills both F fields.
                                 VariableInAnalysis {
                                     variable: v.variable.clone(),
                                     tolerance: v.tolerance,
@@ -761,8 +800,10 @@ impl FormatResult {
                 wilks_exact_df1: stats.wilks_exact_df1.clone(),
                 wilks_exact_df2: stats.wilks_exact_df2.clone(),
                 wilks_exact_sig: stats.wilks_exact_sig.clone(),
+                wilks_f_exact: stats.wilks_f_exact.clone(),
                 raos_v: stats.raos_v.clone(),
                 raos_v_sig: stats.raos_v_sig.clone(),
+                raos_v_df: stats.raos_v_df.clone(),
                 change_in_v: stats.change_in_v.clone(),
                 change_sig: stats.change_sig.clone(),
                 variables_in_analysis,
@@ -843,36 +884,6 @@ impl FormatResult {
                 }
             });
 
-        // Transform DiscriminantHistograms
-        let discriminant_histograms = result.discriminant_histograms.as_ref().map(|hists| {
-            let histograms = hists.functions
-                .iter()
-                .flat_map(|func| {
-                    hists.groups
-                        .iter()
-                        .filter_map(|group| {
-                            // Hanya lanjutkan jika histogram ditemukan untuk func ini
-                            if let Some(histogram) = hists.histograms.get(func) {
-                                Some(HistogramEntry {
-                                    function: func.clone(),
-                                    group: group.clone(),
-                                    histogram: histogram.clone(),
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<HistogramEntry>>()
-                })
-                .collect();
-
-            FormattedDiscriminantHistograms {
-                functions: hists.functions.clone(),
-                groups: hists.groups.clone(),
-                histograms,
-            }
-        });
-
         // Transform ScatterData
         let scatter_data = result.scatter_data.as_ref().map(|sd| {
             let discriminant_scores = scores_in_function_order(&sd.discriminant_scores);
@@ -899,13 +910,14 @@ impl FormatResult {
             casewise_statistics,
             prior_probabilities,
             classification_function_coefficients,
-            discriminant_histograms,
             scatter_data,
             bootstrap_results: result.bootstrap_results.clone(),
             assumption_results: result.assumption_results.clone(),
             territorial_map: result.territorial_map,
             combined_groups_plot: result.combined_groups_plot,
             separate_groups_plot: result.separate_groups_plot,
+            unstandardized_coefficients: result.unstandardized_coefficients,
+            separate_groups_classification: result.separate_groups_classification.clone(),
         }
     }
 }

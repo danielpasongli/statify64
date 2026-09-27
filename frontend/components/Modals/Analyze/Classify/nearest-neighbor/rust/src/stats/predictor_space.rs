@@ -11,7 +11,7 @@ use crate::models::{
 
 use super::{
     core::{determine_effective_k, find_k_nearest_neighbors, preprocess_knn_data},
-    prediction::calculate_predictions,
+    prediction::{calculate_predictions, CategoryTieBreaker},
 };
 
 pub fn calculate_predictor_space(
@@ -72,6 +72,8 @@ fn build_points(
     use_euclidean: bool,
     config: &KnnConfig,
 ) -> Vec<DataPoint> {
+    let tie_breaker =
+        CategoryTieBreaker::from_training(&knn_data.target_values, &knn_data.training_indices);
     display_matrix
         .iter()
         .enumerate()
@@ -125,6 +127,7 @@ fn build_points(
                 &knn_data.target_values,
                 config,
                 !knn_data.target_is_numeric_scale(),
+                &tie_breaker,
             );
             let predicted_label = data_value_label(&predicted_value);
             let (display_target_label, target_number) = if point_type == "Holdout" {
@@ -789,7 +792,12 @@ mod tests {
                 is_cate_target_var: true,
                 random_assign_to_partition: false,
                 random_assign_to_fold: false,
+                predicted_value_name: None,
+                probability_name: None,
+                partition_name: None,
+                fold_name: None,
             },
+            run: Default::default(),
             output: OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,

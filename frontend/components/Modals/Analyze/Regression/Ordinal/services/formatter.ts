@@ -11,6 +11,7 @@ import { formatParameterEstimates } from "./formatter_parameter";
 import { formatParallelLines } from "./formatter_parallel_lines";
 import { buildOrdinalPlumPayload } from "./formatter_payload";
 import { formatSavedVariables } from "./formatter_saved_variables";
+import { formatAsymptoticMatrix } from "./formatter_matrix";
 
 export type { BuildOrdinalPlumPayloadInput } from "./formatter_payload";
 export { buildOrdinalPlumPayload };
@@ -55,6 +56,14 @@ export const formatOrdinalResult = (result: any) => {
         Boolean(row.isRedundant ?? row.is_redundant),
       ),
     });
+  }
+
+  const matrixEstimates = estimates && Array.isArray(estimates) ? estimates : [];
+  if (context.wantAsymptoticCovariance && Array.isArray(result.covarianceMatrix || result.covariance_matrix)) {
+    allSections.push(formatAsymptoticMatrix(matrixEstimates, result.covarianceMatrix || result.covariance_matrix, "covariance", context.linkFunctionNote));
+  }
+  if (context.wantAsymptoticCorrelation && Array.isArray(result.correlationMatrix || result.correlation_matrix)) {
+    allSections.push(formatAsymptoticMatrix(matrixEstimates, result.correlationMatrix || result.correlation_matrix, "correlation", context.linkFunctionNote));
   }
 
   allSections.push(

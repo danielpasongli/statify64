@@ -40,13 +40,14 @@ struct StepData {
     min_d_squared: f64,       // method statistic of the model (Min D² / Min F / Residual Variance)
     between_groups: String,   // closest/min pair for Mahalanobis & Smallest F methods
     wilks_lambda: f64,
-    wilks_exact_f: f64,       // model's exact Wilks F (Rao approx) for the Wilks' Lambda table
+    wilks_exact_f: f64,       // model's Wilks F (Rao's F) for the Wilks' Lambda table
     wilks_exact_df1: i32,
-    wilks_exact_df2: i32,
+    wilks_exact_df2: f64,     // fractional when Rao's F is approximate
     wilks_exact_sig: f64,
+    wilks_f_exact: bool,      // Rao's F is exact: min(p, g - 1) <= 2
     f_to_enter: f64,
     f_to_enter_df1: i32,
-    f_to_enter_df2: i32,
+    f_to_enter_df2: f64,
     significance: f64,
     raos_v: f64,              // Rao's V cumulative value
     change_in_v: f64,         // Change in V (ΔV)
@@ -95,8 +96,8 @@ pub fn calculate_stepwise_statistics(
         return Err(err);
     }
 
-    // Perform stepwise analysis
-    // Stepwise is performed for F-value, F-probability, and Rao's V methods
+    // Selection runs when an entry criterion is flagged, or under Rao's V; otherwise
+    // only step 0 is reported.
     let steps_data = if config.method.f_value || config.method.f_probability || determine_method_type(config) == MethodType::Raos {
         match perform_stepwise_analysis(&dataset, variables, config) {
             Ok(data) => data,
@@ -117,8 +118,11 @@ pub fn calculate_stepwise_statistics(
 
 /// Perform stepwise analysis
 ///
-/// This function performs the stepwise variable selection procedure,
-/// iteratively adding or removing variables based on the specified method.
+/// Each step first tries to remove the model variable with the smallest F to Remove
+/// (when it fails the removal criterion), and otherwise to enter the best candidate
+/// (when it passes the entry criterion). The procedure stops when no variable moves,
+/// after 2 × (number of variables) steps, or when a step would return to a variable
+/// set already visited.
 ///
 /// # Parameters
 /// * `dataset` - The analyzed dataset
@@ -136,7 +140,7 @@ fn perform_stepwise_analysis(
     let mut remaining_variables: Vec<String> = variables.clone();
     let mut steps_data: Vec<StepData> = Vec::new();
 
-    // [ANTI-OSILASI]: Tracker kombinasi variabel
+    // Variable sets already visited; returning to one would cycle forever.
     let mut seen_states: HashSet<String> = HashSet::new();
     seen_states.insert(String::new());
 
@@ -152,7 +156,7 @@ fn perform_stepwise_analysis(
     while step < max_steps {
         let mut step_action_taken = false;
 
-        // PRIORITAS 1: Cek apakah ada variabel yang harus di-REMOVE
+        // 1. Removal first: the variable with the smallest F to Remove.
         if current_variables.len() > 1 {
             let (worst_var_to_remove, worst_stats) =
                 find_worst_variable_to_remove(&current_variables, dataset, method_type, config)?;
@@ -167,18 +171,18 @@ fn perform_stepwise_analysis(
 
             if should_remove {
                 if let Some(var_name) = worst_var_to_remove {
-                    // Cek apakah state ini memicu infinite loop
+                    // Stop when the step would return to a variable set already visited.
                     let mut next_state = current_variables.clone();
                     next_state.retain(|v| v != &var_name);
                     next_state.sort();
                     let state_key = next_state.join(",");
 
                     if seen_states.contains(&state_key) {
-                        break; // Loop terdeteksi, hentikan analisis!
+                        break; // cycle
                     }
                     seen_states.insert(state_key);
 
-                    // Eksekusi Removal
+                    // Remove it.
                     current_variables.retain(|v| v != &var_name);
                     remaining_variables.push(var_name.clone());
 
@@ -202,7 +206,7 @@ fn perform_stepwise_analysis(
             }
         }
 
-        // PRIORITAS 2: Jika tidak ada yang di-remove, cek apakah ada yang bisa di-ENTER
+        // 2. Otherwise entry: the best candidate.
         if !step_action_taken && !remaining_variables.is_empty() {
             let (best_var_to_enter, best_stats) = find_best_variable_to_enter(
                 &remaining_variables,
@@ -222,18 +226,18 @@ fn perform_stepwise_analysis(
 
             if should_enter {
                 if let Some(var_name) = best_var_to_enter {
-                    // Cek apakah state ini memicu infinite loop
+                    // Stop when the step would return to a variable set already visited.
                     let mut next_state = current_variables.clone();
                     next_state.push(var_name.clone());
                     next_state.sort();
                     let state_key = next_state.join(",");
 
                     if seen_states.contains(&state_key) {
-                        break; // Loop terdeteksi, hentikan analisis!
+                        break; // cycle
                     }
                     seen_states.insert(state_key);
 
-                    // Eksekusi Entry
+                    // Enter it.
                     current_variables.push(var_name.clone());
                     remaining_variables.retain(|v| v != &var_name);
                     step_action_taken = true;
@@ -265,7 +269,15 @@ fn perform_stepwise_analysis(
     Ok(steps_data)
 }
 
-fn should_enter_variable(
+/// Whether the best candidate enters the model:
+///
+/// - Rao's V: first ΔV ≥ VIN;
+/// - then F ≥ FIN, or with probability of F, P(F(g − 1, n − g − q) > F) ≤ PIN
+///   (q = variables already in the model).
+///
+/// With neither criterion flagged no variable enters, except under Rao's V, which
+/// then uses F values.
+pub fn should_enter_variable(
     var_opt: &Option<String>,
     stats: &VariableNotInAnalysis,
     dataset: &AnalyzedDataset,
@@ -285,21 +297,21 @@ fn should_enter_variable(
     let p_entry_threshold = thresholds.p_entry;
 
     // Rao's V: f_to_enter holds the partial Wilks F (for display), and
-    // min_d_squared holds ΔV (for selection and the VIN gate).
-    // Both gates must pass: VIN (ΔV ≥ V-to-enter) and FIN (partial F ≥ F-to-enter).
+    // min_d_squared holds ΔV (for selection and the VIN gate). Both gates must
+    // pass: VIN (ΔV ≥ V-to-enter), then the same F / probability-of-F criterion
+    // as every other method.
     let method_type = determine_method_type(config);
-    if method_type == MethodType::Raos {
-        // VIN gate: ΔV is in stats.min_d_squared
-        if stats.min_d_squared < thresholds.v_enter {
-            return false;
-        }
-        // FIN gate: partial Wilks F is in stats.f_to_enter
-        return stats.f_to_enter >= f_entry_threshold;
+    if method_type == MethodType::Raos && stats.min_d_squared < thresholds.v_enter {
+        return false;
     }
 
-    if config.method.f_value {
-        stats.f_to_enter >= f_entry_threshold
-    } else if config.method.f_probability {
+    // Rao's V runs even with neither criterion flagged, and then uses F values.
+    let criterion_set = config.method.f_value || config.method.f_probability;
+    if !criterion_set && method_type != MethodType::Raos {
+        return false;
+    }
+
+    if uses_probability_of_f(config) {
         // df must match calculate_f_to_enter_wilks: (g - 1, n - g - q),
         // q = variables already in the model (candidate excluded).
         let df1 = num_groups as f64 - 1.0;
@@ -310,10 +322,20 @@ fn should_enter_variable(
         let p_value = calculate_p_value_from_f(stats.f_to_enter, df1, df2);
         p_value <= p_entry_threshold
     } else {
-        false
+        stats.f_to_enter >= f_entry_threshold
     }
 }
 
+/// True when entry and removal use the probability of F (PIN/POUT) instead of F
+/// values (FIN/FOUT). F values win when both are flagged, and are the fallback
+/// when neither is. create_stepwise_note uses the same rule for its footnotes.
+fn uses_probability_of_f(config: &DiscriminantConfig) -> bool {
+    !config.method.f_value && config.method.f_probability
+}
+
+/// Whether the model variable with the smallest F to Remove leaves the model:
+/// F ≤ FOUT, or with probability of F, P(F(g − 1, n − g − p + 1) > F) ≥ POUT
+/// (p = variables in the model).
 fn should_remove_variable(
     var_opt: &Option<String>,
     stats: &VariableInAnalysis,
@@ -333,25 +355,22 @@ fn should_remove_variable(
     let f_removal_threshold = thresholds.f_removal;
     let p_removal_threshold = thresholds.p_removal;
 
-    // Rao's V: f_to_remove now holds the partial Wilks F directly.
+    // Every method, Rao's V included, removes on the partial Wilks F-to-remove,
+    // judged by F value or by its probability as the user chose.
     let method_type = determine_method_type(config);
-    if method_type == MethodType::Raos {
-        return stats.f_to_remove <= f_removal_threshold;
+    let criterion_set = config.method.f_value || config.method.f_probability;
+    if !criterion_set && method_type != MethodType::Raos {
+        return false;
     }
 
-    if config.method.f_value || config.method.f_probability {
+    if uses_probability_of_f(config) {
         // df2 must match how F-to-remove was computed in calculate_f_to_remove_wilks:
         // df2 = n - p - g + 1 (where p = num_current_vars)
         let df2 = total_cases as f64 - num_groups as f64 - num_current_vars as f64 + 1.0;
         let p_value = calculate_p_value_from_f(stats.f_to_remove, num_groups as f64 - 1.0, df2);
-
-        if config.method.f_value {
-            stats.f_to_remove <= f_removal_threshold
-        } else {
-            p_value >= p_removal_threshold
-        }
+        p_value >= p_removal_threshold
     } else {
-        false
+        stats.f_to_remove <= f_removal_threshold
     }
 }
 
@@ -362,8 +381,6 @@ fn create_initial_step(
     config: &DiscriminantConfig,
 ) -> Result<StepData, String> {
     let initial_variables_not_in = analyze_variables_not_in_model(variables, dataset, &[], config)?;
-    let _k = dataset.num_groups as i32;
-    let _n = dataset.total_cases as i32;
 
     Ok(StepData {
         variable_entered: None,
@@ -373,11 +390,12 @@ fn create_initial_step(
         wilks_lambda: 1.0,
         wilks_exact_f: 0.0,
         wilks_exact_df1: 0,
-        wilks_exact_df2: 0,
+        wilks_exact_df2: 0.0,
         wilks_exact_sig: 1.0,
+        wilks_f_exact: true,
         f_to_enter: 0.0,
         f_to_enter_df1: 0,
-        f_to_enter_df2: 0,
+        f_to_enter_df2: 0.0,
         significance: 1.0,
         raos_v: 0.0,
         change_in_v: 0.0,
@@ -403,12 +421,10 @@ fn create_step_data(
     let vars_in_analysis =
         analyze_variables_in_model(current_variables, dataset, method_type, config)?;
 
+    // SPSS lists every variable not in the model in this table, so the full ranked
+    // list is kept.
     let vars_not_in_analysis =
         analyze_variables_not_in_model(remaining_variables, dataset, current_variables, config)?;
-
-    // SPSS displays ALL variables not in the model in this table (not just the
-    // top 4), so we keep the full ranked list.
-    let vars_not_in_analysis = vars_not_in_analysis;
 
     let combined_vars = current_variables.to_vec();
     let p = combined_vars.len() as f64;
@@ -464,19 +480,27 @@ fn create_step_data(
 
     let change_in_v = raos_v - prev_raos_v;
 
-    // Change in V has df = k - 1 (number of groups minus 1), distributed as chi-squared
+    // ΔV = V(this step) − V(previous step), approximately chi-square with g − 1 df:
+    // Sig. = P(χ²(g − 1) > ΔV).
     let df_change = k - 1.0;
     let change_sig = if change_in_v > 0.0 && df_change > 0.0 {
-        // Rao's V change is approximately chi-squared distributed with df = k - 1
         chi_squared_cdf_upper(change_in_v, df_change)
     } else {
         1.0
     };
 
-    // --- MODEL's exact Wilks F (Rao's approximation) — ALWAYS computed, for the
-    //     per-step "Wilks' Lambda" summary table regardless of selection method. ---
-    let (wilks_exact_f, wilks_exact_df1, wilks_exact_df2) = if combined_vars.is_empty() {
-        (0.0, 0, (n - k) as i32)
+    // --- Model's Wilks F (Rao's F), computed for the per-step "Wilks' Lambda" table
+    //     whatever the selection method. With p variables, g groups and n cases:
+    //       t   = √[(p²(g − 1)² − 4) / (p² + (g − 1)² − 5)]   (1 when p(g − 1) = 2)
+    //       w   = n − 1 − (p + g) / 2
+    //       df1 = p(g − 1),   df2 = w·t − (p(g − 1) − 2) / 2
+    //       F   = [(1 − Λ^(1/t)) / Λ^(1/t)] · df2 / df1
+    // Rao's F is exact when min(p, g - 1) <= 2; df2 is then a whole number (rounded
+    // only to drop floating-point noise). Otherwise it is an approximation with a
+    // fractional df2, which is kept as is: truncating it would print the wrong df
+    // and compute Sig. on a different df than the F itself.
+    let (wilks_exact_f, wilks_exact_df1, wilks_exact_df2, wilks_f_exact) = if combined_vars.is_empty() {
+        (0.0, 0, n - k, true)
     } else {
         let p_k1 = p * (k - 1.0);
         let t = if p_k1 == 2.0 {
@@ -491,42 +515,46 @@ fn create_step_data(
             }
         };
         let w = n - 1.0 - (p + k) / 2.0;
-        let df2_val = w * t - (p_k1 - 2.0) / 2.0;
+        let exact = p.min(k - 1.0) <= 2.0;
+        let df2_raw = w * t - (p_k1 - 2.0) / 2.0;
+        let df2_val = if exact { df2_raw.round() } else { df2_raw };
         let l_t = wilks_lambda.powf(1.0 / t);
         let f_val = if l_t > 0.0 && l_t <= 1.0 {
             ((1.0 - l_t) / l_t) * (df2_val / p_k1)
         } else {
             0.0
         };
-        (f_val, p_k1 as i32, df2_val as i32)
+        (f_val, p_k1 as i32, df2_val, exact)
     };
     let wilks_exact_sig =
-        calculate_p_value_from_f(wilks_exact_f, wilks_exact_df1 as f64, wilks_exact_df2 as f64);
+        calculate_p_value_from_f(wilks_exact_f, wilks_exact_df1 as f64, wilks_exact_df2);
 
     // --- Method-specific statistic for the "Variables Entered/Removed" table. ---
     let (exact_f, exact_df1, exact_df2) = if combined_vars.is_empty() {
-        (0.0, 0, (n - k) as i32)
+        (0.0, 0, n - k)
     } else if method_type == MethodType::FRatio {
         // Smallest F Ratio: shows the model's Min. F, distributed as F(p, N-g-p+1).
-        (min_d_squared, p as i32, (n - k - p + 1.0) as i32)
+        (min_d_squared, p as i32, n - k - p + 1.0)
     } else if method_type == MethodType::Mahalanobis {
-        // Mahalanobis: Exact F from the two closest groups.
+        // Mahalanobis: Exact F of the two closest groups, the same F test as the
+        // pairwise group comparisons and the Smallest F Ratio method:
+        // F = (N-g-p+1) / (p(N-g)) · n_i·n_j/(n_i+n_j) · D², on (p, N-g-p+1) df.
         let min_result = calculate_min_mahalanobis_distance_with_groups(dataset, &combined_vars);
-        let df2 = n - k - p;
+        let df2 = n - k - p + 1.0;
         let n_i = min_result.n_i as f64;
         let n_j = min_result.n_j as f64;
         let f_val = if df2 > 0.0 && p > 0.0 && (n - k) > 0.0 && (n_i + n_j) > 0.0 {
-            ((n - k - p) / (p * (n - k - 1.0))) * ((n_i * n_j) / (n_i + n_j)) * min_result.min_d2
+            (df2 / (p * (n - k))) * ((n_i * n_j) / (n_i + n_j)) * min_result.min_d2
         } else {
             0.0
         };
-        (f_val, p as i32, df2 as i32)
+        (f_val, p as i32, df2)
     } else {
-        // Wilks / Rao's V / Unexplained: model's exact Wilks F.
+        // Wilks / Rao's V / Unexplained: model's Wilks F (Rao's F).
         (wilks_exact_f, wilks_exact_df1, wilks_exact_df2)
     };
 
-    let significance = calculate_p_value_from_f(exact_f, exact_df1 as f64, exact_df2 as f64);
+    let significance = calculate_p_value_from_f(exact_f, exact_df1 as f64, exact_df2);
 
     Ok(StepData {
         variable_entered,
@@ -538,6 +566,7 @@ fn create_step_data(
         wilks_exact_df1,
         wilks_exact_df2,
         wilks_exact_sig,
+        wilks_f_exact,
         f_to_enter: exact_f,
         f_to_enter_df1: exact_df1,
         f_to_enter_df2: exact_df2,
@@ -582,8 +611,10 @@ fn convert_steps_to_output(
         wilks_exact_df1: Vec::new(),
         wilks_exact_df2: Vec::new(),
         wilks_exact_sig: Vec::new(),
+        wilks_f_exact: Vec::new(),
         raos_v: Vec::new(),
         raos_v_sig: Vec::new(),
+        raos_v_df: Vec::new(),
         change_in_v: Vec::new(),
         change_sig: Vec::new(),
         variables_in_analysis: HashMap::new(),
@@ -595,7 +626,7 @@ fn convert_steps_to_output(
     let k = num_groups as f64;
 
     for (step_idx, step) in steps_data.iter().enumerate() {
-        // Kita butuh step 0 hanya untuk tabel "Variables Not in The Analysis" yang catat step 0:
+        // Variables Not in the Analysis is kept for every step, step 0 included.
         result.variables_not_in_analysis.insert(
             step_idx.to_string(),
             step.variables_not_in_analysis.clone(),
@@ -611,8 +642,10 @@ fn convert_steps_to_output(
             continue;
         }
 
-        // Approx. sig. of cumulative Rao's V: chi-squared upper tail with df = step * (k-1)
-        let raos_v_df = step_idx as f64 * (k - 1.0);
+        // Approx. sig. of cumulative Rao's V: chi-squared upper tail with
+        // df = p * (k-1), p = variables in the model after this step. (Not
+        // step * (k-1): after a removal step the two differ.)
+        let raos_v_df = step.variables_in_analysis.len() as f64 * (k - 1.0);
         let raos_v_sig = if step.raos_v > 0.0 && raos_v_df > 0.0 {
             chi_squared_cdf_upper(step.raos_v, raos_v_df)
         } else {
@@ -632,8 +665,10 @@ fn convert_steps_to_output(
         result.wilks_exact_df1.push(step.wilks_exact_df1);
         result.wilks_exact_df2.push(step.wilks_exact_df2);
         result.wilks_exact_sig.push(step.wilks_exact_sig);
+        result.wilks_f_exact.push(step.wilks_f_exact);
         result.raos_v.push(step.raos_v);
         result.raos_v_sig.push(raos_v_sig);
+        result.raos_v_df.push(raos_v_df);
         result.change_in_v.push(step.change_in_v);
         result.change_sig.push(step.change_sig);
 
@@ -674,7 +709,7 @@ fn create_stepwise_note(config: &DiscriminantConfig) -> StepwiseNote {
     let max_steps = config.main.independent_variables.len() * 2;
     let thresholds = stepwise_thresholds(config);
 
-    let (entry_msg, removal_msg) = if !config.method.f_value && config.method.f_probability {
+    let (entry_msg, removal_msg) = if uses_probability_of_f(config) {
         (
             format!("b. Maximum probability of F to enter is {}.", thresholds.p_entry),
             format!("c. Minimum probability of F to remove is {}.", thresholds.p_removal),

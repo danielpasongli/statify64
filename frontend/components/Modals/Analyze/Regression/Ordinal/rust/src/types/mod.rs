@@ -162,6 +162,7 @@ pub struct PlumOutputOptions {
     pub goodness_of_fit: Option<bool>,
     pub summary_statistics: Option<bool>,
     pub parameter_estimates: Option<bool>,
+    pub asymptotic_covariance: Option<bool>,
     pub asymptotic_correlation: Option<bool>,
     pub cell_information: Option<bool>,
     pub test_of_parallel_lines: Option<bool>,

@@ -15,6 +15,12 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { HelperIcon } from "./helper-icon";
+import {
+  isCrossValidationEnabled as computeIsCrossValidationEnabled,
+  isSeedUnavailable,
+  enforcePartitionRules,
+  applyCrossValidationDefaults,
+} from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborPartitionRules";
 
 const helperText = {
   trainingAndHoldoutPartition:
@@ -51,18 +57,6 @@ const partitionStatesEqual = (
   right: KNNPartitionType,
 ) => partitionFields.every((field) => Object.is(left[field], right[field]));
 
-const isSeedUnavailable = (state: KNNPartitionType) =>
-  Boolean(state.UseVariable && state.VFoldUsePartitioningVar);
-
-const enforcePartitionRules = (state: KNNPartitionType): KNNPartitionType => {
-  if (!isSeedUnavailable(state) || !state.SetSeed) return state;
-
-  return {
-    ...state,
-    SetSeed: false,
-  };
-};
-
 export const KNNPartition = ({
   updateFormData,
   data,
@@ -75,7 +69,10 @@ export const KNNPartition = ({
     enforcePartitionRules(normalizePartitionState(data)),
   );
 
-  const isCrossValidationEnabled = isAutoK && !isFeatureSelectionActive;
+  const isCrossValidationEnabled = computeIsCrossValidationEnabled(
+    isAutoK,
+    isFeatureSelectionActive,
+  );
 
   useEffect(() => {
     const nextState = enforcePartitionRules(normalizePartitionState(data));
@@ -99,28 +96,15 @@ export const KNNPartition = ({
   const isSeedDisabled = isSeedUnavailable(partitionState);
 
   useEffect(() => {
-    if (isCrossValidationEnabled) {
-      setPartitionState((prev) => {
-        const nextState = enforcePartitionRules({
-          ...prev,
-          VFoldUseRandomly: prev.VFoldUseRandomly ?? true,
-          VFoldUsePartitioningVar: prev.VFoldUsePartitioningVar ?? false,
-          NumPartition: prev.NumPartition ?? 10, // biasanya default 10 folds
-        });
-        if (partitionStatesEqual(prev, nextState)) return prev;
-        return nextState;
-      });
-    } else if (isFeatureSelectionActive) {
-      setPartitionState((prev) => {
-        const nextState = enforcePartitionRules({
-          ...prev,
-          VFoldUseRandomly: false,
-          VFoldUsePartitioningVar: false,
-        });
-        if (partitionStatesEqual(prev, nextState)) return prev;
-        return nextState;
-      });
-    }
+    setPartitionState((prev) => {
+      const nextState = applyCrossValidationDefaults(
+        prev,
+        isCrossValidationEnabled,
+        isFeatureSelectionActive,
+      );
+      if (partitionStatesEqual(prev, nextState)) return prev;
+      return nextState;
+    });
   }, [isCrossValidationEnabled, isFeatureSelectionActive]);
 
   useEffect(() => {
@@ -285,7 +269,7 @@ export const KNNPartition = ({
                         </Label>
                       </div>
                       <div
-                        className={`flex flex-row gap-1 pl-6 ${
+                        className={`grid grid-cols-3 gap-2 pl-6 ${
                           !partitionState.UseRandomly
                             ? "opacity-50 pointer-events-none"
                             : ""
@@ -296,7 +280,10 @@ export const KNNPartition = ({
                           <Input
                             id="TrainingNumber"
                             type="number"
-                            className="min-w-2xl w-full"
+                            min={1}
+                            max={100}
+                            step={1}
+                            className="w-full min-w-0"
                             placeholder=""
                             value={partitionState.TrainingNumber ?? 70}
                             disabled={!partitionState.UseRandomly}
@@ -309,11 +296,11 @@ export const KNNPartition = ({
                           />
                         </div>
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="TrainingNumber">Holdout %:</Label>
+                          <Label htmlFor="HoldoutNumber">Holdout %:</Label>
                           <Input
                             id="HoldoutNumber"
                             type="number"
-                            className="min-w-2xl w-full"
+                            className="w-full min-w-0"
                             placeholder=""
                             value={100 - (partitionState.TrainingNumber ?? 0)}
                             disabled={true}
@@ -325,7 +312,7 @@ export const KNNPartition = ({
                           <Input
                             id="TotalNumber"
                             type="number"
-                            className="min-w-2xl w-full"
+                            className="w-full min-w-0"
                             placeholder=""
                             value={100}
                             disabled={true}
@@ -421,7 +408,9 @@ export const KNNPartition = ({
                         <Label htmlFor="TrainingNumber">Number of Folds:</Label>
                         <Input
                           id="NumPartition"
-                          type="text"
+                          type="number"
+                          min={2}
+                          step={1}
                           className="min-w-2xl w-full"
                           placeholder=""
                           value={partitionState.NumPartition ?? ""}
@@ -527,6 +516,9 @@ export const KNNPartition = ({
                       <Input
                         id="Seed"
                         type="number"
+                        min={0}
+                        max={4294967295}
+                        step={1}
                         className="min-w-2xl w-full"
                         placeholder=""
                         value={partitionState.Seed ?? ""}
