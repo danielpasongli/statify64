@@ -16,6 +16,8 @@ export const RANGE_NOT_INTEGER_MESSAGE = "Minimum and maximum must be integers."
 export const RANGE_ORDER_MESSAGE = "Maximum must be greater than minimum.";
 export const TOO_FEW_GROUPS_MESSAGE =
     "At least two non-empty groups are required within the defined range.";
+export const SELECTION_VALUE_MISSING_MESSAGE =
+    "Set a Value for the Selection Variable (Value...), or remove the Selection Variable.";
 
 /**
  * Validate a Define Range entry. Accepts raw input values (the text fields) as
@@ -109,6 +111,13 @@ export function validateDiscriminantInput(
 
     const rangeError = validateDefineRange(config.defineRange.minRange, config.defineRange.maxRange);
     if (rangeError) return rangeError;
+
+    // Like SPSS, a selection variable needs its value. Without one the engine would
+    // ignore the selection and silently analyse every case.
+    const selectionValue = config.setValue.Value;
+    if (config.main.SelectionVariable && (selectionValue === null || selectionValue === undefined)) {
+        return SELECTION_VALUE_MISSING_MESSAGE;
+    }
 
     if (countNonEmptyGroups(dataVariables, variables, config) < 2) return TOO_FEW_GROUPS_MESSAGE;
     return null;

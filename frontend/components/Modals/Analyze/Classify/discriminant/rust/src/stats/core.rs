@@ -12,6 +12,7 @@ pub use crate::stats::log_determinant::*;
 pub use crate::stats::matrix_calculation::*;
 pub use crate::stats::pairwise_comparison::*;
 pub use crate::stats::prior_probabilities::*;
+pub use crate::stats::separate_covariance::*;
 pub use crate::stats::statistical_test::*;
 pub use crate::stats::stepwise_method::*;
 pub use crate::stats::stepwise_statistics::*;

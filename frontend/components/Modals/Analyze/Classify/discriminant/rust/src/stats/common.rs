@@ -12,7 +12,8 @@ use rayon::prelude::*;
 
 use crate::models::{ AnalysisData, DataRecord, DataValue, DiscriminantConfig };
 
-/// Constants for numerical stability
+/// Relative threshold below which a singular or eigenvalue counts as zero
+/// (a value v is kept when v > EPSILON × the largest value).
 pub const EPSILON: f64 = 1e-10;
 pub const TOLERANCE_THRESHOLD: f64 = 0.001;
 
@@ -87,9 +88,7 @@ pub fn extract_analyzed_dataset(
     let min_range = config.define_range.min_range;
     let max_range = config.define_range.max_range;
 
-    web_sys::console::log_1(
-        &format!("Extracting dataset with {} variables", independent_variables.len()).into()
-    );
+    crate::debug_log!("Extracting dataset with {} variables", independent_variables.len());
 
     // Extract grouped data with proper error handling
     let (group_data, group_labels, total_cases) = match
@@ -121,59 +120,33 @@ pub fn extract_analyzed_dataset(
     })
 }
 
-pub fn filter_dataset(dataset: &AnalyzedDataset, include_vars: &[String]) -> AnalyzedDataset {
-    // 1. Filter group_data: masukkan variable yang ada include_vars
-    let filtered_group_data: HashMap<String, HashMap<String, Vec<f64>>> = dataset.group_data
-        .iter()
-        .filter(|(var, _)| include_vars.contains(var))
-        .map(|(var, groups)| (var.clone(), groups.clone()))
-        .collect();
-
-    // 2. Filter group_means dengan kunci yang sama
-    let filtered_group_means: HashMap<String, HashMap<String, f64>> = dataset.group_means
-        .iter()
-        .map(|(group_id, var_map)| {
-            let filtered_vars = var_map
-                .iter()
-                .filter(|(var, _)| include_vars.contains(var))
-                .map(|(var, val)| (var.clone(), *val))
-                .collect();
-            (group_id.clone(), filtered_vars)
-        })
-        .collect();
-
-    // 3. Filter overall_means
-    let filtered_overall_means: HashMap<String, f64> = dataset.overall_means
-        .iter()
-        .filter(|(var, _)| include_vars.contains(var))
-        .map(|(var, &m)| (var.clone(), m))
-        .collect();
-
-    // 4. Sisakan group_labels, num_groups, total_cases apa adanya
-    AnalyzedDataset {
-        group_data: filtered_group_data,
-        group_labels: dataset.group_labels.clone(),
-        group_means: filtered_group_means,
-        overall_means: filtered_overall_means,
-        num_groups: dataset.num_groups,
-        total_cases: dataset.total_cases,
-    }
+/// Order of group labels everywhere in the analysis: numeric codes ascending by
+/// value (so 10 follows 2, as SPSS orders them), then non-numeric labels as text.
+pub fn compare_group_labels(a: &str, b: &str) -> std::cmp::Ordering {
+    let key = |g: &str| match g.parse::<f64>() {
+        Ok(n) if n.is_finite() => (0_u8, n),
+        _ => (1_u8, 0.0),
+    };
+    let (ka, kb) = (key(a), key(b));
+    ka.0
+        .cmp(&kb.0)
+        .then(ka.1.partial_cmp(&kb.1).unwrap_or(std::cmp::Ordering::Equal))
+        .then_with(|| a.cmp(b))
 }
 
-/// Extract grouped data from analysis data
-///
-/// This function extracts and organizes the data into groups based on the grouping variable,
-/// while applying filtering based on range constraints.
-pub fn extract_grouped_data(
+/// Rows (indices into `data`) of each group, in row order, applying the group
+/// labelling and range rules of the analysis: a numeric code inside the defined
+/// range is labelled with `f64::to_string`, a text code is used as is, anything
+/// else is left out. The single source of these rules, so the data extraction,
+/// the bootstrap strata and the casewise row numbers always agree.
+pub fn group_row_indices(
     data: &AnalysisData,
     grouping_variable: &str,
-    independent_variables: &[String],
     min_range: Option<f64>,
     max_range: Option<f64>
-) -> Result<(HashMap<String, HashMap<String, Vec<f64>>>, Vec<String>, usize), String> {
+) -> HashMap<String, Vec<usize>> {
     let mut group_mappings: HashMap<String, Vec<usize>> = HashMap::new();
 
-    // Extract group data with range checking
     for (i, record) in data.group_data.iter().flatten().enumerate() {
         if let Some(value) = record.values.get(grouping_variable) {
             let group_label = match value {
@@ -198,9 +171,49 @@ pub fn extract_grouped_data(
         }
     }
 
-    // Sort group labels for consistent processing
+    group_mappings
+}
+
+/// Data-file row (0-based) of every analysis case, per group, in the order the
+/// group's values are stored in `AnalyzedDataset::group_data`. `data` is the
+/// filtered data the dataset was extracted from.
+pub fn analysis_case_rows(
+    data: &AnalysisData,
+    config: &DiscriminantConfig
+) -> HashMap<String, Vec<usize>> {
+    group_row_indices(
+        data,
+        &config.main.grouping_variable,
+        config.define_range.min_range,
+        config.define_range.max_range
+    )
+        .into_iter()
+        .map(|(group, rows)| {
+            let file_rows = rows
+                .into_iter()
+                .map(|r| data.row_numbers.as_ref().and_then(|rn| rn.get(r).copied()).unwrap_or(r))
+                .collect();
+            (group, file_rows)
+        })
+        .collect()
+}
+
+/// Extract grouped data from analysis data
+///
+/// This function extracts and organizes the data into groups based on the grouping variable,
+/// while applying filtering based on range constraints.
+pub fn extract_grouped_data(
+    data: &AnalysisData,
+    grouping_variable: &str,
+    independent_variables: &[String],
+    min_range: Option<f64>,
+    max_range: Option<f64>
+) -> Result<(HashMap<String, HashMap<String, Vec<f64>>>, Vec<String>, usize), String> {
+    let group_mappings = group_row_indices(data, grouping_variable, min_range, max_range);
+
+    // Group labels in SPSS order: numeric codes by value, not as text.
     let mut group_labels: Vec<String> = group_mappings.keys().cloned().collect();
-    group_labels.sort();
+    group_labels.sort_by(|a, b| compare_group_labels(a, b));
 
     // Extract values for each variable by group
     let mut variable_values: HashMap<String, HashMap<String, Vec<f64>>> = HashMap::new();
@@ -209,10 +222,8 @@ pub fn extract_grouped_data(
     for var_name in independent_variables {
         let mut group_values: HashMap<String, Vec<f64>> = HashMap::new();
 
-        // FIX: Find the correct variable in independent_data by checking if the variable name exists in records
-        // Previously, the code used index matching which could be wrong if variable order differs
+        // Column of `independent_data` that holds this predictor, found by name.
         let var_data_opt = data.independent_data.iter().find(|records| {
-            // Check if this record group contains the variable we're looking for
             records.iter().any(|record| record.values.contains_key(var_name))
         });
 
@@ -282,9 +293,9 @@ pub fn extract_grouped_data(
     Ok((variable_values, group_labels, total_cases))
 }
 
-/// Calculate group means for all variables
+/// Mean of every variable within every group:
 ///
-/// Computes the mean value of each variable for each group in the dataset.
+/// x̄ⱼₖ = Σᵢ xᵢⱼₖ / nₖ   (variable j, group k; 0 for an empty group)
 pub fn calculate_group_means(
     group_data: &HashMap<String, HashMap<String, Vec<f64>>>,
     group_labels: &[String],
@@ -320,9 +331,9 @@ pub fn calculate_group_means(
     group_means
 }
 
-/// Calculate overall means for all variables
+/// Mean of every variable over the cases of all groups:
 ///
-/// Computes the overall mean value for each variable across all groups.
+/// x̄ⱼ = Σₖ Σᵢ xᵢⱼₖ / N   (N = total number of cases; 0 when there are none)
 pub fn calculate_overall_means(
     group_data: &HashMap<String, HashMap<String, Vec<f64>>>,
     group_labels: &[String],
@@ -355,20 +366,6 @@ pub fn calculate_overall_means(
     overall_means
 }
 
-/// Extract numeric values from DataRecord by field name
-pub fn extract_values_by_name(records: &[DataRecord], field_name: &str) -> Vec<f64> {
-    records
-        .iter()
-        .filter_map(|record| {
-            if let Some(DataValue::Number(value)) = record.values.get(field_name) {
-                Some(*value)
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 /// Extract all variable values from a single case
 pub fn extract_case_values(record: &DataRecord, variables: &[String]) -> Vec<f64> {
     let values: Vec<f64> = variables
@@ -377,29 +374,25 @@ pub fn extract_case_values(record: &DataRecord, variables: &[String]) -> Vec<f64
             if let Some(DataValue::Number(value)) = record.values.get(var_name) {
                 Some(*value)
             } else {
-                // Log missing variables for debugging
-                web_sys::console::log_1(&format!(
-                    "[extract_case_values] Variable '{}' not found or not numeric in record. Available keys: {:?}",
+                // Debug-build log of a missing or non-numeric value.
+                crate::debug_log!("[extract_case_values] Variable '{}' not found or not numeric in record. Available keys: {:?}",
                     var_name,
-                    record.values.keys().collect::<Vec<_>>()
-                ).into());
+                    record.values.keys().collect::<Vec<_>>());
                 None
             }
         })
         .collect();
 
     if values.len() != variables.len() {
-        web_sys::console::log_1(&format!(
-            "[extract_case_values] Length mismatch! Expected {} variables, got {} values",
+        crate::debug_log!("[extract_case_values] Length mismatch! Expected {} variables, got {} values",
             variables.len(),
-            values.len()
-        ).into());
+            values.len());
     }
 
     values
 }
 
-/// Calculate mean of values
+/// Arithmetic mean x̄ = Σxᵢ / n; 0 for an empty slice.
 pub fn calculate_mean(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
@@ -407,7 +400,8 @@ pub fn calculate_mean(values: &[f64]) -> f64 {
     values.iter().sum::<f64>() / (values.len() as f64)
 }
 
-/// Calculate variance with optional pre-calculated mean
+/// Sample variance s² = Σ(xᵢ − x̄)² / (n − 1); `mean` supplies x̄ when it is already
+/// known. 0 when n ≤ 1.
 pub fn calculate_variance(values: &[f64], mean: Option<f64>) -> f64 {
     if values.len() <= 1 {
         return 0.0;
@@ -420,12 +414,13 @@ pub fn calculate_variance(values: &[f64], mean: Option<f64>) -> f64 {
         .sum::<f64>() / ((values.len() - 1) as f64)
 }
 
-/// Calculate standard deviation with optional pre-calculated mean
+/// Sample standard deviation s = √s² (see `calculate_variance`).
 pub fn calculate_std_dev(values: &[f64], mean: Option<f64>) -> f64 {
     calculate_variance(values, mean).sqrt()
 }
 
-/// Calculate covariance between two sets of values
+/// Sample covariance s_xy = Σ(xᵢ − x̄)(yᵢ − ȳ) / (n − 1); 0 when n ≤ 1 or the two
+/// slices differ in length.
 pub fn calculate_covariance(
     values1: &[f64],
     values2: &[f64],
@@ -446,26 +441,7 @@ pub fn calculate_covariance(
         .sum::<f64>() / ((values1.len() - 1) as f64)
 }
 
-/// Calculate correlation coefficient
-pub fn calculate_correlation(values1: &[f64], values2: &[f64]) -> f64 {
-    if values1.len() <= 1 || values1.len() != values2.len() {
-        return 0.0;
-    }
-
-    let mean1 = calculate_mean(values1);
-    let mean2 = calculate_mean(values2);
-
-    let std_dev1 = calculate_std_dev(values1, Some(mean1));
-    let std_dev2 = calculate_std_dev(values2, Some(mean2));
-
-    if std_dev1 <= EPSILON || std_dev2 <= EPSILON {
-        return 0.0;
-    }
-
-    calculate_covariance(values1, values2, Some(mean1), Some(mean2)) / (std_dev1 * std_dev2)
-}
-
-/// Calculate log determinant of a matrix
+/// Natural log of the determinant, ln|A| (see `calculate_rank_and_log_det`).
 ///
 /// Delegates to `calculate_rank_and_log_det`, so Box's M (which calls this) and the
 /// Log Determinants table (which calls that) share a single implementation — same
@@ -474,7 +450,13 @@ pub fn calculate_log_determinant(matrix: &DMatrix<f64>) -> f64 {
     calculate_rank_and_log_det(matrix).1
 }
 
-/// Calculate rank and log determinant of a matrix
+/// Rank and natural-log determinant of a matrix from its singular values σ₁ ≥ … ≥ σₚ:
+///
+/// rank  = number of σᵢ > EPSILON · σ₁
+/// ln|A| = Σ ln σᵢ over those σᵢ
+///
+/// For a symmetric positive semi-definite matrix (a covariance matrix) the singular
+/// values are its eigenvalues, so ln|A| is the log determinant of its non-singular part.
 pub fn calculate_rank_and_log_det(matrix: &DMatrix<f64>) -> (i32, f64) {
     let svd = SVD::new(matrix.clone(), false, false);
     let singular_values = &svd.singular_values;
@@ -496,7 +478,9 @@ pub fn calculate_rank_and_log_det(matrix: &DMatrix<f64>) -> (i32, f64) {
     (rank, log_det)
 }
 
-/// Calculate p-value from F statistic with enhanced error handling
+/// Upper-tail probability of the F distribution:
+///
+/// p = P(F(df1, df2) > f_value) = 1 − CDF(f_value)
 ///
 /// # Parameters
 /// * `f_value` - The F statistic
@@ -504,9 +488,9 @@ pub fn calculate_rank_and_log_det(matrix: &DMatrix<f64>) -> (i32, f64) {
 /// * `df2` - Denominator degrees of freedom
 ///
 /// # Returns
-/// The p-value (1-tailed)
+/// The p-value in [0, 1]: 1 for a NaN or non-positive F or a non-positive df, and 0
+/// for F > 10⁶.
 pub fn calculate_p_value_from_f(f_value: f64, df1: f64, df2: f64) -> f64 {
-    // Extensive error checking for numerical stability
     if f_value.is_nan() {
         return 1.0;
     }
@@ -523,21 +507,18 @@ pub fn calculate_p_value_from_f(f_value: f64, df1: f64, df2: f64) -> f64 {
         return 1.0;
     }
 
-    // Handle extreme F values that might cause numerical issues
+    // A very large F is reported as p = 0.
     if f_value > 1000000.0 {
         return 0.0;
     }
 
-    // Calculate p-value using the F distribution
     match FisherSnedecor::new(df1, df2) {
         Ok(dist) => {
             let p_value = dist.sf(f_value);
 
-            // Handle potential NaN results
             if p_value.is_nan() {
                 1.0
             } else {
-                // Enforce bounds of p-value (should be between 0 and 1)
                 p_value.max(0.0).min(1.0)
             }
         }
@@ -545,7 +526,8 @@ pub fn calculate_p_value_from_f(f_value: f64, df1: f64, df2: f64) -> f64 {
     }
 }
 
-/// Calculate p-value from chi-square statistic
+/// Upper-tail probability of the chi-square distribution, p = P(χ²(df) > chi_square);
+/// 1 for a non-positive statistic or df = 0.
 pub fn calculate_p_value_from_chi_square(chi_square: f64, df: usize) -> f64 {
     if chi_square <= 0.0 || df == 0 {
         return 1.0;
@@ -557,8 +539,8 @@ pub fn calculate_p_value_from_chi_square(chi_square: f64, df: usize) -> f64 {
     }
 }
 
-/// Calculate upper tail CDF (p-value) for chi-square distribution
-/// This is the same as calculate_p_value_from_chi_square but accepts f64 df
+/// Upper-tail probability P(χ²(df) > chi_square) for a real-valued df (as
+/// `calculate_p_value_from_chi_square`); 1 for a non-positive statistic or df.
 pub fn chi_squared_cdf_upper(chi_square: f64, df: f64) -> f64 {
     if chi_square <= 0.0 || df <= 0.0 {
         return 1.0;
@@ -570,12 +552,13 @@ pub fn chi_squared_cdf_upper(chi_square: f64, df: f64) -> f64 {
     }
 }
 
-/// Filter valid cases based on config
+/// The analysis cases: rows that pass the selection filter, have a group code inside
+/// the defined range, and have no missing predictor (listwise deletion).
 pub fn filter_valid_cases(
     data: &AnalysisData,
     config: &DiscriminantConfig
 ) -> Result<AnalysisData, String> {
-    web_sys::console::log_1(&"Executing filter_valid_cases".into());
+    crate::debug_log!("Executing filter_valid_cases");
 
     let group_var = &config.main.grouping_variable;
     let independent_vars = &config.main.independent_variables;
@@ -761,42 +744,128 @@ pub fn filter_valid_cases(
         None => None,
     };
 
+    // File row of every surviving row, so per-case output can print the case's
+    // own row number. Rows of later group_data blocks are offset by the earlier
+    // blocks' lengths, matching the flattened row order used everywhere else.
+    let mut row_numbers = Vec::new();
+    let mut offset = 0;
+    for (group_idx, group) in data.group_data.iter().enumerate() {
+        if let Some(indices) = valid_indices.get(group_idx) {
+            for &idx in indices {
+                let row = offset + idx;
+                row_numbers.push(
+                    data.row_numbers.as_ref().and_then(|rn| rn.get(row).copied()).unwrap_or(row)
+                );
+            }
+        }
+        offset += group.len();
+    }
+
     Ok(AnalysisData {
         group_data: filtered_group_data,
         independent_data: filtered_independent_data,
         selection_data: filtered_selection_data,
         strata_data: filtered_strata_data,
+        row_numbers: Some(row_numbers),
         group_data_defs: data.group_data_defs.clone(),
         independent_data_defs: data.independent_data_defs.clone(),
         selection_data_defs: data.selection_data_defs.clone(),
     })
 }
 
-/// A case with a valid group code that passes the selection filter but has at least
-/// one missing predictor. It is left out of the analysis (listwise), but with
-/// "Replace missing values with mean" (SPSS /CLASSIFY=MEANSUB) it is still
-/// classified, each missing predictor replaced by that predictor's mean over the
-/// analysis cases. It is never used to estimate anything, and it is not
-/// cross-validated (cross-validation covers only the cases in the analysis).
+/// A case that is classified but never used to estimate anything, and never
+/// cross-validated (cross-validation covers only the cases in the analysis). Three kinds:
+///
+/// - a mean-substituted case: it passes the selection filter but has at least one
+///   missing predictor, so it is left out of the analysis (listwise); with "Replace
+///   missing values with mean" (SPSS /CLASSIFY=MEANSUB) it is still classified, each
+///   missing predictor replaced by that predictor's mean over the analysis cases;
+/// - an unselected case: the selection variable leaves it out of the analysis (the
+///   testing part of a training/testing split). SPSS classifies these too and
+///   reports them separately; a missing predictor is mean-substituted only with
+///   "Replace missing values with mean", otherwise the case is not classified;
+/// - an ungrouped case: its group code is missing or outside the defined range.
+///   SPSS (GROUPS subcommand): "Cases with values outside the value range or missing
+///   are ignored during the analysis phase but are classified during the
+///   classification phase." Its group is `UNGROUPED_LABEL`; a missing predictor is
+///   handled as for an unselected case.
 #[derive(Debug, Clone)]
 pub struct MeanSubstitutedCase {
-    /// Group label, formatted like `AnalyzedDataset::group_labels`.
+    /// Data-file row (0-based) of the case.
+    pub row: usize,
+    /// Group label, formatted like `AnalyzedDataset::group_labels`, or
+    /// `UNGROUPED_LABEL` for an ungrouped case.
     pub group: String,
     /// One value per independent variable, missing ones already replaced by the mean.
     pub values: HashMap<String, f64>,
+    /// Whether the case passes the selection filter (true when no selection
+    /// variable is in use). Ungrouped cases are reported with the selected or the
+    /// unselected cases accordingly.
+    pub selected: bool,
+}
+
+/// Actual-group label of an ungrouped case (missing or out-of-range group code), as
+/// SPSS prints it in the Casewise Statistics.
+pub const UNGROUPED_LABEL: &str = "ungrouped";
+
+/// Which extra cases `collect_extra_cases` returns.
+#[derive(Clone, Copy, PartialEq)]
+enum ExtraCases {
+    /// Selected cases with a missing predictor ("Replace missing values with mean").
+    MeanSubstituted,
+    /// Cases the selection variable leaves out (the testing part of a split).
+    Unselected,
+    /// Cases with a missing or out-of-range group code, selected or not.
+    Ungrouped,
 }
 
 /// Collect the mean-substituted cases from the raw (unfiltered) data.
-///
-/// Uses the same rules as the analysis pipeline so no case is counted twice or
-/// dropped: the selection filter and "missing" test of `filter_valid_cases`, and the
-/// group-label formatting and range check of `extract_grouped_data`. Cases whose
-/// group is not one of the analysis groups are skipped. The means come from the
-/// analysis cases (`filtered`), i.e. the same `overall_means` the functions use.
 pub fn mean_substituted_cases(
     raw: &AnalysisData,
     filtered: &AnalysisData,
     config: &DiscriminantConfig
+) -> Result<Vec<MeanSubstitutedCase>, String> {
+    collect_extra_cases(raw, filtered, config, ExtraCases::MeanSubstituted)
+}
+
+/// Collect the unselected cases from the raw (unfiltered) data: every case the
+/// selection variable leaves out whose group code is one of the analysis groups.
+/// Empty when no selection variable (with a value) is in use.
+pub fn unselected_cases(
+    raw: &AnalysisData,
+    filtered: &AnalysisData,
+    config: &DiscriminantConfig
+) -> Result<Vec<MeanSubstitutedCase>, String> {
+    collect_extra_cases(raw, filtered, config, ExtraCases::Unselected)
+}
+
+/// Collect the ungrouped cases from the raw (unfiltered) data: every case whose group
+/// code is missing or outside the defined range, selected or not. They never enter the
+/// analysis, but are classified, as SPSS does ("Ungrouped cases" in the Classification
+/// Results). A case with a missing predictor is classified only with "Replace missing
+/// values with mean".
+pub fn ungrouped_cases(
+    raw: &AnalysisData,
+    filtered: &AnalysisData,
+    config: &DiscriminantConfig
+) -> Result<Vec<MeanSubstitutedCase>, String> {
+    collect_extra_cases(raw, filtered, config, ExtraCases::Ungrouped)
+}
+
+/// Shared scan behind `mean_substituted_cases`, `unselected_cases` and
+/// `ungrouped_cases`.
+///
+/// Uses the same rules as the analysis pipeline so no case is counted twice or
+/// dropped: the selection filter and "missing" test of `filter_valid_cases`, and the
+/// group-label formatting and range check of `extract_grouped_data`. Outside
+/// `ExtraCases::Ungrouped`, cases whose group is not one of the analysis groups are
+/// skipped. The means come from the analysis cases (`filtered`), i.e. the same
+/// `overall_means` the functions use.
+fn collect_extra_cases(
+    raw: &AnalysisData,
+    filtered: &AnalysisData,
+    config: &DiscriminantConfig,
+    kind: ExtraCases
 ) -> Result<Vec<MeanSubstitutedCase>, String> {
     let dataset = extract_analyzed_dataset(filtered, config)?;
     let group_var = &config.main.grouping_variable;
@@ -828,40 +897,53 @@ pub fn mean_substituted_cases(
     let mut cases = Vec::new();
 
     for (row, record) in raw.group_data.iter().flatten().enumerate() {
-        // Group label and range check, as in extract_grouped_data.
+        // Group label and range check, as in extract_grouped_data. `None` is a
+        // missing or out-of-range group code (a blank text code counts as missing,
+        // as in basic_processing_summary).
         let group = match record.values.get(group_var) {
-            Some(DataValue::Number(num)) => {
+            Some(DataValue::Number(num)) if !num.is_nan() => {
                 if min_range.map_or(true, |min| *num >= min) && max_range.map_or(true, |max| *num <= max) {
-                    num.to_string()
+                    Some(num.to_string())
                 } else {
-                    continue;
+                    None
                 }
             }
-            Some(DataValue::Text(text)) => text.clone(),
-            _ => {
+            Some(DataValue::Text(text)) if !text.trim().is_empty() => Some(text.clone()),
+            _ => None,
+        };
+        let group = match (kind, group) {
+            (ExtraCases::Ungrouped, None) => UNGROUPED_LABEL.to_string(),
+            (ExtraCases::Ungrouped, Some(_)) | (_, None) => {
                 continue;
+            }
+            (_, Some(group)) => {
+                if !dataset.group_labels.contains(&group) {
+                    continue;
+                }
+                group
             }
         };
-        if !dataset.group_labels.contains(&group) {
-            continue;
-        }
 
-        // Selection filter, as in filter_valid_cases.
-        if
-            let (Some(rows), Some(selection_var), Some(set_value)) = (
-                &selection_rows,
-                &config.main.selection_variable,
-                &config.set_value.value,
-            )
+        // Selection filter, as in filter_valid_cases. `None` when no selection
+        // variable (with a value) is in use, i.e. every case counts as selected.
+        let selected: Option<bool> = match
+            (&selection_rows, &config.main.selection_variable, &config.set_value.value)
         {
-            let selected = match rows.get(row).and_then(|r| r.values.get(selection_var)) {
-                Some(DataValue::Number(val)) => (val - set_value).abs() < EPSILON,
-                Some(DataValue::Text(s)) => s == &set_value.to_string(),
-                _ => false,
-            };
-            if !selected {
-                continue;
-            }
+            (Some(rows), Some(selection_var), Some(set_value)) =>
+                Some(match rows.get(row).and_then(|r| r.values.get(selection_var)) {
+                    Some(DataValue::Number(val)) => (val - set_value).abs() < EPSILON,
+                    Some(DataValue::Text(s)) => s == &set_value.to_string(),
+                    _ => false,
+                }),
+            _ => None,
+        };
+        let in_scope = match kind {
+            ExtraCases::MeanSubstituted => selected.unwrap_or(true),
+            ExtraCases::Unselected => selected == Some(false),
+            ExtraCases::Ungrouped => true,
+        };
+        if !in_scope {
+            continue;
         }
 
         let cells: Vec<Option<&DataValue>> = columns
@@ -870,7 +952,7 @@ pub fn mean_substituted_cases(
             .map(|(column, var)| column.and_then(|c| c.get(row)).and_then(|r| r.values.get(*var)))
             .collect();
 
-        // "Missing", as in filter_valid_cases. A complete case is already in the analysis.
+        // "Missing", as in filter_valid_cases.
         let is_missing = |cell: &Option<&DataValue>| {
             match cell {
                 Some(DataValue::Number(val)) => val.is_nan(),
@@ -879,8 +961,17 @@ pub fn mean_substituted_cases(
                 _ => false,
             }
         };
-        if !cells.iter().any(is_missing) {
-            continue;
+        let any_missing = cells.iter().any(is_missing);
+        match kind {
+            // A complete selected case is already in the analysis.
+            ExtraCases::MeanSubstituted => if !any_missing {
+                continue;
+            }
+            // An unselected or ungrouped case with a missing predictor is classified
+            // only when "Replace missing values with mean" is on.
+            ExtraCases::Unselected | ExtraCases::Ungrouped => if any_missing && !config.classify.replace {
+                continue;
+            }
         }
 
         let mut values = HashMap::new();
@@ -900,7 +991,8 @@ pub fn mean_substituted_cases(
             values.insert((*var).clone(), value);
         }
 
-        cases.push(MeanSubstitutedCase { group, values });
+        let file_row = raw.row_numbers.as_ref().and_then(|rn| rn.get(row).copied()).unwrap_or(row);
+        cases.push(MeanSubstitutedCase { row: file_row, group, values, selected: selected.unwrap_or(true) });
     }
 
     Ok(cases)

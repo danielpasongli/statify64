@@ -15,22 +15,34 @@ use crate::models::{result::ClassificationResults, AnalysisData, DiscriminantCon
 use super::core::{
     calculate_canonical_functions, calculate_eigen_statistics, calculate_pooled_within_matrix,
     calculate_prior_probabilities, classification_case_values, extract_analyzed_dataset,
-    get_stepwise_selected_variables, is_rank_deficient, push_analysis_warning, AnalyzedDataset,
-    MeanSubstitutedCase, EPSILON,
+    fit_groups, get_stepwise_selected_variables, is_rank_deficient, push_analysis_warning,
+    separate_groups_rule, AnalyzedDataset, MeanSubstitutedCase, SeparateGroupsRule, EPSILON,
 };
 
 use crate::stats::matrix_calculation::calculate_pooled_within_matrix_no_epsilon;
 
-/// Calculate classification results for discriminant analysis
+/// Classification Results table: counts and row percentages of actual group ×
+/// predicted group, for the original classification and, with Leave-one-out, the
+/// cross-validated one. A case is predicted into the group with the largest posterior
+/// probability (see `classify_case_safe`); row % = 100 · count / row total.
+///
+/// `unselected` are the cases the selection variable leaves out (the testing part of
+/// a training/testing split); they are classified with the same functions and
+/// reported in their own block, as SPSS does. Empty when no selection is in use.
+/// `ungrouped` are the cases with a missing or out-of-range group code
+/// (`ungrouped_cases`); SPSS classifies them too and reports them in an "Ungrouped
+/// cases" row of the Original block they belong to (selected or not selected).
 pub fn calculate_classification_results(
     data: &AnalysisData,
     config: &DiscriminantConfig,
     substituted: &[MeanSubstitutedCase],
+    unselected: &[MeanSubstitutedCase],
+    ungrouped: &[MeanSubstitutedCase],
 ) -> Result<ClassificationResults, String> {
     let dataset = extract_analyzed_dataset(data, config)?;
     let grouping_var = &config.main.grouping_variable;
 
-    // Pastikan kita HANYA menggunakan variabel yang lolos stepwise!
+    // Model variables: the stepwise selection, or every predictor.
     let variables_to_use: Vec<String> = if config.main.stepwise {
         get_stepwise_selected_variables(data, config)?
     } else {
@@ -50,6 +62,8 @@ pub fn calculate_classification_results(
     let eigen_stats = calculate_eigen_statistics(data, config)?;
     let canonical_functions = calculate_canonical_functions(data, config)?;
     let priors = resolve_priors(data, config, &dataset)?;
+    // Some(..) under Classify → Use Covariance Matrix → Separate-groups.
+    let separate_rule = separate_groups_rule(data, config)?;
 
     let mut original_classification = HashMap::new();
     let mut original_percentage = HashMap::new();
@@ -68,7 +82,7 @@ pub fn calculate_classification_results(
             classification_case_values(&dataset, group_name, &variables_to_use, substituted)
         {
 
-            // Klasifikasikan menggunakan logika anti-underflow yang sama dengan Casewise
+            // Largest posterior, compared on the log scale as in the casewise statistics.
             let predicted_idx = classify_case_safe(
                 &case_values,
                 &canonical_functions,
@@ -76,6 +90,7 @@ pub fn calculate_classification_results(
                 &dataset,
                 &variables_to_use,
                 &priors,
+                separate_rule.as_ref(),
             );
 
             if let Some(counts) = original_classification.get_mut(group_name) {
@@ -84,7 +99,7 @@ pub fn calculate_classification_results(
         }
     }
 
-    // Kalkulasi Persentase Original
+    // Row percentages of the original classification.
     for group in &dataset.group_labels {
         if let Some(counts) = original_classification.get(group) {
             let total_cases = counts.iter().sum::<i32>() as f64;
@@ -98,9 +113,73 @@ pub fn calculate_classification_results(
         }
     }
 
-    // --- MENGHITUNG CROSS-VALIDATED CLASSIFICATION (SPSS Matching) ---
+    // Predicted group (index into dataset.group_labels) of a case classified
+    // outside the analysis: an unselected or an ungrouped case.
+    let predict = |case: &MeanSubstitutedCase| -> usize {
+        let case_values: Vec<f64> = variables_to_use
+            .iter()
+            .map(|var| case.values.get(var).copied().unwrap_or(f64::NAN))
+            .collect();
+        classify_case_safe(
+            &case_values,
+            &canonical_functions,
+            &eigen_stats,
+            &dataset,
+            &variables_to_use,
+            &priors,
+            separate_rule.as_ref(),
+        )
+    };
+    let (selected_ungrouped, unselected_ungrouped): (Vec<&MeanSubstitutedCase>, Vec<&MeanSubstitutedCase>) =
+        ungrouped.iter().partition(|case| case.selected);
+
+    // --- CASES NOT SELECTED (testing part of a training/testing split) ---
+    // Classified with the functions, priors and rule of the selected cases, and never
+    // cross-validated. Only groups present in the analysis can be counted (their
+    // actual group must be a row of the table); unselected_cases guarantees that.
+    // The block also exists when its only cases are ungrouped ones.
+    let (unselected_classification, unselected_percentage) =
+        if unselected.is_empty() && unselected_ungrouped.is_empty() {
+            (None, None)
+        } else {
+            let mut counts: HashMap<String, Vec<i32>> = dataset
+                .group_labels
+                .iter()
+                .map(|g| (g.clone(), vec![0; dataset.group_labels.len()]))
+                .collect();
+            for case in unselected {
+                let predicted_idx = predict(case);
+                if let Some(row) = counts.get_mut(&case.group) {
+                    row[predicted_idx] += 1;
+                }
+            }
+            let percentages = row_percentages(&counts);
+            (Some(counts), Some(percentages))
+        };
+
+    // --- UNGROUPED CASES ---
+    // One row per block: how the ungrouped cases were classified. They have no actual
+    // group, so they never count toward the share of correctly classified cases.
+    let ungrouped_row = |cases: &[&MeanSubstitutedCase]| -> (Option<Vec<i32>>, Option<Vec<f64>>) {
+        if cases.is_empty() {
+            return (None, None);
+        }
+        let mut counts = vec![0; dataset.group_labels.len()];
+        for case in cases {
+            counts[predict(case)] += 1;
+        }
+        let total = counts.iter().sum::<i32>() as f64;
+        let percentages = counts.iter().map(|&c| (c as f64) * 100.0 / total).collect();
+        (Some(counts), Some(percentages))
+    };
+    let (ungrouped_classification, ungrouped_percentage) = ungrouped_row(&selected_ungrouped);
+    let (unselected_ungrouped_classification, unselected_ungrouped_percentage) =
+        ungrouped_row(&unselected_ungrouped);
+
+    // --- CROSS-VALIDATED CLASSIFICATION (leave-one-out) ---
     // A failed cross-validation keeps the original classification table and reports
-    // why the cross-validated part is missing.
+    // why the cross-validated part is missing. It always uses the pooled (linear)
+    // rule, also under Separate-groups: SPSS cross-validates only the linear rule.
     let (cross_validated_classification, cross_validated_percentage) = if config.classify.leave {
         match calculate_cross_validation(&dataset, &variables_to_use, &priors) {
             Ok(cv) => cv,
@@ -118,10 +197,37 @@ pub fn calculate_classification_results(
         cross_validated_classification,
         original_percentage,
         cross_validated_percentage,
+        unselected_classification,
+        unselected_percentage,
+        ungrouped_classification,
+        ungrouped_percentage,
+        unselected_ungrouped_classification,
+        unselected_ungrouped_percentage,
     })
 }
 
-/// Calculate cross-validation results using leave-one-out method
+/// Row percentages of a classification table: each count over its row total.
+fn row_percentages(counts: &HashMap<String, Vec<i32>>) -> HashMap<String, Vec<f64>> {
+    counts
+        .iter()
+        .map(|(group, row)| {
+            let total = row.iter().sum::<i32>() as f64;
+            let percentages = row
+                .iter()
+                .map(|&c| if total > 0.0 { (c as f64) * 100.0 / total } else { 0.0 })
+                .collect();
+            (group.clone(), percentages)
+        })
+        .collect()
+}
+
+/// Leave-one-out cross-validated classification. Each analysis case is held out, the
+/// group means and the pooled within-groups covariance S₍₋ᵢ₎ are re-estimated without
+/// it, and the case is predicted into the group k with the largest
+///
+/// ln πₖ − ½ D²ₖ,   D²ₖ = (x − x̄ₖ₍₋ᵢ₎)ᵀ S₍₋ᵢ₎⁻¹ (x − x̄ₖ₍₋ᵢ₎)
+///
+/// computed on the predictors rather than on the discriminant functions, as SPSS does.
 ///
 /// `priors` are the full-sample priors (same as the Prior Probabilities table and the
 /// cross-validated casewise statistics); they are not re-estimated per held-out case,
@@ -147,7 +253,7 @@ fn calculate_cross_validation(
 
     let p_vars = variables_to_use.len();
 
-    // Kumpulkan semua case
+    // Every analysis case as (group, index within the group, predictor values).
     let mut all_cases: Vec<(String, usize, Vec<f64>)> = Vec::new();
     for group_name in &dataset.group_labels {
         let n_cases = dataset
@@ -192,9 +298,9 @@ fn calculate_cross_validation(
             let group_cases = all_cases.iter().filter(|(g, _, _)| g == group_name).count();
             if group_cases <= 1 {
                 return Ok(None);
-            } // Skip grup yang hanya punya 1 anggota
+            } // a group's only case cannot be held out
 
-            // Clone dataset asli dan buang 1 case ini (Sangat efisien!)
+            // The dataset without this case.
             let mut leave_dataset = dataset.clone();
             leave_dataset.total_cases -= 1;
 
@@ -205,7 +311,7 @@ fn calculate_cross_validation(
                     }
                 }
 
-                // Update ulang Rata-rata Grup (Group Means)
+                // Mean of the case's group, recomputed without the case.
                 let mut sum = 0.0;
                 let mut count = 0;
                 if let Some(v_data) = leave_dataset.group_data.get(var).unwrap().get(group_name) {
@@ -222,7 +328,7 @@ fn calculate_cross_validation(
                     .insert(var.clone(), new_mean);
             }
 
-            // Hitung jarak Mahalanobis menggunakan Observation Space (Seperti SPSS)
+            // Pooled within-groups covariance without the case.
             let pooled_cov =
                 calculate_pooled_within_matrix_no_epsilon(&leave_dataset, variables_to_use);
             // Holding a case out can make S_pooled singular (e.g. a group left with
@@ -265,12 +371,12 @@ fn calculate_cross_validation(
 
                 let d2 = (diff.transpose() * &inv_cov * &diff)[0];
 
-                // Menggunakan properti Logaritma Natural agar bebas dari Underflow!
+                // ln πₖ − ½ D²ₖ: the log posterior up to a shared term, free of underflow.
                 let log_prob = priors[g_idx].ln() - 0.5 * d2;
                 group_probs.push((g_idx, log_prob));
             }
 
-            // Urutkan dan ambil yang probabilitasnya paling tinggi
+            // Group with the largest posterior.
             group_probs
                 .sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
             Ok(Some((group_name.clone(), group_probs[0].0)))
@@ -280,12 +386,12 @@ fn calculate_cross_validation(
         .flatten()
         .collect();
 
-    // Rekapitulasi jumlah
+    // Counts of actual × predicted group.
     for (group_name, predicted_idx) in cv_results {
         cv_classification.get_mut(&group_name).unwrap()[predicted_idx] += 1;
     }
 
-    // Rekapitulasi persentase
+    // Row percentages.
     for group in &dataset.group_labels {
         if let Some(counts) = cv_classification.get(group) {
             let total_cases = counts.iter().sum::<i32>() as f64;
@@ -302,7 +408,17 @@ fn calculate_cross_validation(
     Ok((Some(cv_classification), Some(cv_percentage)))
 }
 
-/// Classify a case securely (Anti-Underflow)
+/// Predicted group (index into `dataset.group_labels`) of one case: the group with the
+/// largest posterior probability
+///
+/// P(G = k | D) = πₖ exp(−½ D²ₖ) / Σⱼ πⱼ exp(−½ D²ⱼ)
+///
+/// where D²ₖ is the squared distance of the case's discriminant scores
+/// (fⱼ = a₀ⱼ + Σᵢ aᵢⱼ xᵢ for function j) to the centroid of group k; with the pooled
+/// matrix this is the Euclidean distance in function space. The groups are compared on
+/// ln πₖ − ½ D²ₖ, which has the same maximum and cannot underflow. Under
+/// Separate-groups each group uses its own covariance matrix of the functions
+/// (see `fit_groups`).
 fn classify_case_safe(
     case_values: &[f64],
     canonical_functions: &CanonicalFunctions,
@@ -310,9 +426,9 @@ fn classify_case_safe(
     dataset: &AnalyzedDataset,
     variables_to_use: &[String],
     priors: &[f64],
+    separate_rule: Option<&SeparateGroupsRule>,
 ) -> usize {
     let num_functions = eigen_stats.eigenvalue.len();
-    let num_groups = dataset.group_labels.len();
 
     let mut disc_scores = vec![0.0; num_functions];
     for (var_idx, var_name) in variables_to_use.iter().enumerate() {
@@ -331,25 +447,19 @@ fn classify_case_safe(
         }
     }
 
-    let mut group_probs = Vec::with_capacity(num_groups);
-
-    for (g_idx, target_group) in dataset.group_labels.iter().enumerate() {
-        let mut d2 = 0.0;
-        if let Some(centroid) = canonical_functions.function_at_centroids.get(target_group) {
-            for (fi, &score) in disc_scores.iter().enumerate() {
-                if fi < centroid.len() {
-                    d2 += (score - centroid[fi]).powi(2);
-                }
-            }
-        }
-        if d2.is_nan() {
-            d2 = f64::MAX;
-        }
-
-        let log_prior = priors[g_idx].ln();
-        let log_prob = log_prior - 0.5 * d2;
-        group_probs.push((g_idx, log_prob));
-    }
+    // ln(prior) − ½·d2 per group (pooled), or with each group's own covariance
+    // matrix of the functions under Separate-groups.
+    let mut group_probs: Vec<(usize, f64)> = fit_groups(
+        &disc_scores,
+        canonical_functions,
+        &dataset.group_labels,
+        priors,
+        separate_rule,
+    )
+    .iter()
+    .enumerate()
+    .map(|(g_idx, fit)| (g_idx, fit.log_score))
+    .collect();
 
     group_probs.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
     group_probs[0].0
@@ -376,7 +486,13 @@ fn resolve_priors(
     Ok(prior_table.prior_probabilities)
 }
 
-/// Calculate Fisher's linear discriminant function coefficients
+/// Classification Function Coefficients (Fisher's linear discriminant functions), one
+/// function per group k:
+///
+/// bₖ  = S⁻¹ x̄ₖ               (S = pooled within-groups covariance)
+/// b₀ₖ = ln πₖ − ½ bₖᵀ x̄ₖ     (constant; πₖ = prior probability)
+///
+/// A case is assigned to the group with the largest bₖᵀ x + b₀ₖ.
 pub fn calculate_summary_classification(
     data: &AnalysisData,
     config: &DiscriminantConfig,
@@ -384,7 +500,7 @@ pub fn calculate_summary_classification(
     let dataset = extract_analyzed_dataset(data, config)?;
     let grouping_var = &config.main.grouping_variable;
 
-    // Pastikan tabel "Classification Function Coefficients" juga difilter dari stepwise!
+    // Model variables: the stepwise selection, or every predictor.
     let variables: Vec<String> = if config.main.stepwise {
         get_stepwise_selected_variables(data, config)?
     } else {
@@ -419,10 +535,11 @@ pub fn calculate_summary_classification(
 
     let mut coefficients: HashMap<String, Vec<f64>> = HashMap::new();
     let mut constant_terms: Vec<f64> = Vec::with_capacity(dataset.group_labels.len());
-    let mut groups: Vec<usize> = Vec::with_capacity(dataset.group_labels.len());
+    // Column labels are the group codes themselves, in the analysis group order.
+    let mut groups: Vec<String> = Vec::with_capacity(dataset.group_labels.len());
 
     for (group_idx, group) in dataset.group_labels.iter().enumerate() {
-        groups.push(group_idx + 1);
+        groups.push(group.clone());
 
         let mut group_means = DVector::zeros(variables.len());
         for (var_idx, var_name) in variables.iter().enumerate() {

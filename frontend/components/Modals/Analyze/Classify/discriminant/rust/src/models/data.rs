@@ -114,6 +114,11 @@ pub struct AnalysisData {
     /// reads it; `None` when the user selected no strata variables.
     #[serde(default)]
     pub strata_data: Option<Vec<Vec<DataRecord>>>,
+    /// Data-file row (0-based) of every row still held, set by filter_valid_cases.
+    /// `None` for unfiltered data, whose rows are the file rows themselves. Lets
+    /// per-case output (casewise statistics) report the case's own row number.
+    #[serde(default)]
+    pub row_numbers: Option<Vec<usize>>,
     pub group_data_defs: Vec<Vec<VariableDefinition>>,
     pub independent_data_defs: Vec<Vec<VariableDefinition>>,
     pub selection_data_defs: Option<Vec<Vec<VariableDefinition>>>,

@@ -6,7 +6,8 @@ use super::core::{ calculate_p_value_from_f, calculate_univariate_f, extract_ana
 /// Calculate equality tests for discriminant analysis
 ///
 /// This function performs univariate ANOVAs to test the equality of group means
-/// for each independent variable.
+/// for each independent variable: Wilks' lambda and F from `calculate_univariate_f`,
+/// Sig. = P(F(g − 1, n − g) > F).
 ///
 /// # Parameters
 /// * `data` - The analysis data
@@ -18,7 +19,7 @@ pub fn calculate_equality_tests(
     data: &AnalysisData,
     config: &DiscriminantConfig
 ) -> Result<EqualityTests, String> {
-    web_sys::console::log_1(&"Executing calculate_equality_tests".into());
+    crate::debug_log!("Executing calculate_equality_tests");
 
     // Extract analyzed dataset
     let dataset = extract_analyzed_dataset(data, config)?;
