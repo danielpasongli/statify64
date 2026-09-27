@@ -419,47 +419,60 @@ impl FormatResult {
                 }
             }
 
-            let means = stats.variables
-                .iter()
-                .map(|var| {
-                    let values = stats.groups
-                        .iter()
-                        .enumerate()
-                        .map(|(j, _group)| {
-                            stats.means.get(var)
-                                .and_then(|v| v.get(j))
-                                .copied()
-                                .unwrap_or(0.0)
-                        })
-                        .collect();
+            // Means and standard deviations exist only with Statistics → Means; without
+            // it both lists stay empty (no zeros), so the formatter leaves the Mean and
+            // Std. Deviation columns out and the table shows only the Valid N counts.
+            let has_means = stats.means.values().any(|values| !values.is_empty());
 
-                    GroupValue {
-                        variable: var.clone(),
-                        values,
-                    }
-                })
-                .collect();
+            let means: Vec<GroupValue> = if has_means {
+                stats.variables
+                    .iter()
+                    .map(|var| {
+                        let values = stats.groups
+                            .iter()
+                            .enumerate()
+                            .map(|(j, _group)| {
+                                stats.means.get(var)
+                                    .and_then(|v| v.get(j))
+                                    .copied()
+                                    .unwrap_or(0.0)
+                            })
+                            .collect();
 
-            let std_deviations = stats.variables
-                .iter()
-                .map(|var| {
-                    let values = stats.groups
-                        .iter()
-                        .enumerate()
-                        .map(|(j, _group)| {
-                            stats.std_deviations.get(var)
-                                .and_then(|v| v.get(j))
-                                .copied()
-                                .unwrap_or(0.0)
-                        })
-                        .collect();
+                        GroupValue {
+                            variable: var.clone(),
+                            values,
+                        }
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
-                    GroupValue {
-                        variable: var.clone(),
-                        values,
-                    }
-                })
-                .collect();
+            let std_deviations: Vec<GroupValue> = if has_means {
+                stats.variables
+                    .iter()
+                    .map(|var| {
+                        let values = stats.groups
+                            .iter()
+                            .enumerate()
+                            .map(|(j, _group)| {
+                                stats.std_deviations.get(var)
+                                    .and_then(|v| v.get(j))
+                                    .copied()
+                                    .unwrap_or(0.0)
+                            })
+                            .collect();
+
+                        GroupValue {
+                            variable: var.clone(),
+                            values,
+                        }
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
             let unweighted_n = stats.variables
                 .iter()

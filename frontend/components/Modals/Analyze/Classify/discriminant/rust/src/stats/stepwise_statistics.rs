@@ -522,13 +522,15 @@ fn create_step_data(
         // Smallest F Ratio: shows the model's Min. F, distributed as F(p, N-g-p+1).
         (min_d_squared, p as i32, n - k - p + 1.0)
     } else if method_type == MethodType::Mahalanobis {
-        // Mahalanobis: Exact F from the two closest groups.
+        // Mahalanobis: Exact F of the two closest groups, the same F test as the
+        // pairwise group comparisons and the Smallest F Ratio method:
+        // F = (N-g-p+1) / (p(N-g)) · n_i·n_j/(n_i+n_j) · D², on (p, N-g-p+1) df.
         let min_result = calculate_min_mahalanobis_distance_with_groups(dataset, &combined_vars);
-        let df2 = n - k - p;
+        let df2 = n - k - p + 1.0;
         let n_i = min_result.n_i as f64;
         let n_j = min_result.n_j as f64;
         let f_val = if df2 > 0.0 && p > 0.0 && (n - k) > 0.0 && (n_i + n_j) > 0.0 {
-            ((n - k - p) / (p * (n - k - 1.0))) * ((n_i * n_j) / (n_i + n_j)) * min_result.min_d2
+            (df2 / (p * (n - k))) * ((n_i * n_j) / (n_i + n_j)) * min_result.min_d2
         } else {
             0.0
         };

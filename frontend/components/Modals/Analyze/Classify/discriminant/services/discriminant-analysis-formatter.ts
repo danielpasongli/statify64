@@ -168,14 +168,26 @@ export function transformDiscriminantResult(data: any): ResultJson {
 
   // 3. Group Statistics
   if (data.group_statistics) {
+    const gs = data.group_statistics;
+    // Mean and Std. Deviation come only with Statistics → Means (SPSS /STATISTICS=
+    // MEAN STDDEV). Without it the engine sends no values, and the table keeps just
+    // the Valid N counts instead of printing zeros.
+    const hasMeans = Array.isArray(gs.means) && gs.means.length > 0;
+    const entryOf = (list: any[] | undefined, variable: string) =>
+      list?.find((entry: any) => entry.variable === variable);
+
     const table: Table = {
       key: "group_statistics",
       title: "Group Statistics",
       columnHeaders: [
         { header: "category", key: "category" },
         { header: "", key: "var" },
-        { header: "Mean", key: "mean" },
-        { header: "Std. Deviation", key: "std_deviation" },
+        ...(hasMeans
+          ? [
+              { header: "Mean", key: "mean" },
+              { header: "Std. Deviation", key: "std_deviation" },
+            ]
+          : []),
         {
           header: "Valid N (listwise)",
           key: "valid_n",
@@ -188,46 +200,31 @@ export function transformDiscriminantResult(data: any): ResultJson {
       rows: [],
     };
 
-    // Process each group
-    data.group_statistics.groups.forEach(
-      (group: string, groupIndex: number) => {
-        // Process each variable's mean for this group
-        data.group_statistics.means.forEach((meanEntry: any) => {
-          const variableName = meanEntry.variable;
+    // One row per group (Total first) and variable.
+    gs.groups.forEach((group: string, groupIndex: number) => {
+      gs.variables.forEach((variableName: string) => {
+        const unweightedNEntry = entryOf(gs.unweighted_n, variableName);
+        const weightedNEntry = entryOf(gs.weighted_n, variableName);
 
-          // Find the corresponding std deviation entry
-          const stdDevEntry = data.group_statistics.std_deviations.find(
-            (entry: any) => entry.variable === variableName,
-          );
-
-          // Find the corresponding unweighted_n entry
-          const unweightedNEntry = data.group_statistics.unweighted_n?.find(
-            (entry: any) => entry.variable === variableName,
-          );
-
-          // Find the corresponding weighted_n entry
-          const weightedNEntry = data.group_statistics.weighted_n?.find(
-            (entry: any) => entry.variable === variableName,
-          );
-
-          if (stdDevEntry) {
-            table.rows.push({
-              rowHeader: [group, variableName],
-              mean: formatStat(meanEntry.values[groupIndex]),
-              std_deviation: formatStat(
-                stdDevEntry.values[groupIndex],
-              ),
-              unweighted: unweightedNEntry
-                ? formatCount(unweightedNEntry.values[groupIndex])
-                : "Invalid",
-              weighted: weightedNEntry
-                ? formatStat(weightedNEntry.values[groupIndex])
-                : "Invalid",
-            });
-          }
+        table.rows.push({
+          rowHeader: [group, variableName],
+          ...(hasMeans
+            ? {
+                mean: formatStat(entryOf(gs.means, variableName)?.values[groupIndex]),
+                std_deviation: formatStat(
+                  entryOf(gs.std_deviations, variableName)?.values[groupIndex],
+                ),
+              }
+            : {}),
+          unweighted: unweightedNEntry
+            ? formatCount(unweightedNEntry.values[groupIndex])
+            : "Invalid",
+          weighted: weightedNEntry
+            ? formatStat(weightedNEntry.values[groupIndex])
+            : "Invalid",
         });
-      },
-    );
+      });
+    });
 
     resultJson.tables.push(table);
   }
@@ -1775,32 +1772,38 @@ export function transformDiscriminantResult(data: any): ResultJson {
         { header: "", key: "type" },
         { header: "Case Number", key: "case_number" },
         { header: "Actual Group", key: "actual_group" },
-        { header: "Predicted Group", key: "predicted_group" },
+        // As in SPSS: the predicted group is the Highest Group itself, and only the
+        // Second Highest Group block names its group.
         {
           header: "Highest Group",
           key: "highest_group",
           children: [
-            // p & df are SPSS's "P(D>d | G=g)".
-            { header: "p", key: "p" },
-            { header: "df", key: "df" },
+            { header: "Predicted Group", key: "predicted_group" },
+            {
+              header: "P(D>d | G=g)",
+              key: "p_d_given_g",
+              children: [
+                { header: "p", key: "p" },
+                { header: "df", key: "df" },
+              ],
+            },
             { header: "P(G=g | D=d)", key: "p_d_g" },
             {
               header: "Squared Mahalanobis Distance to Centroid",
               key: "mahalanobis",
             },
-            { header: "Group", key: "group" },
           ],
         },
         {
           header: "Second Highest Group",
           key: "second_highest_group",
           children: [
+            { header: "Group", key: "second_group" },
             { header: "P(G=g | D=d)", key: "p_g_d" },
             {
               header: "Squared Mahalanobis Distance to Centroid",
               key: "second_mahalanobis",
             },
-            { header: "Group", key: "second_group" },
           ],
         },
         ...(numFunctions > 0
@@ -1854,7 +1857,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
             i
           ],
         ),
-        group: data.casewise_statistics.highest_group.group[i],
         // Second Highest Group shows the posterior P(G=g | D=d), not P(D>d | G=g).
         p_g_d: formatStat(
           data.casewise_statistics.second_highest_group.p_g_equals_d[i],
@@ -1885,7 +1887,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
         }
 
         table.rows.push({
-          rowHeader: ["Cross-validated"],
+          rowHeader: ["Cross-validatedᵃ"],
           case_number: formatCount(cvData.case_number[i]),
           actual_group: cvData.actual_group[i],
           predicted_group:
@@ -1896,7 +1898,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
           mahalanobis: formatStat(
             cvData.highest_group.squared_mahalanobis_distance[i],
           ),
-          group: cvData.highest_group.group[i],
           p_g_d: formatStat(cvData.second_highest_group.p_g_equals_d[i]),
           second_mahalanobis: formatStat(
             cvData.second_highest_group.squared_mahalanobis_distance[i],
@@ -1906,6 +1907,27 @@ export function transformDiscriminantResult(data: any): ResultJson {
         });
       }
     }
+
+    // Footnotes, as SPSS prints them under the table.
+    const hasCrossValidated = Boolean(data.casewise_statistics.cross_validated);
+    const anyMisclassified = table.rows.some((row) =>
+      String(row.predicted_group ?? "").endsWith("**"),
+    );
+    const footnotes = [
+      ...(hasCrossValidated
+        ? [
+            "For the original data, squared Mahalanobis distance is based on canonical functions.",
+            "For the cross-validated data, squared Mahalanobis distance is based on observations.",
+          ]
+        : []),
+      ...(anyMisclassified ? ["**. Misclassified case"] : []),
+      ...(hasCrossValidated
+        ? [
+            "a. Cross validation is done only for those cases in the analysis. In cross validation, each case is classified by the functions derived from all cases other than that case.",
+          ]
+        : []),
+    ];
+    for (const note of footnotes) table.rows.push({ rowHeader: [note] });
 
     resultJson.tables.push(table);
   }
