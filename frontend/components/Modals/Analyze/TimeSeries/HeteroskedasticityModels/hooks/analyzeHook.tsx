@@ -286,7 +286,7 @@ export const useAnalyzeHook = (
                 type: modelType, 
                 payload: {
                     data: returns,
-                    p: pOrder,
+                    p: modelType === "ARCH" ? 0 : pOrder,
                     q: qOrder
                 }
             });

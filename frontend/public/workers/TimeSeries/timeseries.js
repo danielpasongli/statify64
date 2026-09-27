@@ -1671,6 +1671,90 @@ export class Decomposition {
         wasm.__wbg_decomposition_free(ptr, 0);
     }
     /**
+     * @param {Float64Array} deseasonalizing
+     * @returns {Float64Array}
+     */
+    linear_trend(deseasonalizing) {
+        const ptr0 = passArrayF64ToWasm0(deseasonalizing, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.decomposition_linear_trend(this.__wbg_ptr, ptr0, len0);
+        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v2;
+    }
+    /**
+     * @param {Float64Array} deseasonalizing
+     * @returns {Float64Array}
+     */
+    exponential_trend(deseasonalizing) {
+        const ptr0 = passArrayF64ToWasm0(deseasonalizing, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.decomposition_exponential_trend(this.__wbg_ptr, ptr0, len0);
+        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v2;
+    }
+    /**
+     * @param {string} trend
+     * @param {Float64Array} deseasonalizing
+     * @returns {Float64Array}
+     */
+    calculate_multiplicative_trend_component(trend, deseasonalizing) {
+        const ptr0 = passStringToWasm0(trend, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(deseasonalizing, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.decomposition_calculate_multiplicative_trend_component(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+        var v3 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v3;
+    }
+    /**
+     * @param {string} trend
+     * @returns {Float64Array}
+     */
+    multiplicative_decomposition(trend) {
+        const ptr0 = passStringToWasm0(trend, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.decomposition_multiplicative_decomposition(this.__wbg_ptr, ptr0, len0);
+        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v2;
+    }
+    /**
+     * @param {Float64Array} centered_ma
+     * @returns {Float64Array}
+     */
+    calculate_additive_trend_component(centered_ma) {
+        const ptr0 = passArrayF64ToWasm0(centered_ma, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.decomposition_calculate_additive_trend_component(this.__wbg_ptr, ptr0, len0);
+        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v2;
+    }
+    /**
+     * @param {Float64Array} detrended
+     * @returns {Float64Array}
+     */
+    calculate_additive_seasonal_component(detrended) {
+        const ptr0 = passArrayF64ToWasm0(detrended, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.decomposition_calculate_additive_seasonal_component(this.__wbg_ptr, ptr0, len0);
+        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v2;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    additive_decomposition() {
+        const ret = wasm.decomposition_additive_decomposition(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     get_period() {
@@ -1819,90 +1903,6 @@ export class Decomposition {
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.decomposition_decomposition_evaluation(this.__wbg_ptr, ptr0, len0);
         return ret;
-    }
-    /**
-     * @param {Float64Array} deseasonalizing
-     * @returns {Float64Array}
-     */
-    linear_trend(deseasonalizing) {
-        const ptr0 = passArrayF64ToWasm0(deseasonalizing, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.decomposition_linear_trend(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v2;
-    }
-    /**
-     * @param {Float64Array} deseasonalizing
-     * @returns {Float64Array}
-     */
-    exponential_trend(deseasonalizing) {
-        const ptr0 = passArrayF64ToWasm0(deseasonalizing, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.decomposition_exponential_trend(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v2;
-    }
-    /**
-     * @param {string} trend
-     * @param {Float64Array} deseasonalizing
-     * @returns {Float64Array}
-     */
-    calculate_multiplicative_trend_component(trend, deseasonalizing) {
-        const ptr0 = passStringToWasm0(trend, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(deseasonalizing, wasm.__wbindgen_malloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.decomposition_calculate_multiplicative_trend_component(this.__wbg_ptr, ptr0, len0, ptr1, len1);
-        var v3 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v3;
-    }
-    /**
-     * @param {string} trend
-     * @returns {Float64Array}
-     */
-    multiplicative_decomposition(trend) {
-        const ptr0 = passStringToWasm0(trend, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.decomposition_multiplicative_decomposition(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v2;
-    }
-    /**
-     * @param {Float64Array} centered_ma
-     * @returns {Float64Array}
-     */
-    calculate_additive_trend_component(centered_ma) {
-        const ptr0 = passArrayF64ToWasm0(centered_ma, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.decomposition_calculate_additive_trend_component(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v2;
-    }
-    /**
-     * @param {Float64Array} detrended
-     * @returns {Float64Array}
-     */
-    calculate_additive_seasonal_component(detrended) {
-        const ptr0 = passArrayF64ToWasm0(detrended, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.decomposition_calculate_additive_seasonal_component(this.__wbg_ptr, ptr0, len0);
-        var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v2;
-    }
-    /**
-     * @returns {Float64Array}
-     */
-    additive_decomposition() {
-        const ret = wasm.decomposition_additive_decomposition(this.__wbg_ptr);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
     }
 }
 if (Symbol.dispose) Decomposition.prototype[Symbol.dispose] = Decomposition.prototype.free;
@@ -2418,100 +2418,43 @@ export class GARCH {
         wasm.__wbg_garch_free(ptr, 0);
     }
     /**
-     * Calculate AIC: -2·LL + 2·k
-     * @param {number} log_likelihood
+     * Calculate log-likelihood: LL = -0.5 Σ(ln(σ²_t) + ε²_t/σ²_t)
+     * @param {Float64Array} variance
      * @returns {number}
      */
-    calculate_aic(log_likelihood) {
-        const ret = wasm.garch_calculate_aic(this.__wbg_ptr, log_likelihood);
+    calculate_log_likelihood(variance) {
+        const ptr0 = passArrayF64ToWasm0(variance, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.garch_calculate_log_likelihood(this.__wbg_ptr, ptr0, len0);
         return ret;
     }
     /**
-     * Calculate BIC: -2·LL + k·ln(n)
-     * @param {number} log_likelihood
-     * @param {number} n
-     * @returns {number}
+     * IGARCH(p,q) — Integrated GARCH
+     *
+     * Model: σ²_t = ω + Σ α_i·ε²_{t-i} + Σ β_j·σ²_{t-j}
+     * dengan restriksi: Σ α_i + Σ β_j = 1
+     *
+     * Estimasi: L-BFGS menggunakan stick-breaking parameterization.
      */
-    calculate_bic(log_likelihood, n) {
-        const ret = wasm.garch_calculate_bic(this.__wbg_ptr, log_likelihood, n);
-        return ret;
+    estimate_igarch() {
+        wasm.garch_estimate_igarch(this.__wbg_ptr);
     }
     /**
-     * Estimasi GARCH(p,q) via L-BFGS dengan analytical gradient.
-     */
-    estimate() {
-        wasm.garch_estimate(this.__wbg_ptr);
-    }
-    /**
-     * EGARCH(p,q) — Exponential GARCH
-     *
-     * Model: log(σ²_t) = ω + Σ[α_i·|z_{t-i}| + γ_i·z_{t-i}] + Σ β_j·log(σ²_{t-j})
-     * dimana z_t = ε_t/σ_t (standardized residual)
-     *
-     * Keunggulan EGARCH:
-     *   - σ² selalu positif tanpa constraint eksplisit (karena exp())
-     *   - γ_i menangkap leverage effect (bad news impact lebih besar)
-     *
-     * Estimasi: L-BFGS dengan analytical gradient pada log-variance recursion.
-     */
-    estimate_egarch() {
-        wasm.garch_estimate_egarch(this.__wbg_ptr);
-    }
-    /**
-     * Hitung conditional variance untuk EGARCH secara manual (untuk inspeksi).
-     * Memerlukan parameter lengkap dari luar (biasanya setelah estimate_egarch).
+     * Calculate conditional variance: σ²_t = ω + Σα_i·ε²_{t-i} + Σβ_j·σ²_{t-j}
      * @param {number} omega
      * @param {Float64Array} alpha
-     * @param {Float64Array} gamma
      * @param {Float64Array} beta
      * @returns {Float64Array}
      */
-    calculate_egarch_variance(omega, alpha, gamma, beta) {
+    calculate_variance(omega, alpha, beta) {
         const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(gamma, wasm.__wbindgen_malloc);
+        const ptr1 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
-        const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.garch_calculate_egarch_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1, ptr2, len2);
-        var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        const ret = wasm.garch_calculate_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1);
+        var v3 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v4;
-    }
-    /**
-     * TGARCH(p,q) / GJR-GARCH — Threshold GARCH
-     *
-     * Model: σ²_t = ω + Σ(α_i + γ_i·I_{t-i})·ε²_{t-i} + Σ β_j·σ²_{t-j}
-     * dimana I_{t-i} = 1 jika ε_{t-i} < 0 (leverage effect indicator)
-     *
-     * Interpretasi γ_i:
-     *   - γ_i > 0: bad news (ε < 0) meningkatkan volatilitas lebih besar
-     *   - γ_i = 0: simetrik (sama dengan GARCH standar)
-     *
-     * Estimasi: L-BFGS dengan analytical gradient.
-     */
-    estimate_tgarch() {
-        wasm.garch_estimate_tgarch(this.__wbg_ptr);
-    }
-    /**
-     * Hitung conditional variance untuk TGARCH secara manual (untuk inspeksi).
-     * @param {number} omega
-     * @param {Float64Array} alpha
-     * @param {Float64Array} gamma
-     * @param {Float64Array} beta
-     * @returns {Float64Array}
-     */
-    calculate_tgarch_variance(omega, alpha, gamma, beta) {
-        const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(gamma, wasm.__wbindgen_malloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
-        const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.garch_calculate_tgarch_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1, ptr2, len2);
-        var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v4;
+        return v3;
     }
     /**
      * @returns {Float64Array}
@@ -2923,6 +2866,102 @@ export class GARCH {
         wasm.garch_set_omega(this.__wbg_ptr, omega);
     }
     /**
+     * Calculate AIC: -2·LL + 2·k
+     * @param {number} log_likelihood
+     * @returns {number}
+     */
+    calculate_aic(log_likelihood) {
+        const ret = wasm.garch_calculate_aic(this.__wbg_ptr, log_likelihood);
+        return ret;
+    }
+    /**
+     * Calculate BIC: -2·LL + k·ln(n)
+     * @param {number} log_likelihood
+     * @param {number} n
+     * @returns {number}
+     */
+    calculate_bic(log_likelihood, n) {
+        const ret = wasm.garch_calculate_bic(this.__wbg_ptr, log_likelihood, n);
+        return ret;
+    }
+    /**
+     * Estimasi GARCH(p,q) via L-BFGS dengan analytical gradient.
+     */
+    estimate() {
+        wasm.garch_estimate(this.__wbg_ptr);
+    }
+    /**
+     * EGARCH(p,q) — Exponential GARCH
+     *
+     * Model: log(σ²_t) = ω + Σ[α_i·|z_{t-i}| + γ_i·z_{t-i}] + Σ β_j·log(σ²_{t-j})
+     * dimana z_t = ε_t/σ_t (standardized residual)
+     *
+     * Keunggulan EGARCH:
+     *   - σ² selalu positif tanpa constraint eksplisit (karena exp())
+     *   - γ_i menangkap leverage effect (bad news impact lebih besar)
+     *
+     * Estimasi: L-BFGS dengan analytical gradient pada log-variance recursion.
+     */
+    estimate_egarch() {
+        wasm.garch_estimate_egarch(this.__wbg_ptr);
+    }
+    /**
+     * Hitung conditional variance untuk EGARCH secara manual (untuk inspeksi).
+     * Memerlukan parameter lengkap dari luar (biasanya setelah estimate_egarch).
+     * @param {number} omega
+     * @param {Float64Array} alpha
+     * @param {Float64Array} gamma
+     * @param {Float64Array} beta
+     * @returns {Float64Array}
+     */
+    calculate_egarch_variance(omega, alpha, gamma, beta) {
+        const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(gamma, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.garch_calculate_egarch_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1, ptr2, len2);
+        var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v4;
+    }
+    /**
+     * TGARCH(p,q) / GJR-GARCH — Threshold GARCH
+     *
+     * Model: σ²_t = ω + Σ(α_i + γ_i·I_{t-i})·ε²_{t-i} + Σ β_j·σ²_{t-j}
+     * dimana I_{t-i} = 1 jika ε_{t-i} < 0 (leverage effect indicator)
+     *
+     * Interpretasi γ_i:
+     *   - γ_i > 0: bad news (ε < 0) meningkatkan volatilitas lebih besar
+     *   - γ_i = 0: simetrik (sama dengan GARCH standar)
+     *
+     * Estimasi: L-BFGS dengan analytical gradient.
+     */
+    estimate_tgarch() {
+        wasm.garch_estimate_tgarch(this.__wbg_ptr);
+    }
+    /**
+     * Hitung conditional variance untuk TGARCH secara manual (untuk inspeksi).
+     * @param {number} omega
+     * @param {Float64Array} alpha
+     * @param {Float64Array} gamma
+     * @param {Float64Array} beta
+     * @returns {Float64Array}
+     */
+    calculate_tgarch_variance(omega, alpha, gamma, beta) {
+        const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(gamma, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.garch_calculate_tgarch_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1, ptr2, len2);
+        var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v4;
+    }
+    /**
      * ARCH-LM Test (Engle 1982)
      * H0: No ARCH effects (α_1 = α_2 = ... = α_q = 0)
      * Auxiliary regression: e²_t = β_0 + β_1·e²_{t-1} + ... + β_q·e²_{t-q}
@@ -2939,45 +2978,6 @@ export class GARCH {
         const ret = wasm.garch_arch_lm_test(ptr0, len0, lags);
         return ArchLMResult.__wrap(ret);
     }
-    /**
-     * Calculate conditional variance: σ²_t = ω + Σα_i·ε²_{t-i} + Σβ_j·σ²_{t-j}
-     * @param {number} omega
-     * @param {Float64Array} alpha
-     * @param {Float64Array} beta
-     * @returns {Float64Array}
-     */
-    calculate_variance(omega, alpha, beta) {
-        const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.garch_calculate_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1);
-        var v3 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v3;
-    }
-    /**
-     * Calculate log-likelihood: LL = -0.5 Σ(ln(σ²_t) + ε²_t/σ²_t)
-     * @param {Float64Array} variance
-     * @returns {number}
-     */
-    calculate_log_likelihood(variance) {
-        const ptr0 = passArrayF64ToWasm0(variance, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.garch_calculate_log_likelihood(this.__wbg_ptr, ptr0, len0);
-        return ret;
-    }
-    /**
-     * IGARCH(p,q) — Integrated GARCH
-     *
-     * Model: σ²_t = ω + Σ α_i·ε²_{t-i} + Σ β_j·σ²_{t-j}
-     * dengan restriksi: Σ α_i + Σ β_j = 1
-     *
-     * Estimasi: L-BFGS menggunakan stick-breaking parameterization.
-     */
-    estimate_igarch() {
-        wasm.garch_estimate_igarch(this.__wbg_ptr);
-    }
 }
 if (Symbol.dispose) GARCH.prototype[Symbol.dispose] = GARCH.prototype.free;
 
@@ -2991,102 +2991,6 @@ export class MultipleLinearRegression {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_multiplelinearregression_free(ptr, 0);
-    }
-    /**
-     * @returns {Float64Array}
-     */
-    calculate_pvalue() {
-        const ret = wasm.multiplelinearregression_calculate_pvalue(this.__wbg_ptr);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @returns {Float64Array}
-     */
-    calculate_t_stat() {
-        const ret = wasm.multiplelinearregression_calculate_t_stat(this.__wbg_ptr);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    calculate_regression() {
-        wasm.multiplelinearregression_calculate_regression(this.__wbg_ptr);
-    }
-    /**
-     * @returns {boolean}
-     */
-    get_constant() {
-        const ret = wasm.multiplelinearregression_get_constant(this.__wbg_ptr);
-        return ret !== 0;
-    }
-    /**
-     * @param {boolean} constant
-     */
-    set_constant(constant) {
-        wasm.multiplelinearregression_set_constant(this.__wbg_ptr, constant);
-    }
-    /**
-     * @returns {Float64Array}
-     */
-    get_y_prediction() {
-        const ret = wasm.multiplelinearregression_get_y_prediction(this.__wbg_ptr);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @param {Float64Array} y_prediction
-     */
-    set_y_prediction(y_prediction) {
-        const ptr0 = passArrayF64ToWasm0(y_prediction, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.multiplelinearregression_set_y_prediction(this.__wbg_ptr, ptr0, len0);
-    }
-    /**
-     * @param {any} x
-     * @param {Float64Array} y
-     */
-    constructor(x, y) {
-        const ptr0 = passArrayF64ToWasm0(y, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.multiplelinearregression_new(x, ptr0, len0);
-        this.__wbg_ptr = ret >>> 0;
-        MultipleLinearRegressionFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    /**
-     * @returns {any}
-     */
-    get get_x() {
-        const ret = wasm.multiplelinearregression_get_x(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {Float64Array}
-     */
-    get_y() {
-        const ret = wasm.multiplelinearregression_get_y(this.__wbg_ptr);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @returns {Float64Array}
-     */
-    get_beta() {
-        const ret = wasm.multiplelinearregression_get_beta(this.__wbg_ptr);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @param {Float64Array} beta
-     */
-    set_beta(beta) {
-        const ptr0 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.multiplelinearregression_set_beta(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * @returns {number}
@@ -3193,6 +3097,27 @@ export class MultipleLinearRegression {
         const ret = wasm.multiplelinearregression_calculate_log_likelihood(this.__wbg_ptr);
         return ret;
     }
+    calculate_regression() {
+        wasm.multiplelinearregression_calculate_regression(this.__wbg_ptr);
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    calculate_pvalue() {
+        const ret = wasm.multiplelinearregression_calculate_pvalue(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    calculate_t_stat() {
+        const ret = wasm.multiplelinearregression_calculate_t_stat(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
     /**
      * @returns {Float64Array}
      */
@@ -3201,6 +3126,81 @@ export class MultipleLinearRegression {
         var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
         return v1;
+    }
+    /**
+     * @returns {boolean}
+     */
+    get_constant() {
+        const ret = wasm.multiplelinearregression_get_constant(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {boolean} constant
+     */
+    set_constant(constant) {
+        wasm.multiplelinearregression_set_constant(this.__wbg_ptr, constant);
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    get_y_prediction() {
+        const ret = wasm.multiplelinearregression_get_y_prediction(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @param {Float64Array} y_prediction
+     */
+    set_y_prediction(y_prediction) {
+        const ptr0 = passArrayF64ToWasm0(y_prediction, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.multiplelinearregression_set_y_prediction(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @param {any} x
+     * @param {Float64Array} y
+     */
+    constructor(x, y) {
+        const ptr0 = passArrayF64ToWasm0(y, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.multiplelinearregression_new(x, ptr0, len0);
+        this.__wbg_ptr = ret >>> 0;
+        MultipleLinearRegressionFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {any}
+     */
+    get get_x() {
+        const ret = wasm.multiplelinearregression_get_x(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    get_y() {
+        const ret = wasm.multiplelinearregression_get_y(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    get_beta() {
+        const ret = wasm.multiplelinearregression_get_beta(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @param {Float64Array} beta
+     */
+    set_beta(beta) {
+        const ptr0 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.multiplelinearregression_set_beta(this.__wbg_ptr, ptr0, len0);
     }
 }
 if (Symbol.dispose) MultipleLinearRegression.prototype[Symbol.dispose] = MultipleLinearRegression.prototype.free;
@@ -3940,6 +3940,26 @@ export class Smoothing {
     }
     /**
      * @param {number} alpha
+     * @returns {Float64Array}
+     */
+    calculate_des(alpha) {
+        const ret = wasm.smoothing_calculate_des(this.__wbg_ptr, alpha);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @param {number} alpha
+     * @returns {Float64Array}
+     */
+    calculate_ses(alpha) {
+        const ret = wasm.smoothing_calculate_ses(this.__wbg_ptr, alpha);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @param {number} alpha
      * @param {number} beta
      * @returns {Float64Array}
      */
@@ -3978,26 +3998,6 @@ export class Smoothing {
      */
     calculate_sma(distance) {
         const ret = wasm.smoothing_calculate_sma(this.__wbg_ptr, distance);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @param {number} alpha
-     * @returns {Float64Array}
-     */
-    calculate_des(alpha) {
-        const ret = wasm.smoothing_calculate_des(this.__wbg_ptr, alpha);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @param {number} alpha
-     * @returns {Float64Array}
-     */
-    calculate_ses(alpha) {
-        const ret = wasm.smoothing_calculate_ses(this.__wbg_ptr, alpha);
         var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
         return v1;
