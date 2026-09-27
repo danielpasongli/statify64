@@ -291,7 +291,7 @@ pub fn build_plum_output(
             fit.log_likelihood,
             fit.minus2_log_likelihood
         );
-        match fit_non_parallel_location_only(data, spec, &options) {
+        match fit_non_parallel_location_only(data, spec, &options, Some(fit)) {
             Ok(mut non_parallel_fit) => {
                 warnings.append(&mut non_parallel_fit.warnings);
                 let mut test = crate::parallel::test_parallel_lines(

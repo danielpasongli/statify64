@@ -23,8 +23,9 @@ pub fn fit_non_parallel_location_only(
     data: &crate::types::AggregatedData,
     spec: &PlumSpec,
     options: &EstimationOptions,
+    parallel_fit: Option<&FitResult>,
 ) -> Result<FitResult, PlumError> {
-    fit_non_parallel(data, spec, options, None)
+    fit_non_parallel(data, spec, options, parallel_fit)
 }
 
 pub fn fit_non_parallel(
