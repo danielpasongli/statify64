@@ -157,6 +157,8 @@ export const KNNNeighbors = ({
                         <Label className="w-[75px]">k:</Label>
                         <Input
                           type="number"
+                          min={1}
+                          step={1}
                           className="w-[80px]"
                           value={neighborsState.SpecifyK ?? ""}
                           disabled={!neighborsState.Specify}
@@ -185,6 +187,8 @@ export const KNNNeighbors = ({
                           <Label className="w-[75px]">Minimum:</Label>
                           <Input
                             type="number"
+                            min={1}
+                            step={1}
                             className="w-[80px]"
                             value={neighborsState.MinK ?? ""}
                             disabled={
@@ -200,6 +204,8 @@ export const KNNNeighbors = ({
                           <Label className="w-[75px]">Maximum:</Label>
                           <Input
                             type="number"
+                            min={1}
+                            step={1}
                             className="w-[80px]"
                             value={neighborsState.MaxK ?? ""}
                             disabled={!neighborsState.AutoSelection}

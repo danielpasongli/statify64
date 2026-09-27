@@ -54,12 +54,20 @@ pub fn build_plum_output(
         .as_ref()
         .and_then(|opt| opt.parameter_estimates)
         .unwrap_or(default_all);
-    let want_covariance = output_options
+    let want_covariance_table = output_options
+        .as_ref()
+        .and_then(|opt| opt.asymptotic_covariance)
+        .unwrap_or(default_all);
+    let want_correlation = output_options
+        .as_ref()
+        .and_then(|opt| opt.asymptotic_correlation)
+        .unwrap_or(default_all);
+    let want_covariance = want_covariance_table
+        || output_options
         .as_ref()
         .and_then(|opt| opt.asymptotic_correlation)
         .unwrap_or(default_all)
         || want_parameters;
-    let want_correlation = want_covariance;
     let want_parallel = output_options
         .as_ref()
         .and_then(|opt| opt.test_of_parallel_lines)
@@ -276,14 +284,14 @@ pub fn build_plum_output(
     };
     let saved_variables = build_saved_variables(input, spec, &fit_with_cov, &mut warnings);
 
-    let test_of_parallel_lines = if want_parallel && spec.model_type == ModelType::LocationOnly {
+    let test_of_parallel_lines = if want_parallel {
         let options = EstimationOptions::from_payload(Some(&input.estimation_options));
         println!(
             "[ORDINAL][PARALLEL_LINES][PARALLEL_LL] {{\"logLikelihood\":{},\"minus2LogLikelihood\":{}}}",
             fit.log_likelihood,
             fit.minus2_log_likelihood
         );
-        match fit_non_parallel_location_only(data, spec, &options) {
+        match fit_non_parallel_location_only(data, spec, &options, Some(fit)) {
             Ok(mut non_parallel_fit) => {
                 warnings.append(&mut non_parallel_fit.warnings);
                 let mut test = crate::parallel::test_parallel_lines(
@@ -358,8 +366,8 @@ pub fn build_plum_output(
         predicted_probability,
         actual_probability,
         saved_variables,
-        covariance_matrix: covariance.map(|m| matrix_to_vec(&m)),
-        correlation_matrix: correlation.map(|m| matrix_to_vec(&m)),
+        covariance_matrix: if want_covariance_table { covariance.map(|m| matrix_to_vec(&m)) } else { None },
+        correlation_matrix: if want_correlation { correlation.map(|m| matrix_to_vec(&m)) } else { None },
         errors: Vec::new(),
     })
 }

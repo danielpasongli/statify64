@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { AlertCircle } from "lucide-react";
 import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useVariableStore } from "@/stores/useVariableStore";
 import type { KNNDialogProps } from "@/components/Modals/Analyze/Classify/nearest-neighbor/types/nearest-neighbor";
@@ -216,29 +217,35 @@ export const KNNDialog = ({
                           }
                         />
                         <label htmlFor="normalize" className="text-sm">
-                          Normalize scale features
+                          Normalize scale features (min-max scaling to [-1,1])
                         </label>
                       </div>
                     </div>
                   );
                 }}
               />
-              <div className="mt-3 space-y-1">
-                {errors.map((err, i) => (
-                  <div key={i} className="text-xs text-red-500">
-                    {err}
-                  </div>
-                ))}
-
-                {errors.length === 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    Select variables for analysis.
-                  </div>
-                )}
-              </div>
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
+
+        {errors.length > 0 && (
+          <div
+            role="alert"
+            className="w-full max-w-2xl flex-shrink-0 rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2"
+          >
+            <ul className="space-y-1">
+              {errors.map((err) => (
+                <li
+                  key={err}
+                  className="flex items-center gap-2 text-xs text-destructive"
+                >
+                  <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>{err}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

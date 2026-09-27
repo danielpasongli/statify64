@@ -93,8 +93,19 @@ pub fn find_k_nearest_neighbors_with_weights(
         })
         .collect();
 
+    let k = k.max(1);
+
+    // Partition so the k smallest (per the same total order used below) end up
+    // in the first k slots, without paying for a full sort of every candidate.
+    if distances.len() > k {
+        distances.select_nth_unstable_by(k - 1, |a, b| {
+            compare_neighbors(a, b, original_case_indices)
+        });
+        distances.truncate(k);
+    }
+
     distances.sort_by(|a, b| compare_neighbors(a, b, original_case_indices));
-    distances.into_iter().take(k.max(1)).collect()
+    distances
 }
 
 fn compare_neighbors(
@@ -108,7 +119,11 @@ fn compare_neighbors(
         Ordering::Greater
     } else if !right.1.is_finite() {
         Ordering::Less
-    } else if (left.1 - right.1).abs() <= NEIGHBOR_TIE_EPSILON {
+    } else if (left.1 - right.1).abs()
+        <= NEIGHBOR_TIE_EPSILON * left.1.abs().max(right.1.abs()).max(1.0)
+    {
+        // Relative, so equal distances on unnormalized large-valued features
+        // (e.g. 80111.98141016427 vs 80111.98141016423) still count as ties.
         Ordering::Equal
     } else {
         left.1.partial_cmp(&right.1).unwrap_or(Ordering::Equal)
@@ -140,7 +155,7 @@ pub fn calculate_manhattan_distance(point1: &[f64], point2: &[f64]) -> f64 {
 mod tests {
     use super::{
         calculate_distance_with_weights, calculate_euclidean_distance,
-        calculate_manhattan_distance, find_k_nearest_neighbors,
+        calculate_manhattan_distance, compare_neighbors, find_k_nearest_neighbors,
         find_k_nearest_neighbors_with_weights,
     };
 
@@ -198,6 +213,27 @@ mod tests {
             neighbors.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
             vec![2, 3, 1]
         );
+    }
+
+    #[test]
+    fn equal_distances_on_large_unnormalized_values_are_ties() {
+        // A and B mirror the query, so both are exactly equally far, but the
+        // computed distances differ in the last digits (…427 vs …423).
+        let query = vec![124434.84, 482001.42];
+        let a = vec![188310.68, 530352.29];
+        let b = vec![60559.0, 433650.55];
+        assert_ne!(
+            calculate_euclidean_distance(&query, &a),
+            calculate_euclidean_distance(&query, &b)
+        );
+
+        // As a tie, the case with the larger original index (A) comes first.
+        let data_matrix = vec![query.clone(), a, b];
+        let original_case_indices = vec![0, 2, 1];
+        let neighbors =
+            find_k_nearest_neighbors(&query, &data_matrix, &[1, 2], 1, true, Some(&original_case_indices));
+
+        assert_eq!(neighbors.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(), vec![1]);
     }
 
     #[test]
@@ -264,5 +300,103 @@ mod tests {
             neighbors.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
             vec![2, 1]
         );
+    }
+
+    /// Reference implementation using a full sort, kept only to cross-check
+    /// the `select_nth_unstable_by` fast path against many random inputs.
+    fn find_k_nearest_neighbors_via_full_sort(
+        query_point: &[f64],
+        data_matrix: &[Vec<f64>],
+        indices: &[usize],
+        k: usize,
+        use_euclidean: bool,
+        original_case_indices: Option<&[usize]>,
+        feature_weights: Option<&[f64]>,
+    ) -> Vec<(usize, f64)> {
+        let mut distances: Vec<(usize, f64)> = indices
+            .iter()
+            .filter_map(|&idx| {
+                if idx < data_matrix.len() {
+                    let distance = calculate_distance_with_weights(
+                        query_point,
+                        &data_matrix[idx],
+                        use_euclidean,
+                        feature_weights,
+                    );
+                    Some((idx, distance))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        distances.sort_by(|a, b| compare_neighbors(a, b, original_case_indices));
+        distances.into_iter().take(k.max(1)).collect()
+    }
+
+    /// Small deterministic LCG so this test has no extra dependency and is
+    /// still reproducible across runs.
+    fn next_lcg(state: &mut u64) -> u64 {
+        *state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        *state
+    }
+
+    #[test]
+    fn partial_selection_matches_full_sort_reference_across_random_inputs() {
+        let mut state = 0x1234_5678_9abc_def0_u64;
+
+        for trial in 0..200 {
+            let num_points = 1 + (next_lcg(&mut state) % 40) as usize;
+            let num_dims = 1 + (next_lcg(&mut state) % 4) as usize;
+            let k = 1 + (next_lcg(&mut state) % (num_points as u64 + 3));
+
+            let data_matrix: Vec<Vec<f64>> = (0..num_points)
+                .map(|_| {
+                    (0..num_dims)
+                        .map(|_| {
+                            // Bias values into a small range so exact and
+                            // near-tied distances occur often in practice.
+                            ((next_lcg(&mut state) % 7) as f64) - 3.0
+                        })
+                        .collect()
+                })
+                .collect();
+
+            let query_point: Vec<f64> = (0..num_dims)
+                .map(|_| ((next_lcg(&mut state) % 7) as f64) - 3.0)
+                .collect();
+
+            let indices: Vec<usize> = (0..num_points).collect();
+            let original_case_indices: Vec<usize> = (0..num_points)
+                .map(|_| (next_lcg(&mut state) % 1000) as usize)
+                .collect();
+            let use_euclidean = next_lcg(&mut state) % 2 == 0;
+
+            let fast = find_k_nearest_neighbors_with_weights(
+                &query_point,
+                &data_matrix,
+                &indices,
+                k as usize,
+                use_euclidean,
+                Some(&original_case_indices),
+                None,
+            );
+            let reference = find_k_nearest_neighbors_via_full_sort(
+                &query_point,
+                &data_matrix,
+                &indices,
+                k as usize,
+                use_euclidean,
+                Some(&original_case_indices),
+                None,
+            );
+
+            assert_eq!(
+                fast, reference,
+                "trial {trial} diverged (num_points={num_points}, k={k}, use_euclidean={use_euclidean})"
+            );
+        }
     }
 }

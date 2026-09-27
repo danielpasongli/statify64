@@ -21,6 +21,7 @@ export interface FactorLevelSummary {
 export interface BuildOrdinalPlumDesignMatrixInput {
   rows: Array<Record<string, any>>;
   factors: Variable[];
+  allFactors?: Variable[];
   covariates: Variable[];
   interactions: LocationInteraction[];
   getRowValue: (row: any, columnIndex: number) => unknown;
@@ -267,13 +268,14 @@ export const buildPlumParameterMetadata = (
 export const buildOrdinalPlumDesignMatrix = (
   input: BuildOrdinalPlumDesignMatrixInput
 ): BuildOrdinalPlumDesignMatrixResult => {
-  const { rows, factors, covariates, interactions, getRowValue, toNumberOrThrow } = input;
+  const { rows, factors, allFactors, covariates, interactions, getRowValue, toNumberOrThrow } = input;
   const warnings: string[] = [];
   const locationTermNames: string[] = [];
   const interactionColumnCounts: Record<string, number> = {};
   const referenceCategories: Record<string, string> = {};
 
-  const factorSummaries: FactorLevelSummary[] = factors.map((factor) => {
+  const effectiveFactors = allFactors ?? factors;
+  const factorSummaries: FactorLevelSummary[] = effectiveFactors.map((factor) => {
     const values = rows.map((row) => getRowValue(row, factor.columnIndex));
     const summary = extractFactorLevelsForPlum(values, factor);
     if (summary.levels.length < 2) {
@@ -283,7 +285,7 @@ export const buildOrdinalPlumDesignMatrix = (
     return summary;
   });
   const factorSummaryByKey = new Map(
-    factors.map((factor, index) => [getVariableKey(factor), factorSummaries[index]])
+    effectiveFactors.map((factor, index) => [getVariableKey(factor), factorSummaries[index]])
   );
 
   const levelWarningThreshold = Math.max(20, Math.floor(Math.sqrt(Math.max(rows.length, 1))));
@@ -295,8 +297,12 @@ export const buildOrdinalPlumDesignMatrix = (
     }
   });
 
+  const mainEffectFactorSummaries = factors
+    .map((factor) => factorSummaryByKey.get(getVariableKey(factor)))
+    .filter((summary): summary is FactorLevelSummary => Boolean(summary));
+
   let columnIndexOffset = covariates.length;
-  const factorMetadataResult = buildPlumParameterMetadata(factorSummaries, columnIndexOffset);
+  const factorMetadataResult = buildPlumParameterMetadata(mainEffectFactorSummaries, columnIndexOffset);
   const factorLevelMetadata = factorMetadataResult.metadata;
   columnIndexOffset = factorMetadataResult.nextOffset;
 
@@ -304,7 +310,7 @@ export const buildOrdinalPlumDesignMatrix = (
     locationTermNames.push(covariate.name);
   }
 
-  for (const summary of factorSummaries) {
+  for (const summary of mainEffectFactorSummaries) {
     for (const level of summary.levels) {
       if (level === summary.referenceLevel) continue;
       locationTermNames.push(buildFactorColumnName(summary.variableName, level));
@@ -328,7 +334,7 @@ export const buildOrdinalPlumDesignMatrix = (
       rowValues.push(toNumberOrThrow(value, covariate.name));
     }
 
-    for (const summary of factorSummaries) {
+    for (const summary of mainEffectFactorSummaries) {
       const factor = factors.find((f) => f.name === summary.variableName);
       if (!factor) continue;
       const value = getRowValue(row, factor.columnIndex);
@@ -348,6 +354,19 @@ export const buildOrdinalPlumDesignMatrix = (
   });
 
   const activeParameterCount = locationTermNames.length;
+
+  console.log("[ORDINAL][DESIGN_MATRIX][CONSTRUCTED]", {
+    totalRows: rows.length,
+    activeParameters: activeParameterCount,
+    covariates: covariates.map((c) => c.name),
+    factors: mainEffectFactorSummaries.map((f) => ({
+      name: f.variableName,
+      levels: f.levels,
+      reference: f.referenceLevel,
+    })),
+    columnNames: locationTermNames,
+    sampleFirstRow: locationDesignMatrix[0] ?? [],
+  });
 
   return {
     locationDesignMatrix,

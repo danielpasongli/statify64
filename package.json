@@ -12,7 +12,8 @@
     "test": "npm test --workspaces",
     "test:e2e": "playwright test --config=testing/e2e/playwright.config.ts",
     "test:load:sav": "k6 run load-tests/backend/sav-apis-test.js",
-    "install:all": "npm install --workspaces"
+    "install:all": "npm install --workspaces",
+    "postinstall": "patch-package"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",
@@ -26,6 +27,7 @@
     "jest": "^30.0.2",
     "jest-environment-jsdom": "^30.0.2",
     "k6": "^0.0.0",
+    "patch-package": "^8.0.1",
     "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0"

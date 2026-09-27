@@ -18,6 +18,16 @@ import {
 } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/types/k-medoids-cluster";
 
 /**
+ * PAM membangun matriks jarak n×n bertipe f64 (n² × 8 B).
+ * - PAM_WARN_ROWS: di atas ini pengguna diperingatkan dan disarankan memakai CLARA,
+ *   tetapi tetap boleh memaksa PAM.
+ * - PAM_HARD_MAX_ROWS: batas mutlak (~763 MB), ditolak karena hampir pasti gagal alokasi.
+ *   Harus sama dengan PAM_HARD_MAX_N di rust/src/wasm/function.rs.
+ */
+export const PAM_WARN_ROWS = 2500;
+export const PAM_HARD_MAX_ROWS = 10000;
+
+/**
  * ========================================
  * K-MEDOIDS DEFAULT VALUES
  * ========================================

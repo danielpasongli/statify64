@@ -6,6 +6,7 @@ import { generateComprehensiveKMedoidsOutput } from "./k-medoids-cluster-compreh
 import { prepareKMedoidsSaveVariables, validateSaveData } from "./k-medoids-cluster-save";
 import { useVariableStore } from "@/stores/useVariableStore";
 import { toast } from "sonner";
+import { PAM_HARD_MAX_ROWS } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/constants/k-medoids-cluster-default";
 
 type WasmModule = {
     default: (moduleOrPath?: unknown) => Promise<unknown>;
@@ -786,10 +787,25 @@ export async function analyzeKMedoidsCluster({
         const method: ClusteringMethod = configData.iterate.Method || "PAM";
         const autoKMethod: ClusteringMethod = "PAM";
         const distanceMetric = normalizeDistanceMetric(configData.main.DistanceMetric);
-        
+
         // Check if automatic k selection is enabled
         const isAutomatic = configData.main.ClusterMode === ClusterMode.Automatic;
-        
+
+        // Automatic k always ends with a full-data PAM run, so it is bound by the PAM limit too.
+        // Above PAM_WARN_ROWS the dialog only warns (the user may force PAM); this hard limit is
+        // where the n×n distance matrix is practically guaranteed to fail to allocate.
+        const usesFullPam = isAutomatic || String(method).toUpperCase() === "PAM";
+        if (usesFullPam && finalMatrix.length > PAM_HARD_MAX_ROWS) {
+            const matrixMb = Math.round((finalMatrix.length ** 2 * 8) / 1_048_576);
+            throw new Error(
+                `PAM cannot handle ${finalMatrix.length} valid rows (hard limit ${PAM_HARD_MAX_ROWS}; it needs a ~${matrixMb} MB distance matrix). ` +
+                (isAutomatic
+                    ? `Automatic k selection uses PAM, so use manual cluster mode with the CLARA method, `
+                    : `Select the CLARA method in the Iterate tab, `) +
+                `or reduce the data to ${PAM_HARD_MAX_ROWS} rows or fewer.`
+            );
+        }
+
         if (!isAutomatic) {
             // Validate manual k
             const manualK = configData.main.Cluster ?? 2;

@@ -40,6 +40,16 @@ import { formatAssumptionTests } from "../services/formatter_assumptions";
 // Syntax Generator
 import { generateLogisticRegressionSyntax } from "../services/syntaxGenerator";
 
+// Timing instrumentation
+import {
+  startAnalysisRun,
+  markDispatch,
+  markWorkerResponse,
+  markProcedureEnd,
+  registerRenderCompletionTarget,
+  type AnalysisRunContext,
+} from "@/lib/analysisTiming";
+
 // Types
 import type { Variable } from "@/types/Variable";
 import type { CellUpdate } from "@/stores/useDataStore";
@@ -301,7 +311,11 @@ export const BinaryLogisticMain = () => {
   };
 
   // --- WORKER HELPER ---
-  const runWorkerAction = (action: string, extraConfig = {}) => {
+  const runWorkerAction = (
+    action: string,
+    extraConfig = {},
+    timingCtx?: AnalysisRunContext
+  ) => {
     return new Promise((resolve, reject) => {
       // Validasi minimal untuk semua action
       if (
@@ -326,10 +340,15 @@ export const BinaryLogisticMain = () => {
       );
 
       worker.onmessage = (event) => {
-        const { type, payload } = event.data;
+        const { type, payload, timing } = event.data;
         worker.terminate();
-        if (type === "SUCCESS") resolve(payload);
-        else reject(new Error(payload || "Worker error"));
+        if (type === "SUCCESS") {
+          if (timingCtx) {
+            markWorkerResponse(timingCtx);
+            timingCtx.workerTiming = timing;
+          }
+          resolve(payload);
+        } else reject(new Error(payload || "Worker error"));
       };
 
       worker.onerror = (error) => {
@@ -401,6 +420,8 @@ export const BinaryLogisticMain = () => {
         // ... (config lain tidak relevan untuk VIF/BT raw calc, tapi dikirim saja)
         ...extraConfig,
       };
+
+      if (timingCtx) markDispatch(timingCtx);
 
       worker.postMessage({
         action,
@@ -727,9 +748,13 @@ export const BinaryLogisticMain = () => {
         throw new Error("VIF requires at least two independent variables.");
       }
 
-      const payload: any = await runWorkerAction("run_vif");
+      const timingCtx = startAnalysisRun("BinaryLogistic:VIF");
+
+      const payload: any = await runWorkerAction("run_vif", {}, timingCtx);
 
       console.log("VIF Payload form Worker:", payload); // Debugging
+
+      markProcedureEnd(timingCtx, timingCtx.workerTiming);
 
       // Save log & analytic container
       const logId = await addLog({
@@ -742,6 +767,12 @@ export const BinaryLogisticMain = () => {
       });
 
       const formattedOutput = formatAssumptionTests(payload);
+
+      registerRenderCompletionTarget(
+        timingCtx,
+        analyticId,
+        formattedOutput.sections?.length ?? 0
+      );
 
       // Save sections using loop
       if (formattedOutput.sections && formattedOutput.sections.length > 0) {
@@ -771,7 +802,11 @@ export const BinaryLogisticMain = () => {
       if (!options.dependent)
         throw new Error("Dependent variable is required.");
 
-      const payload: any = await runWorkerAction("run_box_tidwell");
+      const timingCtx = startAnalysisRun("BinaryLogistic:BoxTidwell");
+
+      const payload: any = await runWorkerAction("run_box_tidwell", {}, timingCtx);
+
+      markProcedureEnd(timingCtx, timingCtx.workerTiming);
 
       // Save log & analytic container
       const logId = await addLog({
@@ -791,6 +826,12 @@ export const BinaryLogisticMain = () => {
       } as Partial<LogisticResult> as LogisticResult;
 
       const formattedOutput = formatAssumptionTests(mockResult);
+
+      registerRenderCompletionTarget(
+        timingCtx,
+        analyticId,
+        formattedOutput.sections?.length ?? 0
+      );
 
       for (const section of formattedOutput.sections) {
         const tableDataWithTitle = {
@@ -831,6 +872,8 @@ export const BinaryLogisticMain = () => {
       return;
     }
 
+    const timingCtx = startAnalysisRun(`BinaryLogistic:${options.method}`);
+
     setIsLoading(true);
 
     try {
@@ -843,10 +886,11 @@ export const BinaryLogisticMain = () => {
       );
 
       worker.onmessage = async (event) => {
-        const { type, payload } = event.data;
+        const { type, payload, timing } = event.data;
         console.log(`[Main] Worker Message: ${type}`, payload);
 
         if (type === "SUCCESS") {
+          markWorkerResponse(timingCtx);
           try {
             console.log("[Main] Starting Formatting Process...");
 
@@ -889,6 +933,10 @@ export const BinaryLogisticMain = () => {
               optionParams: optParams,
             });
 
+            // Procedure time ends here: result data is fully built, nothing
+            // below this point is IndexedDB or render work.
+            markProcedureEnd(timingCtx, timing);
+
             const logId = await addLog({
               log: syntaxLog,
             });
@@ -898,6 +946,12 @@ export const BinaryLogisticMain = () => {
               title: "Binary Logistic Regression",
               note: `Method: ${options.method}`,
             });
+
+            registerRenderCompletionTarget(
+              timingCtx,
+              analyticId,
+              formattedResult.sections?.length ?? 0
+            );
 
             console.log(`[Main] Saving to DB (AnalyticID: ${analyticId})...`);
 
@@ -1161,6 +1215,8 @@ export const BinaryLogisticMain = () => {
       };
 
       console.log("Config Cleaned for Rust:", JSON.stringify(analysisConfig));
+
+      markDispatch(timingCtx);
 
       // Use ACTUAL IDs from currentVariables (not the potentially stale IDs from options)
       worker.postMessage({

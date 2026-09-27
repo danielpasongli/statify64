@@ -18,7 +18,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, Lightbulb, TriangleAlert } from "lucide-react";
+import { PAM_HARD_MAX_ROWS, PAM_WARN_ROWS } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/constants/k-medoids-cluster-default";
 import {
     TooltipProvider,
     Tooltip,
@@ -39,6 +40,7 @@ export const KMedoidsClusterIterate = ({
     updateFormData,
     data,
     mainData,
+    validRowCount = 0,
 }: KMedoidsClusterIterateProps) => {
     const [iterateState, setIterateState] = useState<KMedoidsClusterIterateType>({
         ...data,
@@ -49,6 +51,15 @@ export const KMedoidsClusterIterate = ({
     const isPam = normalizedMethod === "PAM";
     const isClara = normalizedMethod === "CLARA";
     const isClarans = normalizedMethod === "CLARANS";
+
+    // Rekomendasi metode berdasarkan jumlah baris valid. PAM dan CLARANS sama-sama membangun
+    // matriks jarak n×n; di atas PAM_WARN_ROWS pengguna hanya diperingatkan (boleh memaksa PAM),
+    // dan CLARA (sampling) yang direkomendasikan. Di atas PAM_HARD_MAX_ROWS PAM ditolak.
+    const hasRowCount = validRowCount > 0;
+    const pamTooLarge = hasRowCount && validRowCount > PAM_WARN_ROWS;
+    const pamBlocked = hasRowCount && validRowCount > PAM_HARD_MAX_ROWS;
+    const isAutomaticK = mainData.ClusterMode === "automatic";
+    const matrixMb = Math.round((validRowCount ** 2 * 8) / 1_048_576);
 
     // Calculate maximum k possible based on clustering mode
     const maxK = mainData.ClusterMode === "automatic" 
@@ -122,17 +133,68 @@ export const KMedoidsClusterIterate = ({
                             <SelectValue placeholder="Select method" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value={KMedoidsMethod.PAM}>
+                            <SelectItem value={KMedoidsMethod.PAM} disabled={pamBlocked}>
                                 PAM (Partitioning Around Medoids)
+                                {hasRowCount && (
+                                    pamBlocked
+                                        ? " - too large for this data"
+                                        : pamTooLarge
+                                            ? " - heavy for this data"
+                                            : " - recommended"
+                                )}
                             </SelectItem>
                             <SelectItem value={KMedoidsMethod.CLARA}>
                                 CLARA (Large Datasets)
+                                {pamTooLarge && " - recommended"}
                             </SelectItem>
                             <SelectItem value={KMedoidsMethod.CLARANS}>
                                 CLARANS (Randomized Search)
                             </SelectItem>
                         </SelectContent>
                     </Select>
+
+                    {hasRowCount && (
+                        pamTooLarge ? (
+                            <div
+                                role="alert"
+                                className={`flex items-start gap-2 rounded-md border p-3 text-xs ${
+                                    isPam || isAutomaticK
+                                        ? "border-destructive/50 bg-destructive/10 text-destructive"
+                                        : "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                                }`}
+                            >
+                                <TriangleAlert className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                <div className="space-y-1">
+                                    <p>
+                                        Your data has <strong>{validRowCount.toLocaleString()}</strong> valid rows.
+                                        PAM needs a ~{matrixMb} MB distance matrix, which can be slow and may crash the
+                                        browser tab on low-memory devices (comfortable up to {PAM_WARN_ROWS.toLocaleString()} rows).
+                                        {!pamBlocked && " You can still run PAM, but you will be asked to confirm."}
+                                    </p>
+                                    <p>
+                                        <strong>Recommended: CLARA</strong> — it clusters samples of the data, so memory stays small.
+                                        {isClarans && " CLARANS also builds the full n×n matrix, so it is not advised at this size."}
+                                    </p>
+                                    {isAutomaticK && (
+                                        <p>
+                                            Automatic k selection always finishes with PAM on the full data.
+                                            {pamBlocked
+                                                ? ` It cannot be used above ${PAM_HARD_MAX_ROWS.toLocaleString()} rows; use manual cluster mode with CLARA.`
+                                                : " To use CLARA, switch to manual cluster mode."}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                                <Lightbulb className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                <p>
+                                    Your data has <strong>{validRowCount.toLocaleString()}</strong> valid rows.
+                                    <strong> Recommended: PAM</strong> — it gives the best-quality result for data up to {PAM_WARN_ROWS.toLocaleString()} rows.
+                                </p>
+                            </div>
+                        )
+                    )}
                 </div>
 
                 {/* ========== GENERAL ITERATION PARAMETERS ========== */}

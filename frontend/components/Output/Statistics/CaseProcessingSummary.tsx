@@ -34,7 +34,7 @@ const CaseProcessingSummary: React.FC<CaseProcessingSummaryProps> = ({ data }) =
     const colKeys = headers.map((h) => h.key || h.header);
 
     const displayHeader = (header: string): string => {
-        if (/percent/i.test(header)) return "Marginal Percentage";
+        if (/percent/i.test(header)) return "Percent";
         return header;
     };
 

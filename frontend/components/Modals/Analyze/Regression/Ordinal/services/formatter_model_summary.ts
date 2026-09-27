@@ -71,7 +71,7 @@ export const formatCaseProcessingSummary = (
       {
         columnHeaders: [
           { header: "N", key: "n" },
-          { header: "Marginal Percentage", key: "percent" },
+          { header: "Percent", key: "percent" },
         ],
         rows,
       },

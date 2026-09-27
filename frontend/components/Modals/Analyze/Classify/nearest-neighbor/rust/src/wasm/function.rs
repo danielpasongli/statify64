@@ -12,6 +12,9 @@ pub fn run_analysis(
     error_collector: &mut ErrorCollector,
     logger: &mut FunctionLogger,
 ) -> Result<Option<NearestNeighborAnalysis>, JsValue> {
+    let run_config = core::prepare_run_config(config);
+    let config = &run_config;
+
     // Step 1: System settings if requested
     let mut system_settings = None;
     if config.partition.set_seed {

@@ -9,14 +9,24 @@ import {
     TooltipContent,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { HelpCircle } from "lucide-react";
-import { KMedoidsClusterDefault } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/constants/k-medoids-cluster-default";
+import { KMedoidsClusterDefault, PAM_HARD_MAX_ROWS, PAM_WARN_ROWS } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/constants/k-medoids-cluster-default";
 import type {
     KMedoidsClusterContainerProps,
     KMedoidsClusterMainType,
     KMedoidsClusterType,
 } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/types/k-medoids-cluster";
-import { ClusterMode, MissingValueMethod } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/types/k-medoids-cluster";
+import { ClusterMode, KMedoidsMethod, MissingValueMethod } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/types/k-medoids-cluster";
 import { KMedoidsClusterDialog } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/dialogs/dialog";
 import { KMedoidsClusterIterate } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/dialogs/iterate";
 import { KMedoidsClusterResults } from "@/components/Modals/Analyze/Clustering/k-medoids-cluster/dialogs/results";
@@ -46,6 +56,8 @@ export const KMedoidsClusterContainer = ({
         ...KMedoidsClusterDefault,
     });
     const [activeTab, setActiveTab] = useState("variables");
+    // Peringatan PAM untuk data besar; null = dialog tertutup.
+    const [pamWarning, setPamWarning] = useState<{ rows: number; isAutomatic: boolean } | null>(null);
 
     const { closeModal } = useModal();
     const router = useRouter();
@@ -291,6 +303,18 @@ export const KMedoidsClusterContainer = ({
         return validCount;
     };
 
+    // Dipakai tab Iterate untuk rekomendasi metode; dihitung ulang hanya saat pilihan variabel,
+    // strategi missing value, atau data berubah.
+    const validRowCount = useMemo(() => {
+        const selectedVarNames = new Set(formData.main.TargetVar || []);
+        const selectedVariables = variables.filter((v) => selectedVarNames.has(v.name));
+        return getValidRowCount(
+            dataVariables,
+            selectedVariables,
+            formData.options?.MissingValueMethod ?? MissingValueMethod.Listwise
+        );
+    }, [formData.main.TargetVar, formData.options?.MissingValueMethod, variables, dataVariables]);
+
     const handleRun = () => {
         const selectedVarNames = new Set(formData.main.TargetVar || []);
         const selectedVariables = variables.filter((v) => selectedVarNames.has(v.name));
@@ -316,6 +340,29 @@ export const KMedoidsClusterContainer = ({
             toast.error(
                 "Not enough valid numeric rows for clustering. Check selected variables and missing handling settings."
             );
+            return;
+        }
+
+        // PAM (dan pemilihan k otomatis, yang berakhir dengan PAM pada seluruh data) membutuhkan
+        // matriks jarak n×n. Di atas PAM_WARN_ROWS pengguna diperingatkan tetapi boleh memaksa
+        // lanjut; di atas PAM_HARD_MAX_ROWS ditolak karena alokasi memori hampir pasti gagal.
+        const isAutomatic = formData.main.ClusterMode === ClusterMode.Automatic;
+        const usesFullPam = isAutomatic || String(formData.iterate.Method).toUpperCase() === "PAM";
+        if (usesFullPam && validRows > PAM_HARD_MAX_ROWS) {
+            toast.error(
+                `PAM cannot be used with ${validRows.toLocaleString()} rows (hard limit ${PAM_HARD_MAX_ROWS.toLocaleString()}).`,
+                {
+                    description: isAutomatic
+                        ? "Automatic k selection relies on PAM. Switch to manual cluster mode with the CLARA method, or reduce the data."
+                        : "Select the CLARA method in the Iterate tab, or reduce the data.",
+                    duration: 8000,
+                }
+            );
+            setActiveTab(isAutomatic ? "variables" : "iterate");
+            return;
+        }
+        if (usesFullPam && validRows > PAM_WARN_ROWS) {
+            setPamWarning({ rows: validRows, isAutomatic });
             return;
         }
 
@@ -391,6 +438,7 @@ export const KMedoidsClusterContainer = ({
                             <KMedoidsClusterIterate
                                 data={formData.iterate}
                                 mainData={formData.main}
+                                validRowCount={validRowCount}
                                 updateFormData={(field, value) =>
                                     updateFormData("iterate", field, value)
                                 }
@@ -500,6 +548,58 @@ export const KMedoidsClusterContainer = ({
                     </Button>
                 </div>
             </div>
+
+            <AlertDialog
+                open={pamWarning !== null}
+                onOpenChange={(open) => {
+                    if (!open) setPamWarning(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>PAM may be too heavy for this data</AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-2">
+                                <p>
+                                    Your data has <strong>{pamWarning?.rows.toLocaleString()}</strong> valid rows.
+                                    PAM builds a full distance matrix of about{" "}
+                                    <strong>
+                                        {pamWarning ? Math.round((pamWarning.rows ** 2 * 8) / 1_048_576) : 0} MB
+                                    </strong>
+                                    , which can be slow and may crash the browser tab on devices with limited memory
+                                    (comfortable up to {PAM_WARN_ROWS.toLocaleString()} rows).
+                                </p>
+                                <p>
+                                    <strong>Recommended:</strong> use CLARA, which clusters samples of the data.
+                                    {pamWarning?.isAutomatic &&
+                                        " Automatic k selection always uses PAM, so CLARA requires manual cluster mode."}
+                                </p>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        {pamWarning && !pamWarning.isAutomatic && (
+                            <AlertDialogAction
+                                onClick={() => {
+                                    updateFormData("iterate", "Method", KMedoidsMethod.CLARA);
+                                    setActiveTab("iterate");
+                                }}
+                            >
+                                Switch to CLARA
+                            </AlertDialogAction>
+                        )}
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => {
+                                void executeKMedoidsCluster(formData.main);
+                            }}
+                        >
+                            Run PAM anyway
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };

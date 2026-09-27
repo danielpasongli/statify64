@@ -235,9 +235,9 @@ export const formatAssumptionTests = (
             rowHeader: [row.variable],
             var: row.variable,
             interaction: row.interaction_term || `${row.variable} × ln(${row.variable})`,
-            b: safeFixed(row.b_interaction ?? 0, 5),
-            se: safeFixed(row.se_interaction ?? 0, 5),
-            score_z: safeFixed(row.score_z ?? 0, 4),
+            b: safeFixed(row.b_interaction ?? 0),
+            se: safeFixed(row.se_interaction ?? 0),
+            score_z: safeFixed(row.score_z ?? 0),
             df: String(row.df ?? 1),
             sig: fmtSig(sig),
           };

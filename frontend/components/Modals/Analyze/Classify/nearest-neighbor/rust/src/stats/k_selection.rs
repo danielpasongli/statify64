@@ -7,11 +7,14 @@ use crate::models::{
 };
 
 use super::{
-    core::{find_k_nearest_neighbors, preprocess_knn_data},
+    core::{
+        error_rate_percent, find_k_nearest_neighbors, lowest_error_smallest_k,
+        preprocess_knn_data,
+    },
     partition::EXCLUDED_FOLD,
     prediction::{
         calculate_categorical_prediction, calculate_mean_prediction, calculate_median_prediction,
-        category_key,
+        category_key, CategoryTieBreaker,
     },
 };
 
@@ -46,21 +49,16 @@ pub fn calculate_k_selection_cross_validation(
         candidates.push(evaluate_candidate_k(&knn_data, config, k, &fold_ids)?);
     }
 
-    let Some((best_index, best_candidate)) =
+    let Some(best_index) = lowest_error_smallest_k(
         candidates
             .iter()
-            .enumerate()
-            .min_by(|(_, left), (_, right)| {
-                left.average_error
-                    .total_cmp(&right.average_error)
-                    .then_with(|| left.k.cmp(&right.k))
-            })
-    else {
+            .map(|candidate| (candidate.k, candidate.average_error)),
+    ) else {
         return Err("No k candidates could be evaluated".to_string());
     };
 
-    let selected_k = best_candidate.k;
-    let best_error = best_candidate.average_error;
+    let selected_k = candidates[best_index].k;
+    let best_error = candidates[best_index].average_error;
     for (index, candidate) in candidates.iter_mut().enumerate() {
         candidate.selected = index == best_index;
     }
@@ -198,6 +196,8 @@ fn evaluate_fold(
         ));
     }
 
+    let tie_breaker =
+        CategoryTieBreaker::from_training(&knn_data.target_values, &cv_training_indices);
     let mut correct = 0usize;
     let mut evaluated = 0usize;
     let mut sse = 0.0;
@@ -226,7 +226,7 @@ fn evaluate_fold(
                 evaluated += 1;
             }
         } else {
-            let predicted = calculate_categorical_prediction(&neighbors, &knn_data.target_values);
+            let predicted = calculate_categorical_prediction(&neighbors, &knn_data.target_values, &tie_breaker);
             if category_key(Some(&knn_data.target_values[validation_idx]))
                 == category_key(Some(&predicted))
             {
@@ -243,7 +243,7 @@ fn evaluate_fold(
     } else {
         let incorrect = evaluated.saturating_sub(correct);
         (
-            (1.0 - (correct as f64 / evaluated as f64)) * 100.0,
+            error_rate_percent(incorrect, evaluated),
             incorrect as f64,
         )
     };

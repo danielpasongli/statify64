@@ -1,4 +1,5 @@
 use crate::model::{cell_probabilities_raw, cumulative_probabilities};
+use crate::stats::statistics::multinomial_log_likelihood_constant;
 use crate::types::{AggregatedData, PlumParameters, PlumSpec};
 
 pub fn log_likelihood(params: &PlumParameters, data: &AggregatedData, spec: &PlumSpec) -> f64 {
@@ -13,4 +14,12 @@ pub fn log_likelihood(params: &PlumParameters, data: &AggregatedData, spec: &Plu
         }
     }
     ll
+}
+
+pub fn complete_log_likelihood(
+    params: &PlumParameters,
+    data: &AggregatedData,
+    spec: &PlumSpec,
+) -> f64 {
+    log_likelihood(params, data, spec) + multinomial_log_likelihood_constant(data)
 }

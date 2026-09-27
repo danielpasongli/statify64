@@ -100,11 +100,11 @@ export const VariablesTab: React.FC<Props> = ({
 
   const removeDependent = () => onOptionsChange({ dependent: null, factors: selectedFactors, covariates: selectedCovariates });
   const removeFactor = (v: Variable) => {
-    const newFactors = selectedFactors.filter(f => f.id !== v.id);
+    const newFactors = selectedFactors.filter(f => f.name !== v.name && (v.id === undefined || f.id !== v.id));
     onOptionsChange({ dependent: selectedDependent, factors: newFactors, covariates: selectedCovariates });
   };
   const removeCovariate = (v: Variable) => {
-    const newCovariates = selectedCovariates.filter(c => c.id !== v.id);
+    const newCovariates = selectedCovariates.filter(c => c.name !== v.name && (v.id === undefined || c.id !== v.id));
     onOptionsChange({ dependent: selectedDependent, factors: selectedFactors, covariates: newCovariates });
   };
 
@@ -119,7 +119,7 @@ export const VariablesTab: React.FC<Props> = ({
               <div className={variableListContentClass}>
                 {availableVariables.map((variable) => (
                   <div
-                    key={variable.id}
+                    key={variable.name || variable.id}
                     className={`${variableItemClass} flex items-center p-1.5 mb-1 cursor-pointer border rounded-md text-sm transition-colors ${highlightedVariable?.name === variable.name
                         ? "bg-accent text-accent-foreground border-primary/50"
                         : "border-transparent hover:bg-accent/50"
@@ -199,7 +199,7 @@ export const VariablesTab: React.FC<Props> = ({
                   <div className={variableListContentClass}>
                     {selectedCovariates.map((v) => (
                       <div
-                        key={v.id}
+                        key={v.name || v.id}
                         className={`${variableItemClass} flex items-center p-1.5 mb-1 rounded-md cursor-pointer hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 border border-transparent text-sm transition-colors`}
                         onClick={() => removeCovariate(v)}
                         title="Click to remove"
@@ -234,7 +234,7 @@ export const VariablesTab: React.FC<Props> = ({
                   <div className={variableListContentClass}>
                     {selectedFactors.map((v) => (
                       <div
-                        key={v.id}
+                        key={v.name || v.id}
                         className={`${variableItemClass} flex items-center p-1.5 mb-1 rounded-md cursor-pointer hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 border border-transparent text-sm transition-colors`}
                         onClick={() => removeFactor(v)}
                         title="Click to remove"

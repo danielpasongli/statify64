@@ -24,6 +24,21 @@ pub struct MultinomialResult {
     pub stepwise_trace: Vec<StepwiseStep>,
     pub asymptotic_covariance: Vec<Vec<f64>>,
     pub asymptotic_correlation: Vec<Vec<f64>>,
+    pub cell_probabilities: Vec<CellProbabilityItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CellProbabilityItem {
+    pub subpop_index: usize,
+    pub predictor_values: Vec<f64>,
+    pub category_index: usize,
+    pub category_value: f64,
+    pub observed_count: f64,
+    pub predicted_count: f64,
+    pub pearson_residual: f64,
+    pub observed_percentage: f64,
+    pub predicted_percentage: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

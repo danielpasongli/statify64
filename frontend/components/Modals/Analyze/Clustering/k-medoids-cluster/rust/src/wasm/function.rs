@@ -98,17 +98,18 @@ fn run_pam_clustering(
     input: &KMedoidsInput,
     metric: DistanceMetric,
 ) -> Result<KMedoidsOutput, JsValue> {
-    // Guard: the full n×n distance matrix for PAM costs O(n²) memory.
-    // At 8 bytes per f64 the limit below (~2 500 rows) keeps allocation under
-    // ~50 MB even on low-memory devices.  Larger datasets should use CLARA.
-    const PAM_MAX_N: usize = 2500;
-    if input.data.len() > PAM_MAX_N {
+    // Guard: the full n×n distance matrix for PAM costs O(n²) memory (8 B per f64).
+    // The UI warns above 2 500 rows but lets the user force PAM; this hard ceiling
+    // (~763 MB) only stops sizes where allocation is practically certain to fail and
+    // would kill the WASM instance.  Keep in sync with PAM_HARD_MAX_ROWS in the frontend.
+    const PAM_HARD_MAX_N: usize = 10_000;
+    if input.data.len() > PAM_HARD_MAX_N {
         return Err(JsValue::from_str(&format!(
             "PAM requires an O(n^2) distance matrix ({} rows x {} rows x 8 B = {:.0} MB). \
              Switch to CLARA for datasets larger than {} rows.",
             input.data.len(), input.data.len(),
             (input.data.len() as f64).powi(2) * 8.0 / 1_048_576.0,
-            PAM_MAX_N,
+            PAM_HARD_MAX_N,
         )));
     }
 

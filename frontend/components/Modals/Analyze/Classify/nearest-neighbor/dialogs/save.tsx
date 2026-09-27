@@ -18,6 +18,23 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { FieldHelp } from "./field-help";
+import {
+  computeSaveCapabilities,
+  DEFAULT_SAVED_VARIABLE_NAMES,
+  parseMaxCatsToSaveInput,
+  type SavedVariableNameField,
+} from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborSaveRules";
+
+const withSaveDefaults = (data: KNNSaveType): KNNSaveType => ({
+  ...data,
+  MaxCatsToSave: data.MaxCatsToSave ?? 25,
+  PredictedValueName:
+    data.PredictedValueName ?? DEFAULT_SAVED_VARIABLE_NAMES.PredictedValueName,
+  ProbabilityName:
+    data.ProbabilityName ?? DEFAULT_SAVED_VARIABLE_NAMES.ProbabilityName,
+  PartitionName: data.PartitionName ?? DEFAULT_SAVED_VARIABLE_NAMES.PartitionName,
+  FoldName: data.FoldName ?? DEFAULT_SAVED_VARIABLE_NAMES.FoldName,
+});
 
 export const KNNSave = ({
   updateFormData,
@@ -30,17 +47,14 @@ export const KNNSave = ({
   isUsingFoldVariable,
   showFieldHelp = false,
 }: KNNSaveProps) => {
-  const [saveState, setSaveState] = useState<KNNSaveType>({
-    ...data,
-    AutoName: true,
-    CustomName: false,
-    MaxCatsToSave: data.MaxCatsToSave ?? 25,
-  });
+  const [saveState, setSaveState] = useState<KNNSaveType>(() =>
+    withSaveDefaults(data),
+  );
 
   useEffect(() => {
     setSaveState((previous) => {
       if (JSON.stringify(data) === JSON.stringify(previous)) return previous;
-      return { ...data, MaxCatsToSave: data.MaxCatsToSave ?? 25 };
+      return withSaveDefaults(data);
     });
   }, [data]);
 
@@ -51,13 +65,15 @@ export const KNNSave = ({
     });
   }, [data, saveState, updateFormData]);
 
-  const isCategorical = targetType === "nominal" || targetType === "ordinal";
-
-  const canPredict = hasTarget;
-  const canProbability = hasTarget && isCategorical;
-  const canFold = hasTarget && isAutoK && !isFeatureSelectionActive;
-  const canSavePartition = !isUsingPartitionVariable;
-  const canSaveFold = canFold && !isUsingFoldVariable;
+  const { canPredict, canProbability, canFold, canSavePartition, canSaveFold } =
+    computeSaveCapabilities({
+      hasTarget,
+      targetType,
+      isAutoK,
+      isFeatureSelectionActive,
+      isUsingPartitionVariable,
+      isUsingFoldVariable,
+    });
   const canEditMaxCatsToSave = canProbability && saveState.IsCateTargetVar;
 
   // Predictions need a target; probabilities only apply to categorical targets.
@@ -92,20 +108,18 @@ export const KNNSave = ({
     }));
   };
 
+  const getNameInputValue = (field: SavedVariableNameField) =>
+    saveState.AutoName
+      ? DEFAULT_SAVED_VARIABLE_NAMES[field]
+      : (saveState[field] ?? "");
+
   const handleMaxCatsToSaveChange = (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
-    const rawValue = event.target.value;
+    const parsed = parseMaxCatsToSaveInput(event.target.value);
+    if (parsed === undefined) return;
 
-    if (rawValue === "") {
-      handleChange("MaxCatsToSave", null);
-      return;
-    }
-
-    const numericValue = Number(rawValue);
-    if (!Number.isFinite(numericValue)) return;
-
-    handleChange("MaxCatsToSave", Math.max(1, Math.trunc(numericValue)));
+    handleChange("MaxCatsToSave", parsed);
   };
 
   return (
@@ -205,7 +219,11 @@ export const KNNSave = ({
                 </TableCell>
                 <TableCell>
                   <Input
-                    value="KNN_PredictedValue"
+                    aria-label="Predicted value or category variable name"
+                    value={getNameInputValue("PredictedValueName")}
+                    onChange={(e) =>
+                      handleChange("PredictedValueName", e.target.value)
+                    }
                     disabled={
                       saveState.AutoName ||
                       !canPredict ||
@@ -239,7 +257,12 @@ export const KNNSave = ({
                 </TableCell>
                 <TableCell>
                   <Input
-                    value="KNN_Probability"
+                    aria-label="Predicted probability variable name prefix"
+                    title="The category name is appended to this name, e.g. KNN_Probability_A."
+                    value={getNameInputValue("ProbabilityName")}
+                    onChange={(e) =>
+                      handleChange("ProbabilityName", e.target.value)
+                    }
                     disabled={
                       saveState.AutoName ||
                       !canProbability ||
@@ -273,7 +296,11 @@ export const KNNSave = ({
                 </TableCell>
                 <TableCell>
                   <Input
-                    value="KNN_Partition"
+                    aria-label="Partition variable name"
+                    value={getNameInputValue("PartitionName")}
+                    onChange={(e) =>
+                      handleChange("PartitionName", e.target.value)
+                    }
                     disabled={
                       saveState.AutoName ||
                       !canSavePartition ||
@@ -307,7 +334,9 @@ export const KNNSave = ({
                 </TableCell>
                 <TableCell>
                   <Input
-                    value="KNN_Fold"
+                    aria-label="Fold variable name"
+                    value={getNameInputValue("FoldName")}
+                    onChange={(e) => handleChange("FoldName", e.target.value)}
                     disabled={
                       saveState.AutoName ||
                       !canSaveFold ||

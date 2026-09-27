@@ -21,6 +21,10 @@ services:
       - traefik.docker.network=dokploy-network
       - traefik.http.routers.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-frontend.rule=Host(`statify-dev.student.stis.ac.id`)
       - traefik.http.routers.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-frontend.entrypoints=web
+      # Explicit priority so this catch-all Host rule never wins over the
+      # backend's more specific Host+PathPrefix(/api) rule below, regardless
+      # of how Traefik would otherwise auto-rank rule length.
+      - traefik.http.routers.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-frontend.priority=1
       - traefik.http.services.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-frontend.loadbalancer.server.port=3001
       - traefik.http.routers.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-frontend.service=skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-frontend
       - traefik.enable=true
@@ -44,6 +48,24 @@ services:
       test: ["CMD", "wget", "-qO-", "http://localhost:5000/"]
       interval: 30s
       timeout: 10s
+    labels:
+      # Route /api/* on the SAME public host straight to this backend
+      # container, bypassing the frontend/Next.js entirely. Without this,
+      # Traefik only had a router for the frontend on this host, so every
+      # /api/* request landed on Next.js instead of Express - and Next's
+      # own rewrite proxy for /api/* pointed back at this same public host,
+      # creating a self-referencing loop (confirmed via curl: requests to
+      # /api/sav on this domain hung until timeout, while the equivalent
+      # request on the working production domain returned instantly -
+      # implying prod already has an equivalent direct route to its backend
+      # that this dev deployment never had).
+      - traefik.docker.network=dokploy-network
+      - traefik.enable=true
+      - traefik.http.routers.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-backend.rule=Host(`statify-dev.student.stis.ac.id`) && PathPrefix(`/api`)
+      - traefik.http.routers.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-backend.entrypoints=web
+      - traefik.http.routers.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-backend.priority=100
+      - traefik.http.routers.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-backend.service=skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-backend
+      - traefik.http.services.skripsi-222212576-dwinanda-muhammad-keyzha-statify-ijrlje-backend.loadbalancer.server.port=5000
     networks:
       - dokploy-network
       - default

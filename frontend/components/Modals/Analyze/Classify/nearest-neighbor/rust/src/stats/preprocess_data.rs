@@ -97,18 +97,26 @@ pub fn preprocess_knn_data(data: &AnalysisData, config: &KnnConfig) -> Result<Kn
     // Get case identifier variable
     let case_ident_var = &config.main.case_iden_var;
 
+    // Listwise deletion runs over every candidate feature of the analysis, not
+    // only the current subset, so feature selection evaluates every subset on
+    // the same cases and the same training/holdout split.
+    let mut case_filter_features = config.run.case_filter_features.clone().unwrap_or_default();
+    for feature in &features {
+        if !case_filter_features.contains(feature) {
+            case_filter_features.push(feature.clone());
+        }
+    }
+    let case_filter_measures = derive_feature_measures(&case_filter_features, &feature_defs);
+
     let valid_case_indices = collect_valid_case_indices(
         data,
-        &features,
-        &feature_measures,
+        &case_filter_features,
+        &case_filter_measures,
         Some(target_var.as_str()),
     );
     let analysis_case_indices: Vec<usize> = valid_case_indices
         .into_iter()
-        .filter(|&case_idx| {
-            has_valid_partitioning_values(data, config, case_idx)
-                && has_valid_focal_case_identifier_value(data, config, case_idx)
-        })
+        .filter(|&case_idx| has_valid_partitioning_values(data, config, case_idx))
         .collect();
 
     if analysis_case_indices.is_empty() {
@@ -194,8 +202,11 @@ pub fn preprocess_knn_data(data: &AnalysisData, config: &KnnConfig) -> Result<Kn
     }
 
     // Identify focal cases
-    let focal_indices =
-        identify_focal_cases(&case_identifiers, data, &config.main.focal_case_iden_var);
+    let focal_indices = identify_focal_cases(
+        &processed_case_indices,
+        data,
+        &config.main.focal_case_iden_var,
+    );
 
     let expanded_features =
         build_expanded_feature_names(&features, &feature_measures, &category_maps);
@@ -677,25 +688,13 @@ fn data_value_to_identifier(value: &DataValue) -> Option<i32> {
     }
 }
 
-fn data_value_to_numeric_identifier(value: &DataValue) -> Option<i32> {
-    match value {
-        DataValue::Number(id) if id.is_finite() => Some(*id as i32),
-        _ => None,
-    }
-}
-
-fn has_valid_focal_case_identifier_value(
-    data: &AnalysisData,
-    config: &KnnConfig,
-    case_idx: usize,
-) -> bool {
-    let Some(focal_var) = &config.main.focal_case_iden_var else {
-        return true;
-    };
-
-    find_focal_identifier_value(case_idx, focal_var, data)
-        .and_then(data_value_to_numeric_identifier)
-        .is_some()
+/// A case is focal when its focal-case variable holds a positive number.
+/// Zero, negative, missing, or non-numeric values mark a non-focal case.
+fn is_focal_case(case_idx: usize, focal_var: &str, data: &AnalysisData) -> bool {
+    matches!(
+        find_focal_identifier_value(case_idx, focal_var, data),
+        Some(DataValue::Number(value)) if value.is_finite() && *value > 0.0
+    )
 }
 
 fn find_focal_identifier_value<'a>(
@@ -775,40 +774,26 @@ fn data_value_to_label(value: &DataValue) -> Option<String> {
     }
 }
 
-/// Helper function to identify focal cases
+/// Helper function to identify focal cases.
+/// `processed_case_indices` maps each processed row to its original data row.
 fn identify_focal_cases(
-    case_identifiers: &[i32],
+    processed_case_indices: &[usize],
     data: &AnalysisData,
     focal_var: &Option<String>,
 ) -> Vec<usize> {
     let mut focal_indices = Vec::new();
 
     if let Some(focal_var) = focal_var {
-        // Create lookup map for faster case identifier matching
-        let case_id_map: HashMap<i32, usize> = case_identifiers
+        focal_indices = processed_case_indices
             .iter()
             .enumerate()
-            .map(|(idx, &id)| (id, idx))
+            .filter(|(_, &case_idx)| is_focal_case(case_idx, focal_var, data))
+            .map(|(processed_idx, _)| processed_idx)
             .collect();
-
-        // Find matching focal cases
-        for dataset in &data.focal_case_data {
-            for record in dataset {
-                if let Some(case_id) = record
-                    .values
-                    .get(focal_var)
-                    .and_then(data_value_to_numeric_identifier)
-                {
-                    if let Some(&idx) = case_id_map.get(&case_id) {
-                        focal_indices.push(idx);
-                    }
-                }
-            }
-        }
     }
 
     // Default to first case if no focal cases found
-    if focal_indices.is_empty() && !case_identifiers.is_empty() {
+    if focal_indices.is_empty() && !processed_case_indices.is_empty() {
         focal_indices.push(0);
     }
 
@@ -833,7 +818,7 @@ mod tests {
     use super::{
         apply_training_based_normalization, build_category_maps, collect_valid_case_indices,
         extract_case_identifier, extract_feature_values_one_hot, fit_feature_scalers,
-        has_valid_focal_case_identifier_value, identify_focal_cases, preprocess_knn_data,
+        identify_focal_cases, preprocess_knn_data,
         transform_with_feature_scalers, FeatureScaler,
     };
 
@@ -1183,13 +1168,46 @@ mod tests {
     }
 
     #[test]
-    fn focal_cases_match_case_identifiers_from_focal_data() {
+    fn focal_cases_are_rows_with_positive_focal_values() {
         let data = AnalysisData {
             target_data: Vec::new(),
             features_data: Vec::new(),
             focal_case_data: vec![vec![
-                record("focal_id", DataValue::Number(202.0)),
-                record("focal_id", DataValue::Text("303".to_string())),
+                record("focal", DataValue::Number(0.0)),
+                record("focal", DataValue::Number(1.0)),
+                record("focal", DataValue::Null),
+                record("focal", DataValue::Number(-2.0)),
+                record("focal", DataValue::Text("1".to_string())),
+                record("focal", DataValue::Number(7.0)),
+            ]],
+            case_data: None,
+            target_data_defs: Vec::new(),
+            features_data_defs: Vec::new(),
+            focal_case_data_defs: Vec::new(),
+            case_data_defs: None,
+        };
+
+        // Processed rows map to original rows 0..=5, focal ones are rows 1 and 5.
+        assert_eq!(
+            identify_focal_cases(&[0, 1, 2, 3, 4, 5], &data, &Some("focal".to_string())),
+            vec![1, 5]
+        );
+
+        // Processed indices are returned even when some original rows were dropped.
+        assert_eq!(
+            identify_focal_cases(&[0, 3, 5], &data, &Some("focal".to_string())),
+            vec![2]
+        );
+    }
+
+    #[test]
+    fn focal_cases_default_to_first_case_when_none_marked() {
+        let data = AnalysisData {
+            target_data: Vec::new(),
+            features_data: Vec::new(),
+            focal_case_data: vec![vec![
+                record("focal", DataValue::Number(0.0)),
+                record("focal", DataValue::Null),
             ]],
             case_data: None,
             target_data_defs: Vec::new(),
@@ -1199,102 +1217,9 @@ mod tests {
         };
 
         assert_eq!(
-            identify_focal_cases(&[101, 202, 303], &data, &Some("focal_id".to_string())),
-            vec![1]
+            identify_focal_cases(&[0, 1], &data, &Some("focal".to_string())),
+            vec![0]
         );
-    }
-
-    #[test]
-    fn focal_case_identifier_requires_numeric_values_for_valid_cases() {
-        let data = AnalysisData {
-            target_data: Vec::new(),
-            features_data: Vec::new(),
-            focal_case_data: vec![vec![
-                record("focal_id", DataValue::Number(101.0)),
-                record("focal_id", DataValue::Text("202".to_string())),
-                record("focal_id", DataValue::Null),
-            ]],
-            case_data: None,
-            target_data_defs: Vec::new(),
-            features_data_defs: Vec::new(),
-            focal_case_data_defs: Vec::new(),
-            case_data_defs: None,
-        };
-        let config = crate::models::config::KnnConfig {
-            main: crate::models::config::MainConfig {
-                target_var: Some("target".to_string()),
-                feature_var: Some(vec!["x".to_string()]),
-                case_iden_var: None,
-                focal_case_iden_var: Some("focal_id".to_string()),
-                norm_covar: false,
-            },
-            neighbors: crate::models::config::NeighborsConfig {
-                specify: true,
-                auto_selection: false,
-                specify_k: 1,
-                min_k: None,
-                max_k: None,
-                metric_eucli: true,
-                metric_manhattan: false,
-                weight: false,
-                predictions_mean: false,
-                predictions_median: false,
-            },
-            features: crate::models::config::FeaturesConfig {
-                forward_selection: None,
-                forced_entry_var: None,
-                features_to_evaluate: 0,
-                forced_features: 0,
-                perform_selection: false,
-                max_reached: true,
-                below_min: false,
-                max_to_select: None,
-                min_change: 0.01,
-            },
-            partition: crate::models::config::PartitionConfig {
-                src_var: None,
-                partitioning_variable: None,
-                use_randomly: false,
-                use_variable: false,
-                v_fold_partitioning_variable: None,
-                v_fold_use_randomly: false,
-                v_fold_use_partitioning_var: false,
-                training_number: 70,
-                num_partition: 2,
-                set_seed: false,
-                seed: None,
-            },
-            save: crate::models::config::SaveConfig {
-                auto_name: true,
-                custom_name: false,
-                max_cats_to_save: None,
-                has_target_var: false,
-                is_cate_target_var: false,
-                random_assign_to_partition: false,
-                random_assign_to_fold: false,
-            },
-            output: crate::models::config::OutputConfig {
-                case_summary: true,
-                feature_selection_summary: true,
-                k_selection_chart: true,
-                predictor_space: true,
-                prediction_results: true,
-                confusion_matrix: true,
-                show_neighbor_detail: false,
-                chart_and_table: true,
-                export_model_xml: false,
-                xml_file_path: None,
-                export_distance: false,
-                create_dataset: false,
-                write_data_file: false,
-                new_data_file_path: None,
-                dataset_name: None,
-            },
-        };
-
-        assert!(has_valid_focal_case_identifier_value(&data, &config, 0));
-        assert!(!has_valid_focal_case_identifier_value(&data, &config, 1));
-        assert!(!has_valid_focal_case_identifier_value(&data, &config, 2));
     }
 
     fn record(name: &str, value: DataValue) -> DataRecord {
@@ -1386,7 +1311,12 @@ mod tests {
                 is_cate_target_var: false,
                 random_assign_to_partition: false,
                 random_assign_to_fold: false,
+                predicted_value_name: None,
+                probability_name: None,
+                partition_name: None,
+                fold_name: None,
             },
+            run: Default::default(),
             output: OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,

@@ -209,6 +209,8 @@ export type KMedoidsClusterIterateProps = {
     ) => void;
     data: KMedoidsClusterIterateType;
     mainData: KMedoidsClusterMainType;
+    /** Jumlah baris valid untuk variabel terpilih (0 bila belum diketahui). */
+    validRowCount?: number;
 };
 
 /**

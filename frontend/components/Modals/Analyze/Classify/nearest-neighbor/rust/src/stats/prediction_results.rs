@@ -12,7 +12,7 @@ use super::{
     prediction::{
         calculate_categorical_prediction, calculate_categorical_probabilities,
         calculate_mean_prediction, calculate_median_prediction, category_key,
-        sorted_target_categories_for_indices,
+        sorted_target_categories_for_indices, CategoryTieBreaker,
     },
     preprocess_data::preprocess_knn_data,
 };
@@ -126,6 +126,8 @@ fn calculate_case_predictions_for_knn_data(
     let target_is_numeric = knn_data.target_is_numeric_scale();
     let categories =
         sorted_target_categories_for_indices(&knn_data.target_values, &knn_data.training_indices);
+    let tie_breaker =
+        CategoryTieBreaker::from_training(&knn_data.target_values, &knn_data.training_indices);
     let case_count = knn_data.data_matrix.len();
     let mut predicted_values = vec![DataValue::Null; case_count];
     let mut correct_values = vec![None; case_count];
@@ -174,7 +176,7 @@ fn calculate_case_predictions_for_knn_data(
             };
             (predicted, None, None, error, squared_error)
         } else {
-            let predicted = calculate_categorical_prediction(&neighbors, &knn_data.target_values);
+            let predicted = calculate_categorical_prediction(&neighbors, &knn_data.target_values, &tie_breaker);
             let probability = category_key(Some(&predicted)).and_then(|predicted_key| {
                 calculate_categorical_probabilities(
                     &neighbors,

@@ -49,6 +49,7 @@ export interface OrdinalOutputParams {
     goodnessOfFit: boolean;
     summaryStatistics: boolean;
     parameterEstimates: boolean;
+    asymptoticCovariance: boolean;
     asymptoticCorrelation: boolean;
     cellInformation: boolean;
     testOfParallelLines: boolean;
@@ -134,6 +135,8 @@ export interface PlumOutputOptions {
   pseudoRSquares?: boolean;
   parameterEstimates?: boolean;
   covarianceMatrix?: boolean;
+  asymptoticCovariance?: boolean;
+  asymptoticCorrelation?: boolean;
   residuals?: boolean;
   goodnessOfFit?: boolean;
   summaryStatistics?: boolean;

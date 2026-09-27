@@ -60,16 +60,6 @@ export const KNNFeatures = ({
     updateFormData,
   ]);
 
-  useEffect(() => {
-    if (
-      data.PerformSelection &&
-      data.MaxReached &&
-      (data.MaxToSelect === null || data.MaxToSelect === undefined)
-    ) {
-      updateFormData("MaxToSelect", 1);
-    }
-  }, [data.PerformSelection, data.MaxReached, data.MaxToSelect, updateFormData]);
-
   const handleChange = (
     field: keyof KNNFeaturesType,
     value: CheckedState | number | boolean | string | null,
@@ -108,6 +98,12 @@ export const KNNFeatures = ({
 
   const forwardCount = availableVariables.length;
   const forcedCount = (data.ForcedEntryVar ?? []).length;
+  // SPSS default when the number to select is left blank:
+  // J_add = max(min(20, P) - J_forced, 0), with P the total number of features.
+  const automaticNumberToSelect = Math.max(
+    Math.min(20, forwardCount + forcedCount) - forcedCount,
+    0,
+  );
 
   return (
     <div className="flex flex-col h-full min-h-0 w-full overflow-hidden">
@@ -261,18 +257,24 @@ export const KNNFeatures = ({
                           <Input
                             id="MaxToSelect"
                             type="number"
-                            placeholder=""
+                            placeholder="Auto"
                             value={data.MaxToSelect ?? ""}
                             disabled={!data.MaxReached || data.BelowMin}
                             onChange={(e) =>
                               handleChange(
                                 "MaxToSelect",
-                                Number(e.target.value),
+                                e.target.value === ""
+                                  ? null
+                                  : Number(e.target.value),
                               )
                             }
                           />
                         </div>
                       </div>
+                      <p className="pl-2 text-xs text-muted-foreground">
+                        Leave blank to select automatically ({automaticNumberToSelect}{" "}
+                        {automaticNumberToSelect === 1 ? "feature" : "features"}).
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-col gap-1">

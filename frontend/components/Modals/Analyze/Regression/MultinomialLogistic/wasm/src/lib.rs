@@ -36,7 +36,7 @@ pub fn calculate_multinomial_logistic(
     };
 
     // 4. Jalankan Estimasi (Newton-Raphson)
-    let final_result = match estimate_parameters(&primary_results, &config) {
+    let final_result = match estimate_parameters(&data, &primary_results, &config) {
         Ok(res) => res,
         Err(err) => return Err(JsValue::from_str(&err)),
     };

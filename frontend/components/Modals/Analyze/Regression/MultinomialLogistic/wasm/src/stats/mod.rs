@@ -1,4 +1,5 @@
 pub mod classification;
+pub mod cell_probabilities;
 pub mod core;
 pub mod estimation;
 pub mod format_results;

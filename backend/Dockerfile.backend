@@ -11,6 +11,7 @@ ENV NODE_ENV=production
 
 # Copy backend package.json dan install dependencies
 COPY package.json ./
+COPY patches ./patches
 RUN NODE_ENV=development npm install
 
 # Copy source code backend
@@ -39,6 +40,7 @@ ENV NODE_ENV=production
 
 # Copy package.json untuk production
 COPY package.json ./
+COPY patches ./patches
 
 # Install ONLY production dependencies
 RUN npm install --omit=dev
