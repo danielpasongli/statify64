@@ -297,7 +297,7 @@ fn compute_group_covariances(
     Ok((group_covs, group_log_dets, group_sizes, group_names))
 }
 
-/// Computes the covariance matrix for a specific group.
+/// Covariance matrix of one group, Sᵢ = Σ (x − x̄ᵢ)(x − x̄ᵢ)ᵀ / (nᵢ − 1).
 ///
 /// # Parameters
 /// * `dataset` - The analyzed dataset
@@ -434,7 +434,7 @@ fn compute_c1_factor(p: usize, k: usize, group_sizes: &[usize], total_sample_siz
     let denominator = 6.0 * (p_f64 + 1.0) * (k_f64 - 1.0);
 
     if denominator > EPSILON {
-        numerator / denominator // A₁, bukan ρ = 1 − A₁: aproksimasi F memakai A₁ langsung
+        numerator / denominator // A₁ itself, not ρ = 1 − A₁
     } else {
         0.0
     }

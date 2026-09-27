@@ -170,11 +170,8 @@ pub fn analyze_variables_not_in_model(
         }
     }
 
-    // SPSS only displays the top 4 ranked candidates in the "Variables not in
-    // the Analysis" table, but selects from the full ranked list. We keep
-    // the full ranked list and let display callers (create_step_data) slice
-    // the top 4 — the selection routines (find_best_variable_to_enter) need
-    // the full list.
+    // The full ranked list: the Variables Not in the Analysis table lists every
+    // candidate, and find_best_variable_to_enter selects from it.
     Ok(variables_not_in_analysis)
 }
 
@@ -399,8 +396,8 @@ pub fn find_worst_variable_to_remove(
     // The removal candidate is the variable with the smallest partial F-to-remove,
     // for every method; should_remove_variable then decides whether it goes. It is
     // taken by value, not as `first()`: the display order is method-dependent, and
-    // for Rao's V the first row is the MOST important variable (smallest reduced V),
-    // which made Rao's V test the wrong variable and never remove the weak one.
+    // for Rao's V the first row is the most important variable (smallest reduced V),
+    // not the weakest one.
     let worst_candidate = candidates
         .iter()
         .min_by(|a, b| {

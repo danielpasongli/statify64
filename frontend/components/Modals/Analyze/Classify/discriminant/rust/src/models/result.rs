@@ -35,8 +35,6 @@ pub struct DiscriminantResult {
     pub prior_probabilities: Option<PriorProbabilities>,
     #[serde(rename = "classification_function_coefficients")]
     pub classification_function_coefficients: Option<ClassificationFunctionCoefficients>,
-    #[serde(rename = "discriminant_histograms")]
-    pub discriminant_histograms: Option<DiscriminantHistograms>,
     /// Per-case discriminant scores of every classified case for the Combined-/
     /// Separate-groups plots. Populated whenever combine || sep_grp.
     #[serde(rename = "scatter_data")]
@@ -405,7 +403,7 @@ pub struct BoxMTest {
     #[serde(rename = "p_value")]
     pub p_value: f64,
     pub note: String,
-    // Debug fields (visible in console.log)
+    // Intermediate values of the computation; not sent to the frontend.
     #[serde(skip_serializing)]
     pub debug_p: usize,
     #[serde(skip_serializing)]
@@ -450,7 +448,7 @@ pub struct LogDeterminants {
     #[serde(rename = "pooled_log_determinant")]
     pub pooled_log_determinant: f64,
     pub note: String,
-    // Debug fields (visible in console.log)
+    // Intermediate values of the computation; not sent to the frontend.
     #[serde(skip_serializing)]
     pub debug_variables: Vec<String>,
 }
@@ -665,38 +663,6 @@ pub struct ClassificationFunctionCoefficients {
     pub coefficients: HashMap<String, Vec<f64>>,
     #[serde(rename = "constant_terms")]
     pub constant_terms: Vec<f64>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DiscriminantHistograms {
-    #[serde(rename = "functions")]
-    pub functions: Vec<String>,
-    #[serde(rename = "groups")]
-    pub groups: Vec<String>,
-    #[serde(rename = "histograms")]
-    pub histograms: HashMap<String, GroupHistogram>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GroupHistogram {
-    #[serde(rename = "bin_count")]
-    pub bin_count: i32,
-    #[serde(rename = "bin_width")]
-    pub bin_width: f64,
-    #[serde(rename = "min_value")]
-    pub min_value: f64,
-    #[serde(rename = "max_value")]
-    pub max_value: f64,
-    #[serde(rename = "mean")]
-    pub mean: f64,
-    #[serde(rename = "std_dev")]
-    pub std_dev: f64,
-    #[serde(rename = "sample_size")]
-    pub sample_size: i32,
-    #[serde(rename = "bin_frequencies")]
-    pub bin_frequencies: Vec<i32>,
-    #[serde(rename = "bin_edges")]
-    pub bin_edges: Vec<f64>,
 }
 
 /// Lightweight per-case scores for scatter plot rendering.

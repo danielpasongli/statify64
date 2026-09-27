@@ -9,10 +9,10 @@
  *   Dis1_2  Probabilities of Group 1 Membership for Analysis 1
  *
  * Why the per-case values are recomputed here instead of being read out of the
- * WASM result: the Rust side returns its per-case output re-ordered by group and
- * numbered with a running counter (`casewise_statistics.case_number`), so there
- * is no way back to the dataset row a value came from. Walking the raw rows here
- * keeps the row index in hand. The arithmetic below mirrors `classify_case_safe`
+ * WASM result: the result carries per-case values only for the Casewise Statistics
+ * table, which is computed only when Display → Casewise results is checked and can
+ * be limited to the first n cases, while Save needs every dataset row. Walking the
+ * raw rows here covers all of them. The arithmetic below mirrors `classify_case_safe`
  * in rust/src/stats/classification_result.rs (and `fit_groups` in
  * separate_covariance.rs for the Separate-groups option) exactly, so the saved
  * columns agree with the Classification Results and Casewise Statistics tables.
@@ -227,6 +227,7 @@ export function computeDiscriminantCaseResults(
         const values = c.cells.map((v, i) => v ?? predictorMeans[i]);
         if (values.some((v) => !Number.isFinite(v))) continue;
 
+        // Discriminant scores fⱼ = a₀ⱼ + Σᵢ aᵢⱼ xᵢ (unstandardized coefficients).
         const scores = new Array<number>(numFunctions).fill(0);
         for (let f = 0; f < numFunctions; f++) {
             let s = constants[f] ?? 0;
@@ -241,9 +242,10 @@ export function computeDiscriminantCaseResults(
 
     if (scored.length === 0) return null;
 
-    // Priors, following the Prior Probabilities table (prior_probabilities.rs), which
-    // every Rust classification path now uses: group sizes are counted over the
-    // analysis sample (selected, complete rows), with equal priors if it is empty.
+    // Priors πₖ = 1/g or nₖ/n, following the Prior Probabilities table
+    // (prior_probabilities.rs), which every Rust classification path uses: group sizes
+    // are counted over the analysis sample (selected, complete rows), with equal priors
+    // if it is empty.
     const priors: number[] = [];
     if (config.classify.AllGroupEqual) {
         priors.push(...new Array<number>(groupLabels.length).fill(1 / groupLabels.length));
@@ -273,9 +275,10 @@ export function computeDiscriminantCaseResults(
     const rows: Array<CaseResult | null> = new Array(dataVariables.length).fill(null);
 
     for (const c of scored) {
-        // log P(g|x) up to a constant: ln(prior) - 0.5 * squared distance to the
-        // group centroid in discriminant space. Under Separate-groups the distance
-        // uses the group's own covariance matrix Σg, and -0.5 * ln|Σg| is added.
+        // ℓₖ = ln πₖ − ½ ln|Σₖ| − ½ D²ₖ, the log posterior up to a shared constant.
+        // D²ₖ is the squared distance of the scores to group k's centroid: Euclidean in
+        // function space, or (f − f̄ₖ)ᵀ Σₖ⁻¹ (f − f̄ₖ) with the group's own covariance
+        // matrix Σₖ under Separate-groups (ln|Σₖ| = 0 otherwise).
         const logProbs = groupLabels.map((g, gIdx) => {
             const centroid = centroidOf.get(g) ?? [];
             const diff = new Array<number>(numFunctions);
@@ -299,7 +302,8 @@ export function computeDiscriminantCaseResults(
             return prior > 0 ? Math.log(prior) - 0.5 * logDet - 0.5 * d2 : -Infinity;
         });
 
-        // Softmax with the max subtracted out, the same underflow guard Rust uses.
+        // P(G=k | x) = exp(ℓₖ − max ℓ) / Σⱼ exp(ℓⱼ − max ℓ); subtracting the largest ℓ
+        // keeps the exponentials from underflowing, as in Rust.
         const maxLog = Math.max(...logProbs);
         const exps = logProbs.map((lp) => Math.exp(lp - maxLog));
         const sumExp = exps.reduce((a, b) => a + b, 0);
@@ -345,9 +349,9 @@ function numericVariable(name: string, label: string, decimals: number): Partial
  *
  * SPSS numbers the saved columns per set: the predicted group and the
  * discriminant scores share one suffix (Dis_1, Dis1_1, Dis2_1) and the
- * probabilities take the next (Dis1_2, Dis2_2). We search for the lowest
- * starting suffix whose whole name set is still free, so re-running the
- * analysis appends rather than colliding.
+ * probabilities take the next (Dis1_2, Dis2_2). The lowest starting suffix
+ * whose whole name set is still free is used, so re-running the analysis
+ * appends rather than colliding.
  */
 function allocateNames(
     save: DiscriminantType["save"],

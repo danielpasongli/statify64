@@ -878,7 +878,8 @@ export function transformDiscriminantResult(data: any): ResultJson {
     // 1. Rao's V — detected via the explicit method field from Rust
     isRaosVMethod = data.stepwise_statistics.method === "raos_v";
 
-    // 2. Mahalanobis — ada min_d_squared > 0, dan bukan Rao's V / F-ratio / Unexplained
+    // 2. Mahalanobis — some step has min_d_squared > 0, and the method is not Rao's V /
+    //    F-ratio / Unexplained
     if (!isRaosVMethod && !isFRatio && !isUnexplained) {
       const notInAnalysis = data.stepwise_statistics.variables_not_in_analysis;
       if (Array.isArray(notInAnalysis) && notInAnalysis.length > 0) {
@@ -893,8 +894,8 @@ export function transformDiscriminantResult(data: any): ResultJson {
     }
   }
 
-  // Helper: back-calculate actual Rao's V from the proxy Wilks' lambda stored in VariableInAnalysis
-  // proxy = 1 / (1 + v/n)  =>  v = n * (1/proxy - 1)
+  // Rao's V recovered from the proxy stored in the wilks_lambda field by Rust:
+  // proxy = 1 / (1 + V/n)  ⇒  V = n · (1/proxy − 1)
   const _raosN = data.processing_summary?.valid_count ?? 1;
   const raosVFromProxy = (proxy: number) =>
     proxy > 0 && proxy < 1 ? _raosN * (1 / proxy - 1) : 0;
@@ -1874,7 +1875,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
     if (data.casewise_statistics.cross_validated) {
       const cvData = data.casewise_statistics.cross_validated;
 
-      // Process each cross-validated case (each row now shows "Cross-validated" in the row header)
+      // One row per cross-validated case, labelled "Cross-validated" in the row header.
       for (let i = 0; i < cvData.case_number.length; i++) {
         const cvPredictedGroup = cvData.predicted_group[i];
         const cvActualGroup = cvData.actual_group[i];
@@ -2053,9 +2054,9 @@ export function transformDiscriminantResult(data: any): ResultJson {
       }
     };
 
-    // Share of correctly classified cases: diagonal over all classified cases. Every
+    // Share of correctly classified cases: 100 · Σ diagonal / Σ all counts. Every
     // classified case is in the denominator, including the rows of a group that got
-    // none of its own cases right (gating on counts[i] > 0 used to inflate it).
+    // none of its own cases right.
     const hitRatio = (counts: GroupCounts[]): number => {
       let correct = 0;
       let total = 0;
@@ -2478,7 +2479,9 @@ export function transformDiscriminantResult(data: any): ResultJson {
       const NY = Math.min(90, Math.max(34, Math.round(Math.sqrt(2200 / (aspect || 1)))));
       const NX = Math.min(90, Math.max(34, Math.round((2200 / NY) || 50)));
 
-      // Classify each grid cell to the highest-scoring centroid.
+      // Classify each grid cell to the group with the largest
+      // ln πₖ − ½ ln|Σₖ| − ½ (d − d̄ₖ)ᵀ Σₖ⁻¹ (d − d̄ₖ), d = (Function 1, Function 2); with
+      // the pooled matrix Σₖ = I, so this is ln πₖ − ½ (squared Euclidean distance).
       const regionPoints: { category: string; x: number; y: number }[] = [];
       for (let i = 0; i < NX; i++) {
         const gx = xMin + ((xMax - xMin) * i) / (NX - 1);
@@ -2669,7 +2672,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
 
     // Multivariate normality (Henze–Zirkler) within each group — one row per
     // group (Group / N / HZ / p value / MVN). LDA assumes normality within groups,
-    // so the former single pooled-data row (R's MVN::mvn(data)) is no longer shown.
+    // so the test runs per group rather than on the pooled data.
     const mv = assumptions.multivariate_normality;
     if (mv && Array.isArray(mv.groups) && mv.groups.length > 0) {
       const table: Table = {
@@ -2732,9 +2735,13 @@ export function transformDiscriminantResult(data: any): ResultJson {
 
 /**
  * Separate-groups rule on the territorial map's axes (Functions 1–2): inverse and
- * log determinant of a group's 2 × 2 covariance block. As in SPSS (and
- * separate_covariance.rs), a function whose variance is ~0, or that is linearly
- * dependent on Function 1, is dropped from the block.
+ * log determinant of a group's 2 × 2 covariance block Σ = [[a, b], [b, d]]:
+ *
+ *   Σ⁻¹ = [[d, −b], [−b, a]] / (ad − b²),   ln|Σ| = ln(ad − b²)
+ *
+ * As in SPSS (and separate_covariance.rs), a function whose variance is ~0, or that
+ * is linearly dependent on Function 1 (residual variance d − b²/a ≈ 0), is dropped
+ * from the block.
  */
 function twoFunctionRule(cov: number[][]): { inv: number[][]; logDet: number } {
   const EPS = 1e-10;

@@ -23,10 +23,10 @@ pub fn run_analysis(
     core::clear_selected_vars_cache();
     core::clear_analysis_warnings();
 
-    // Log configuration to track which methods will be executed
+    // Debug-build log of the configuration.
     crate::debug_log!("Config: {:?}", config);
 
-    // Step 1: Basic processing summary (always executed)
+    // Case processing summary (always computed).
     logger.add_log("basic_processing_summary");
     let processing_summary = match core::basic_processing_summary(data, config) {
         Ok(summary) => summary,
@@ -38,7 +38,7 @@ pub fn run_analysis(
 
     crate::debug_log!("Processing Summary: {:?}", processing_summary);
 
-    // Filter Data
+    // Analysis cases: selected, group code in range, no missing predictor.
     let filtered_data = match core::filter_valid_cases(data, config) {
         Ok(filtered) => filtered,
         Err(e) => {
@@ -82,7 +82,7 @@ pub fn run_analysis(
         Vec::new()
     };
 
-    // Step 2: Group statistics if requested
+    // Group statistics (always computed; means only with Statistics → Means).
     let mut group_statistics = None;
     logger.add_log("calculate_group_statistics");
     match core::calculate_group_statistics(&filtered_data, config) {
@@ -96,7 +96,7 @@ pub fn run_analysis(
         }
     }
 
-    // Step 3: Equality tests if requested
+    // Tests of Equality of Group Means.
     let mut equality_tests = None;
     if config.statistics.anova {
         logger.add_log("calculate_equality_tests");
@@ -112,7 +112,7 @@ pub fn run_analysis(
         };
     }
 
-    // Step 5: Pooled matrices if requested
+    // Pooled within-groups covariance / correlation matrices.
     let mut pooled_matrices = None;
     if config.statistics.wg_correlation || config.statistics.wg_covariance {
         logger.add_log("calculate_pooled_matrices");
@@ -128,7 +128,7 @@ pub fn run_analysis(
         };
     }
 
-    // Step 6: Covariance matrices if requested
+    // Separate-groups and total covariance matrices.
     let mut covariance_matrices = None;
     if config.statistics.sg_covariance || config.statistics.total_covariance {
         logger.add_log("calculate_covariance_matrices");
@@ -144,7 +144,7 @@ pub fn run_analysis(
         };
     }
 
-    // Step 7: Log determinants if Box's M test is requested
+    // Log determinants and Box's M.
     let mut log_determinants = None;
     let mut box_m_test = None;
     if config.statistics.box_m {
@@ -173,7 +173,7 @@ pub fn run_analysis(
         };
     }
 
-    // Step 8: If stepwise analysis is requested
+    // Stepwise variable selection.
     let mut stepwise_statistics = None;
     let mut wilks_lambda_test = None;
 
@@ -204,7 +204,7 @@ pub fn run_analysis(
         crate::debug_log!("Stepwise Statistics: {:?}", stepwise_statistics);
     }
 
-    // Eigen Values
+    // Eigenvalues of the discriminant functions.
     logger.add_log("calculate_eigen_values");
     let eigen_description = match core::calculate_eigen_statistics(&filtered_data, config) {
         Ok(values) => {
@@ -217,7 +217,7 @@ pub fn run_analysis(
         }
     };
 
-    // Wilks' Lambda test
+    // Wilks' lambda test of the functions.
     logger.add_log("calculate_wilks_lambda_test");
     match core::calculate_wilks_lambda_test(&filtered_data, config) {
         Ok(test) => {
@@ -230,7 +230,7 @@ pub fn run_analysis(
         }
     }
 
-    // Step 9: Calculate canonical functions (always executed)
+    // Canonical discriminant function coefficients and group centroids.
     logger.add_log("calculate_canonical_functions");
     let canonical_functions = match core::calculate_canonical_functions(&filtered_data, config) {
         Ok(functions) => {
@@ -243,7 +243,7 @@ pub fn run_analysis(
         }
     };
 
-    // Step 10: Calculate structure matrix
+    // Structure matrix.
     logger.add_log("calculate_structure_matrix");
     let structure_matrix = match core::calculate_structure_matrix(&filtered_data, config) {
         Ok(matrix) => {
@@ -256,7 +256,7 @@ pub fn run_analysis(
         }
     };
 
-    // Step 11: Classification results if requested
+    // Classification statistics.
     let mut classification_function_coefficients = None;
     let mut prior_probabilities = None;
     // Prior Probabilities for Groups accompany any classification output, so
@@ -298,7 +298,7 @@ pub fn run_analysis(
 
     // Classify → Use Covariance Matrix → Separate-groups: SPSS displays each group's
     // covariance matrix of the canonical discriminant functions (the matrices that
-    // now classify the cases) and Box's test of their equality.
+    // classify the cases under this option) and Box's test of their equality.
     let mut separate_groups_classification = None;
     if config.classify.sep_group {
         logger.add_log("calculate_separate_groups_classification");
@@ -346,8 +346,8 @@ pub fn run_analysis(
     // Bootstrap resampling. Holds the selected model fixed (reuses the cached
     // selection) and refits the canonical coefficients directly on each resample,
     // so it neither re-runs stepwise nor disturbs the cache.
-    // Bootstrap applies only to "enter independents together"; it is never run
-    // under the stepwise method even if a stale config flag lingers.
+    // Bootstrap applies only to "enter independents together" and is skipped under
+    // the stepwise method.
     let mut bootstrap_results = None;
     if config.bootstrap.perform_boot_strapping && !config.main.stepwise {
         logger.add_log("calculate_bootstrap");
@@ -425,7 +425,7 @@ pub fn run_analysis(
         error_collector.add_error(&format!("Warning ({})", context), &message);
     }
 
-    // Create the final result
+    // Assemble the result.
     let result = DiscriminantResult {
         processing_summary,
         group_statistics,
@@ -443,7 +443,6 @@ pub fn run_analysis(
         casewise_statistics,
         prior_probabilities,
         classification_function_coefficients,
-        discriminant_histograms: None,
         scatter_data,
         bootstrap_results,
         assumption_results,

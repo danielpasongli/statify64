@@ -21,6 +21,10 @@ use super::matrix_calculation::calculate_pooled_within_matrix_no_epsilon;
 /// Box's M test uses these log determinants to test the homogeneity of
 /// covariance matrices across groups, which is an assumption in discriminant analysis.
 ///
+/// Each value is ln|S| = Σ ln σᵢ over the singular values σᵢ above EPSILON × the
+/// largest, and the rank printed beside it is the number of those σᵢ (see
+/// `calculate_rank_and_log_det`).
+///
 /// # Parameters
 /// * `data` - The analysis data
 /// * `config` - The discriminant analysis configuration

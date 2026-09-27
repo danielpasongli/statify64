@@ -24,7 +24,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useVariableStore } from "@/stores/useVariableStore";
 import { useModalStore } from "@/stores/useModalStore";
 import { useDataStore } from "@/stores/useDataStore";
-import { useResultStore } from "@/stores/useResultStore";
 
 // Tab panels & sub-dialogs
 import { DiscriminantStatistics } from "./statistics";
@@ -63,7 +62,6 @@ export const DiscriminantMain = () => {
   const { closeModal } = useModalStore();
   const variablesFromStore = useVariableStore((state) => state.variables);
   const { data } = useDataStore();
-  const { addLog, addAnalytic, addStatistic } = useResultStore();
 
   const {
     formData,
@@ -193,13 +191,11 @@ export const DiscriminantMain = () => {
     }
   };
 
-  const variables = useVariableStore((state) => state.variables);
-
   const mainData = formData.main;
 
   // Method applies only to the stepwise method; Bootstrap only to "enter
-  // independents together". They are mutually exclusive, so we show just the
-  // relevant one to keep the single tab row from getting crowded.
+  // independents together". They are mutually exclusive, so only the relevant one
+  // is shown, which keeps the single tab row from getting crowded.
   const showMethod = mainData.Stepwise;
   const showBootstrap = !mainData.Stepwise;
 
@@ -395,8 +391,8 @@ export const DiscriminantMain = () => {
     updateFormData("main", "Together", !isStepwise);
     updateFormData("main", "Stepwise", isStepwise);
     // Bootstrap only applies to "enter independents together". Switching to the
-    // stepwise method clears any previously-checked bootstrap so it doesn't keep
-    // running silently (its tab is hidden under stepwise).
+    // stepwise method unchecks it so it does not run unseen (its tab is hidden under
+    // stepwise).
     if (isStepwise && formData.bootstrap?.PerformBootStrapping) {
       updateFormData("bootstrap", "PerformBootStrapping", false);
     }

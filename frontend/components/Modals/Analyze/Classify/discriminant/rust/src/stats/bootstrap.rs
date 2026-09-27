@@ -229,6 +229,8 @@ pub fn calculate_bootstrap(
                 continue;
             }
 
+            // Bias = mean of the B estimates − original estimate; Std. Error = their
+            // standard deviation.
             let mean = est.iter().sum::<f64>() / est.len() as f64;
             bias[f] = mean - orig;
             std_error[f] = std_dev(est, mean);
@@ -658,7 +660,8 @@ fn best_assignment(w: &[Vec<f64>]) -> Vec<usize> {
     order
 }
 
-/// Sample standard deviation (n-1 denominator).
+/// Standard deviation of the bootstrap estimates, s = √[Σ(θ*ᵦ − θ̄*)² / (B − 1)];
+/// 0 when B < 2.
 fn std_dev(values: &[f64], mean: f64) -> f64 {
     let n = values.len();
     if n < 2 {
@@ -668,7 +671,9 @@ fn std_dev(values: &[f64], mean: f64) -> f64 {
     (ss / (n as f64 - 1.0)).sqrt()
 }
 
-/// Type-7 (linear interpolation) quantile of an already-sorted slice.
+/// Type-7 (linear interpolation) quantile of an already-sorted slice x₀ ≤ … ≤ xₙ₋₁:
+///
+/// h = (n − 1) · q,   Q(q) = x₍⌊h⌋₎ + (h − ⌊h⌋) · (x₍⌈h⌉₎ − x₍⌊h⌋₎)
 fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
     let n = sorted.len();
     if n == 0 {
@@ -688,7 +693,8 @@ fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
     }
 }
 
-/// Percentile confidence interval at the two-sided level implied by `alpha`.
+/// Percentile confidence interval [Q(α/2), Q(1 − α/2)] of the bootstrap estimates,
+/// α = 1 − level / 100.
 fn percentile_interval(estimates: &[f64], alpha: f64) -> (f64, f64) {
     let mut sorted = estimates.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -697,7 +703,16 @@ fn percentile_interval(estimates: &[f64], alpha: f64) -> (f64, f64) {
     (lo, hi)
 }
 
-/// Bias-corrected and accelerated (BCa) confidence interval.
+/// Bias-corrected and accelerated (BCa) confidence interval (Efron, 1987):
+///
+/// z₀ = Φ⁻¹(#{θ*ᵦ < θ̂} / B)
+/// α₁ = Φ(z₀ + (z₀ + z_{α/2})   / (1 − a · (z₀ + z_{α/2})))
+/// α₂ = Φ(z₀ + (z₀ + z_{1−α/2}) / (1 − a · (z₀ + z_{1−α/2})))
+/// CI = [Q(α₁), Q(α₂)]
+///
+/// θ̂ = original estimate, a = jackknife acceleration (`jackknife_acceleration`),
+/// Q = Type-7 quantile. The proportion is kept within [10⁻⁶, 1 − 10⁻⁶] so that z₀
+/// stays finite.
 fn bca_interval(estimates: &[f64], original: f64, accel: f64, alpha: f64) -> (f64, f64) {
     let n = estimates.len();
     if n < 2 {
@@ -735,7 +750,11 @@ fn bca_interval(estimates: &[f64], original: f64, accel: f64, alpha: f64) -> (f6
 /// Jackknife acceleration `a` for every (variable, function), needed by BCa.
 /// Leaves out one case at a time, re-fits, matches the functions to the original
 /// (same rule as the resamples), and applies the standard skewness-of-jackknife
-/// formula.
+/// formula
+///
+/// a = Σᵢ (θ̄ − θ₍ᵢ₎)³ / (6 · [Σᵢ (θ̄ − θ₍ᵢ₎)²]^(3/2))
+///
+/// θ₍ᵢ₎ = estimate without case i, θ̄ = mean of the θ₍ᵢ₎.
 fn jackknife_acceleration(
     cases: &[Case],
     variables: &[String],

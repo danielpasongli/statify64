@@ -21,38 +21,19 @@ macro_rules! debug_log {
     }};
 }
 
-// Structure untuk pencatatan fungsi yang dieksekusi
+/// Names of the analysis steps that ran, in order.
 #[derive(Debug, Clone, Default)]
 pub struct FunctionLogger {
     executed_functions: Vec<String>,
 }
 
 impl FunctionLogger {
-    // Menambahkan fungsi baru ke logger
+    /// Record that a step ran.
     pub fn add_log(&mut self, function_name: &str) {
         self.executed_functions.push(function_name.to_string());
     }
 
-    // Mengecek apakah ada fungsi yang dieksekusi
-    pub fn has_logs(&self) -> bool {
-        !self.executed_functions.is_empty()
-    }
-
-    // Mendapatkan seluruh fungsi yang dieksekusi sebagai formatted string
-    pub fn get_log_summary(&self) -> String {
-        if !self.has_logs() {
-            return "Tidak ada fungsi yang dieksekusi.".to_string();
-        }
-
-        let mut summary = String::from("Daftar Fungsi yang Dieksekusi:\n");
-        for (i, function) in self.executed_functions.iter().enumerate() {
-            summary.push_str(&format!("  {}. {}\n", i + 1, function));
-        }
-
-        summary
-    }
-
-    // Mendapatkan daftar fungsi yang dieksekusi
+    /// The recorded step names, in order.
     pub fn get_executed_functions(&self) -> Vec<String> {
         self.executed_functions.clone()
     }

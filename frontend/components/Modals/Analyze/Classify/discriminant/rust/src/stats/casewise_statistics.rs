@@ -17,7 +17,17 @@ use super::core::{
     push_analysis_warning, EPSILON,
 };
 
-/// Calculate detailed statistics for each case
+/// Casewise Statistics: for every case its actual and predicted group, its
+/// discriminant scores fⱼ = a₀ⱼ + Σᵢ aᵢⱼ xᵢ, and for the highest and second-highest
+/// group k
+///
+/// D²ₖ          = squared Mahalanobis distance of the scores to the centroid of group k
+///                (with the pooled matrix, the Euclidean distance in function space)
+/// P(D>d | G=k) = P(χ²(df) > D²ₖ),  df = number of functions
+/// P(G=k | D=d) = πₖ exp(−½ D²ₖ) / Σⱼ πⱼ exp(−½ D²ⱼ)
+///
+/// Under Separate-groups the distance and posterior use each group's own covariance
+/// matrix of the functions, and df is its rank (see `fit_groups`).
 ///
 /// `ungrouped` are the cases with a missing or out-of-range group code
 /// (`ungrouped_cases`); the selected ones are listed with "ungrouped" as their actual
@@ -37,7 +47,7 @@ pub fn calculate_casewise_statistics(
     let dataset = extract_analyzed_dataset(data, config)?;
     let grouping_var = &config.main.grouping_variable;
 
-    // Gunakan variabel hasil stepwise jika diaktifkan
+    // Model variables: the stepwise selection, or every predictor.
     let variables_to_use: Vec<String> = if config.main.stepwise {
         get_stepwise_selected_variables(data, config)?
     } else {
@@ -146,13 +156,13 @@ pub fn calculate_casewise_statistics(
             if let Some(scores) =
                 discriminant_scores.get_mut(&format!("Function {}", func_idx + 1))
             {
-                // Pastikan tidak ada NaN yang lolos ke frontend
+                // A NaN score is shown as 0.
                 scores.push(if score.is_nan() { 0.0 } else { *score });
             }
         }
 
-        // Jarak Mahalanobis di dalam ruang Kanonikal adalah persis Jarak Euclidean
-        // (pooled). Under Separate-groups each group's own covariance matrix of
+        // With the pooled matrix the Mahalanobis distance in function space is the
+        // Euclidean distance. Under Separate-groups each group's own covariance matrix of
         // the functions is used instead, with its rank as the df.
         let fits = fit_groups(
             &disc_scores,
@@ -169,6 +179,8 @@ pub fn calculate_casewise_statistics(
         group_probs
             .sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
 
+        // Posterior P(G=k | D=d): exp of each log score minus the largest one (so the
+        // exponentials cannot underflow), divided by their sum.
         let max_log_prob = group_probs[0].1;
         let mut sum_exp = 0.0;
         for (_, log_prob) in &mut group_probs {
@@ -271,8 +283,14 @@ pub fn calculate_casewise_statistics(
     })
 }
 
-/// Compute cross-validated (leave-one-out) casewise statistics.
-/// Each case is classified using discriminant functions derived from all OTHER cases.
+/// Cross-validated (leave-one-out) casewise statistics. Each case is held out, the
+/// group means and the pooled within-groups covariance S₍₋ᵢ₎ are re-estimated from
+/// the other cases, and
+///
+/// D²ₖ          = (x − x̄ₖ₍₋ᵢ₎)ᵀ S₍₋ᵢ₎⁻¹ (x − x̄ₖ₍₋ᵢ₎)   (on the p predictors)
+/// P(D>d | G=k) = P(χ²(p) > D²ₖ)
+/// P(G=k | D=d) = πₖ exp(−½ D²ₖ) / Σⱼ πⱼ exp(−½ D²ⱼ)
+///
 /// `shown_rows` limits the output to the cases the Original rows show (same data-file
 /// rows, so "Limit cases to first n" applies to both blocks); `None` keeps every case.
 fn calculate_cross_validated_casewise(
@@ -385,8 +403,8 @@ fn calculate_cross_validated_casewise(
                     Err(_) => return None,
                 };
 
-                // --- PERBAIKAN SPSS: CROSS-VALIDATED MENGGUNAKAN OBSERVATION SPACE ---
-                // Hitung Pooled Covariance Matrix Inverse secara langsung (tanpa Fungsi Kanonikal)
+                // Pooled within-groups covariance of the other cases. D² is computed on
+                // the predictors, not on the discriminant functions, as SPSS does.
                 let pooled_cov =
                     calculate_pooled_within_matrix_no_epsilon(&leave_dataset, variables_to_use);
                 let mut reg_cov = pooled_cov.clone();
@@ -423,7 +441,7 @@ fn calculate_cross_validated_casewise(
                 let mut group_distances: Vec<(usize, f64)> = Vec::new();
                 let x_vec = nalgebra::DVector::from_vec(case_values.clone());
 
-                // Hitung D^2 untuk setiap grup di ruang observasi
+                // D² to every group, on the predictors.
                 for (g_idx, target_group) in leave_dataset.group_labels.iter().enumerate() {
                     let mut diff = nalgebra::DVector::zeros(p_vars);
                     for (v_idx, var_name) in variables_to_use.iter().enumerate() {
@@ -458,6 +476,8 @@ fn calculate_cross_validated_casewise(
                     return None;
                 }
 
+                // Posterior P(G=k | D=d), normalized from the log scale as above.
+
                 let max_log_prob = group_probs[0].1;
                 let mut sum_exp = 0.0;
                 for (_, log_prob) in &mut group_probs {
@@ -488,10 +508,10 @@ fn calculate_cross_validated_casewise(
                     .unwrap()
                     .1;
 
-                // df = p (jumlah variabel), bukan jumlah fungsi: D² di atas dihitung di
-                // ruang observasi (x - mean)' S_loo^-1 (x - mean), sehingga di bawah asumsi
-                // model berdistribusi chi-square dengan p derajat bebas. Jalur Original
-                // memakai df = jumlah fungsi karena jaraknya dihitung di ruang kanonik.
+                // df = p (the number of predictors), not the number of functions: D² above
+                // is computed on the predictors, (x − x̄)ᵀ S₍₋ᵢ₎⁻¹ (x − x̄), which under the
+                // model is chi-square with p degrees of freedom. The original rows use
+                // df = number of functions because their distance is in function space.
                 let df_cv = p_vars;
 
                 let p_val_highest = calculate_p_value_from_chi_square(highest_dist, df_cv);
@@ -522,7 +542,6 @@ fn calculate_cross_validated_casewise(
                     second_squared_mahalanobis_distance: second_dist,
                     second_group: second_group_name,
                     original_idx: *file_row,
-                    discriminant_scores: None, // SPSS mengosongkan ini untuk Cross-Validated
                 })
             },
         )
@@ -605,7 +624,6 @@ fn calculate_cross_validated_casewise(
         discriminant_scores: None,
     })
 }
-#[allow(dead_code)]
 struct CrossValidatedCaseResult {
     actual_group: String,
     predicted_group: String,
@@ -619,7 +637,6 @@ struct CrossValidatedCaseResult {
     second_p_g_equals_d: f64,
     second_squared_mahalanobis_distance: f64,
     second_group: String,
-    discriminant_scores: Option<Vec<f64>>,
     /// Data-file row (0-based): the sort key, and Case Number = row + 1
     original_idx: usize,
 }
@@ -701,7 +718,8 @@ pub fn calculate_scatter_data(
     Ok(ScatterData { actual_group, discriminant_scores })
 }
 
-/// Calculate discriminant scores for a case
+/// Discriminant scores of one case: fⱼ = a₀ⱼ + Σᵢ aᵢⱼ xᵢ for every function j
+/// (aᵢⱼ = unstandardized coefficient, a₀ⱼ = constant).
 pub fn calculate_discriminant_scores(
     case_values: &[f64],
     canonical_functions: &CanonicalFunctions,

@@ -7,17 +7,14 @@ use super::core::{
     extract_analyzed_dataset, EPSILON,
 };
 
-/// Calculate structure matrix for discriminant functions
+/// Structure Matrix: pooled within-groups correlation between each predictor Xᵢ and
+/// each discriminant function Zₘ = Σₖ bₖₘ Xₖ (structure loadings):
 ///
-/// This function calculates the pooled within-groups correlations between
-/// each original variable and each discriminant function (structure loadings).
+/// rᵢₘ = Cov(Xᵢ, Zₘ) / (sᵢ · s_Zₘ) = Σₖ Sᵢₖ bₖₘ / √Sᵢᵢ
 ///
-/// The structure loading formula (SPSS convention):
-///   Loading(X_i, Z_m) = Cov(X_i, Z_m) / StdDev(X_i)
-/// where:
-///   Z_m = sum_k(b_k[m] * X_k)  — the m-th discriminant function
-///   Cov(X_i, Z_m) = sum_k(S_pooled[i][k] * b_k[m])
-///                 — row-i of pooled covariance matrix dot column-m of unstandardized coefs
+/// S = pooled within-groups covariance matrix, bₖₘ = unstandardized coefficient of Xₖ
+/// in Zₘ (the sum runs over the model variables). s_Zₘ = 1 because the coefficients
+/// satisfy bₘᵀ S bₘ = 1.
 ///
 /// # Parameters
 /// * `data` - The analysis data
@@ -31,8 +28,8 @@ pub fn calculate_structure_matrix(
 ) -> Result<StructureMatrix, String> {
     crate::debug_log!("Executing calculate_structure_matrix");
 
-    // IMPORTANT: Filter out the grouping variable
-    // SPSS menghitung Structure Matrix untuk SEMUA variabel kandidat
+    // Every predictor except the grouping variable gets a row, as in SPSS: also those
+    // a stepwise method left out of the model.
     let grouping_var = &config.main.grouping_variable;
     let all_variables: Vec<String> = config
         .main
@@ -61,23 +58,22 @@ pub fn calculate_structure_matrix(
 
     let dataset = extract_analyzed_dataset(data, config)?;
 
-    // --- STEP 1: Gunakan matriks kovarians yang SUDAH TERJAMIN BENAR dari core ---
-    // Menggunakan DMatrix dari nalgebra sehingga hitungannya sangat presisi
+    // Pooled within-groups covariance S of all predictors (without the EPSILON ridge).
     let s_pooled = calculate_pooled_within_matrix_no_epsilon(&dataset, &all_variables);
     let num_all_vars = all_variables.len();
 
     let mut correlations = HashMap::new();
 
-    // --- STEP 2: Hitung Structure Loadings ---
+    // Structure loadings.
     for i in 0..num_all_vars {
-        // Standar deviasi variabel X_i (akar dari varians di diagonal matriks)
+        // sᵢ = √Sᵢᵢ, the pooled within-groups standard deviation of Xᵢ.
         let std_dev_i = s_pooled[(i, i)].sqrt();
         let mut var_correlations = Vec::with_capacity(num_functions);
 
         for m in 0..num_functions {
             let mut cov_xz = 0.0;
 
-            // Hitung Cov(X_i, Z_m) menggunakan Unstandardized Coefficients (b), summed
+            // Cov(Xᵢ, Zₘ) = Σₖ Sᵢₖ bₖₘ, summed
             // in variable order: iterating the coefficient map would sum in hash order,
             // which differs between builds and moves the last bit of the result.
             for (k, var_k_name) in all_variables.iter().enumerate() {
@@ -89,10 +85,8 @@ pub fn calculate_structure_matrix(
                 }
             }
 
-            // Hitung Korelasi / Structure Loading
-            // Rumus asli: Cov(X_i, Z_m) / (StdDev(X_i) * StdDev(Z_m))
-            // Karena Unstandardized Coefs sudah di-scale dengan akar (n-g), berlaku
-            // bᵀ·S_pooled·b = 1: varians dalam-grup (pooled) Z_m = 1, sehingga StdDev(Z_m) = 1.
+            // rᵢₘ = Cov(Xᵢ, Zₘ) / (sᵢ · s_Zₘ). The unstandardized coefficients satisfy
+            // bₘᵀ S bₘ = 1, so the pooled within-groups variance of Zₘ is 1 and s_Zₘ = 1.
             let loading = if std_dev_i > EPSILON {
                 cov_xz / std_dev_i
             } else {

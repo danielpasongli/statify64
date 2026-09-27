@@ -154,7 +154,7 @@ async function renderDiscriminantSection(
 
     const { description, cleaned } = buildSectionDescription(tableObj, key);
 
-    // The table title is now the only visible heading for the table (the
+    // The table title is the only visible heading for the table (the
     // component header shows the group name), so carry the section title in.
     await addStatistic(analyticId, {
         title,

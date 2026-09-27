@@ -14,11 +14,10 @@ use crate::models::result::{
     VariableInAnalysis,
     PairwiseComparison,
     HighestGroupStatistics,
-    GroupHistogram,
     ScoreValue,
 };
 
-// Konversi dari String error ke JsValue untuk interaksi WASM
+/// Error message as a JavaScript value, for errors returned across the WASM boundary.
 pub fn string_to_js_error(error: String) -> JsValue {
     JsValue::from_str(&error)
 }
@@ -51,7 +50,6 @@ struct FormatResult {
     casewise_statistics: Option<FormattedCasewiseStatistics>,
     prior_probabilities: Option<FormattedPriorProbabilities>,
     classification_function_coefficients: Option<FormattedClassificationFunctionCoefficients>,
-    discriminant_histograms: Option<FormattedDiscriminantHistograms>,
     scatter_data: Option<FormattedScatterData>,
     bootstrap_results: Option<crate::models::result::BootstrapResults>,
     // Already display-shaped (Vec-based), so passed straight through.
@@ -386,25 +384,11 @@ struct GroupCoefficient {
     values: Vec<f64>,
 }
 
-#[derive(Serialize)]
-struct FormattedDiscriminantHistograms {
-    functions: Vec<String>,
-    groups: Vec<String>,
-    histograms: Vec<HistogramEntry>,
-}
-
-#[derive(Serialize)]
-struct HistogramEntry {
-    function: String,
-    group: String,
-    histogram: GroupHistogram,
-}
-
 impl FormatResult {
     fn from_analysis_result(result: &DiscriminantResult) -> Self {
         // Transform GroupStatistics
         let group_statistics = result.group_statistics.as_ref().map(|stats| {
-            // Debug: log raw stats to see if unweighted_n/weighted_n are populated
+            // Debug-build log of the raw group statistics.
             crate::debug_log!("Raw GroupStatistics - groups: {:?}", stats.groups);
             crate::debug_log!("Raw GroupStatistics - variables: {:?}", stats.variables);
             crate::debug_log!("Raw GroupStatistics - unweighted_n keys: {:?}", stats.unweighted_n.keys().collect::<Vec<_>>());
@@ -764,8 +748,8 @@ impl FormatResult {
                         variables: vars
                             .iter()
                             .map(|v| {
-                                // Convert VariableNotInAnalysis to VariableInAnalysis for simplicity
-                                // This is just a placeholder, you might need actual conversion logic
+                                // Rows of Variables Not in the Analysis share the output shape of
+                                // Variables in the Analysis; their F to Enter fills both F fields.
                                 VariableInAnalysis {
                                     variable: v.variable.clone(),
                                     tolerance: v.tolerance,
@@ -900,36 +884,6 @@ impl FormatResult {
                 }
             });
 
-        // Transform DiscriminantHistograms
-        let discriminant_histograms = result.discriminant_histograms.as_ref().map(|hists| {
-            let histograms = hists.functions
-                .iter()
-                .flat_map(|func| {
-                    hists.groups
-                        .iter()
-                        .filter_map(|group| {
-                            // Hanya lanjutkan jika histogram ditemukan untuk func ini
-                            if let Some(histogram) = hists.histograms.get(func) {
-                                Some(HistogramEntry {
-                                    function: func.clone(),
-                                    group: group.clone(),
-                                    histogram: histogram.clone(),
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<HistogramEntry>>()
-                })
-                .collect();
-
-            FormattedDiscriminantHistograms {
-                functions: hists.functions.clone(),
-                groups: hists.groups.clone(),
-                histograms,
-            }
-        });
-
         // Transform ScatterData
         let scatter_data = result.scatter_data.as_ref().map(|sd| {
             let discriminant_scores = scores_in_function_order(&sd.discriminant_scores);
@@ -956,7 +910,6 @@ impl FormatResult {
             casewise_statistics,
             prior_probabilities,
             classification_function_coefficients,
-            discriminant_histograms,
             scatter_data,
             bootstrap_results: result.bootstrap_results.clone(),
             assumption_results: result.assumption_results.clone(),

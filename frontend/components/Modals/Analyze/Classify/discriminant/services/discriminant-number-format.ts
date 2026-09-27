@@ -14,7 +14,7 @@ const SIG_FLOOR = 0.001;
  * Precision mode, for checking agreement with SPSS beyond the displayed digits:
  * after `localStorage.setItem("discriminant.decimals", "10")` in the browser
  * console, every statistic, significance and percentage prints with that many
- * decimals (1–15). Significance is then no longer cut to "<.001", and a nonzero
+ * decimals (1–15). Significance is then printed in full instead of "<.001", and a nonzero
  * value that would round to zero prints in E notation with as many significant
  * digits. `localStorage.removeItem("discriminant.decimals")` restores the SPSS
  * layout. The key is read on every call, so it applies from the next analysis.

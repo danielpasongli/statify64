@@ -3,6 +3,9 @@ use crate::models::data::{ DataRecord, DataValue };
 
 use super::common::EPSILON;
 
+/// Analysis Case Processing Summary and Classification Processing Summary: valid
+/// cases, and cases excluded for a missing or out-of-range group code, a missing
+/// predictor, both, or the selection variable, each with its percentage of the total.
 pub fn basic_processing_summary(
     data: &AnalysisData,
     config: &DiscriminantConfig
@@ -19,8 +22,7 @@ pub fn basic_processing_summary(
 
     // Each predictor lives in its own column of `independent_data`, whose records are
     // keyed by that predictor only, so a case is checked row by row in each
-    // predictor's own column. (Looking a predictor up in every column made a single
-    // missing value anywhere mark every case as missing.)
+    // predictor's own column.
     let predictor_columns: Vec<(&String, Option<&Vec<DataRecord>>)> = config.main.independent_variables
         .iter()
         .filter(|v| *v != group_var)

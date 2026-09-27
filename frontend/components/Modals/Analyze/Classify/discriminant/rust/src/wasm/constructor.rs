@@ -123,7 +123,7 @@ impl DiscriminantAnalysis {
 
         let config: DiscriminantConfig = match serde_wasm_bindgen::from_value::<DiscriminantConfig>(config_data.clone()) {
             Ok(data) => {
-                // Log received method config for debugging (moved inside Ok branch)
+                // Debug-build log of the method settings received.
                 crate::debug_log!("[DiscriminantAnalysis] Method config received: wilks={}, mahal={}, unex={}, fr={}, raos={}, f_value={}, f_prob={}, f_entry={}, f_removal={}, p_entry={}, p_removal={}",
                     data.method.wilks, data.method.mahalonobis,
                     data.method.unexplained, data.method.f_ratio, data.method.raos,

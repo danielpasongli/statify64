@@ -96,8 +96,8 @@ pub fn calculate_stepwise_statistics(
         return Err(err);
     }
 
-    // Perform stepwise analysis
-    // Stepwise is performed for F-value, F-probability, and Rao's V methods
+    // Selection runs when an entry criterion is flagged, or under Rao's V; otherwise
+    // only step 0 is reported.
     let steps_data = if config.method.f_value || config.method.f_probability || determine_method_type(config) == MethodType::Raos {
         match perform_stepwise_analysis(&dataset, variables, config) {
             Ok(data) => data,
@@ -118,8 +118,11 @@ pub fn calculate_stepwise_statistics(
 
 /// Perform stepwise analysis
 ///
-/// This function performs the stepwise variable selection procedure,
-/// iteratively adding or removing variables based on the specified method.
+/// Each step first tries to remove the model variable with the smallest F to Remove
+/// (when it fails the removal criterion), and otherwise to enter the best candidate
+/// (when it passes the entry criterion). The procedure stops when no variable moves,
+/// after 2 × (number of variables) steps, or when a step would return to a variable
+/// set already visited.
 ///
 /// # Parameters
 /// * `dataset` - The analyzed dataset
@@ -137,7 +140,7 @@ fn perform_stepwise_analysis(
     let mut remaining_variables: Vec<String> = variables.clone();
     let mut steps_data: Vec<StepData> = Vec::new();
 
-    // [ANTI-OSILASI]: Tracker kombinasi variabel
+    // Variable sets already visited; returning to one would cycle forever.
     let mut seen_states: HashSet<String> = HashSet::new();
     seen_states.insert(String::new());
 
@@ -153,7 +156,7 @@ fn perform_stepwise_analysis(
     while step < max_steps {
         let mut step_action_taken = false;
 
-        // PRIORITAS 1: Cek apakah ada variabel yang harus di-REMOVE
+        // 1. Removal first: the variable with the smallest F to Remove.
         if current_variables.len() > 1 {
             let (worst_var_to_remove, worst_stats) =
                 find_worst_variable_to_remove(&current_variables, dataset, method_type, config)?;
@@ -168,18 +171,18 @@ fn perform_stepwise_analysis(
 
             if should_remove {
                 if let Some(var_name) = worst_var_to_remove {
-                    // Cek apakah state ini memicu infinite loop
+                    // Stop when the step would return to a variable set already visited.
                     let mut next_state = current_variables.clone();
                     next_state.retain(|v| v != &var_name);
                     next_state.sort();
                     let state_key = next_state.join(",");
 
                     if seen_states.contains(&state_key) {
-                        break; // Loop terdeteksi, hentikan analisis!
+                        break; // cycle
                     }
                     seen_states.insert(state_key);
 
-                    // Eksekusi Removal
+                    // Remove it.
                     current_variables.retain(|v| v != &var_name);
                     remaining_variables.push(var_name.clone());
 
@@ -203,7 +206,7 @@ fn perform_stepwise_analysis(
             }
         }
 
-        // PRIORITAS 2: Jika tidak ada yang di-remove, cek apakah ada yang bisa di-ENTER
+        // 2. Otherwise entry: the best candidate.
         if !step_action_taken && !remaining_variables.is_empty() {
             let (best_var_to_enter, best_stats) = find_best_variable_to_enter(
                 &remaining_variables,
@@ -223,18 +226,18 @@ fn perform_stepwise_analysis(
 
             if should_enter {
                 if let Some(var_name) = best_var_to_enter {
-                    // Cek apakah state ini memicu infinite loop
+                    // Stop when the step would return to a variable set already visited.
                     let mut next_state = current_variables.clone();
                     next_state.push(var_name.clone());
                     next_state.sort();
                     let state_key = next_state.join(",");
 
                     if seen_states.contains(&state_key) {
-                        break; // Loop terdeteksi, hentikan analisis!
+                        break; // cycle
                     }
                     seen_states.insert(state_key);
 
-                    // Eksekusi Entry
+                    // Enter it.
                     current_variables.push(var_name.clone());
                     remaining_variables.retain(|v| v != &var_name);
                     step_action_taken = true;
@@ -266,6 +269,14 @@ fn perform_stepwise_analysis(
     Ok(steps_data)
 }
 
+/// Whether the best candidate enters the model:
+///
+/// - Rao's V: first ΔV ≥ VIN;
+/// - then F ≥ FIN, or with probability of F, P(F(g − 1, n − g − q) > F) ≤ PIN
+///   (q = variables already in the model).
+///
+/// With neither criterion flagged no variable enters, except under Rao's V, which
+/// then uses F values.
 pub fn should_enter_variable(
     var_opt: &Option<String>,
     stats: &VariableNotInAnalysis,
@@ -322,6 +333,9 @@ fn uses_probability_of_f(config: &DiscriminantConfig) -> bool {
     !config.method.f_value && config.method.f_probability
 }
 
+/// Whether the model variable with the smallest F to Remove leaves the model:
+/// F ≤ FOUT, or with probability of F, P(F(g − 1, n − g − p + 1) > F) ≥ POUT
+/// (p = variables in the model).
 fn should_remove_variable(
     var_opt: &Option<String>,
     stats: &VariableInAnalysis,
@@ -367,8 +381,6 @@ fn create_initial_step(
     config: &DiscriminantConfig,
 ) -> Result<StepData, String> {
     let initial_variables_not_in = analyze_variables_not_in_model(variables, dataset, &[], config)?;
-    let _k = dataset.num_groups as i32;
-    let _n = dataset.total_cases as i32;
 
     Ok(StepData {
         variable_entered: None,
@@ -409,12 +421,10 @@ fn create_step_data(
     let vars_in_analysis =
         analyze_variables_in_model(current_variables, dataset, method_type, config)?;
 
+    // SPSS lists every variable not in the model in this table, so the full ranked
+    // list is kept.
     let vars_not_in_analysis =
         analyze_variables_not_in_model(remaining_variables, dataset, current_variables, config)?;
-
-    // SPSS displays ALL variables not in the model in this table (not just the
-    // top 4), so we keep the full ranked list.
-    let vars_not_in_analysis = vars_not_in_analysis;
 
     let combined_vars = current_variables.to_vec();
     let p = combined_vars.len() as f64;
@@ -470,17 +480,21 @@ fn create_step_data(
 
     let change_in_v = raos_v - prev_raos_v;
 
-    // Change in V has df = k - 1 (number of groups minus 1), distributed as chi-squared
+    // ΔV = V(this step) − V(previous step), approximately chi-square with g − 1 df:
+    // Sig. = P(χ²(g − 1) > ΔV).
     let df_change = k - 1.0;
     let change_sig = if change_in_v > 0.0 && df_change > 0.0 {
-        // Rao's V change is approximately chi-squared distributed with df = k - 1
         chi_squared_cdf_upper(change_in_v, df_change)
     } else {
         1.0
     };
 
-    // --- MODEL's exact Wilks F (Rao's approximation) — ALWAYS computed, for the
-    //     per-step "Wilks' Lambda" summary table regardless of selection method. ---
+    // --- Model's Wilks F (Rao's F), computed for the per-step "Wilks' Lambda" table
+    //     whatever the selection method. With p variables, g groups and n cases:
+    //       t   = √[(p²(g − 1)² − 4) / (p² + (g − 1)² − 5)]   (1 when p(g − 1) = 2)
+    //       w   = n − 1 − (p + g) / 2
+    //       df1 = p(g − 1),   df2 = w·t − (p(g − 1) − 2) / 2
+    //       F   = [(1 − Λ^(1/t)) / Λ^(1/t)] · df2 / df1
     // Rao's F is exact when min(p, g - 1) <= 2; df2 is then a whole number (rounded
     // only to drop floating-point noise). Otherwise it is an approximation with a
     // fractional df2, which is kept as is: truncating it would print the wrong df
@@ -612,7 +626,7 @@ fn convert_steps_to_output(
     let k = num_groups as f64;
 
     for (step_idx, step) in steps_data.iter().enumerate() {
-        // Kita butuh step 0 hanya untuk tabel "Variables Not in The Analysis" yang catat step 0:
+        // Variables Not in the Analysis is kept for every step, step 0 included.
         result.variables_not_in_analysis.insert(
             step_idx.to_string(),
             step.variables_not_in_analysis.clone(),
