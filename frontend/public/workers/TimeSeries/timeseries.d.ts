@@ -302,14 +302,65 @@ export class GARCH {
    */
   calculate_log_likelihood(variance: Float64Array): number;
   /**
-   * IGARCH(p,q) — Integrated GARCH
-   *
-   * Model: σ²_t = ω + Σ α_i·ε²_{t-i} + Σ β_j·σ²_{t-j}
-   * dengan restriksi: Σ α_i + Σ β_j = 1
-   *
-   * Estimasi: L-BFGS menggunakan stick-breaking parameterization.
+   * IGARCH(p,q) — Integrated GARCH (Pure EViews formulation: ω=0, Σ α_i + Σ β_j = 1)
    */
   estimate_igarch(): void;
+  /**
+   * Calculate AIC: -2·LL + 2·k
+   */
+  calculate_aic(log_likelihood: number): number;
+  /**
+   * Calculate BIC: -2·LL + k·ln(n)
+   */
+  calculate_bic(log_likelihood: number, n: number): number;
+  /**
+   * Estimasi GARCH(p,q) via L-BFGS dengan analytical gradient.
+   */
+  estimate(): void;
+  /**
+   * EGARCH(p,q) — Exponential GARCH
+   *
+   * Model: log(σ²_t) = ω + Σ[α_i·|z_{t-i}| + γ_i·z_{t-i}] + Σ β_j·log(σ²_{t-j})
+   * dimana z_t = ε_t/σ_t (standardized residual)
+   *
+   * Keunggulan EGARCH:
+   *   - σ² selalu positif tanpa constraint eksplisit (karena exp())
+   *   - γ_i menangkap leverage effect (bad news impact lebih besar)
+   *
+   * Estimasi: L-BFGS dengan analytical gradient pada log-variance recursion.
+   */
+  estimate_egarch(): void;
+  /**
+   * Hitung conditional variance untuk EGARCH secara manual (untuk inspeksi).
+   * Memerlukan parameter lengkap dari luar (biasanya setelah estimate_egarch).
+   */
+  calculate_egarch_variance(omega: number, alpha: Float64Array, gamma: Float64Array, beta: Float64Array): Float64Array;
+  /**
+   * TGARCH(p,q) / GJR-GARCH — Threshold GARCH
+   *
+   * Model: σ²_t = ω + Σ(α_i + γ_i·I_{t-i})·ε²_{t-i} + Σ β_j·σ²_{t-j}
+   * dimana I_{t-i} = 1 jika ε_{t-i} < 0 (leverage effect indicator)
+   *
+   * Interpretasi γ_i:
+   *   - γ_i > 0: bad news (ε < 0) meningkatkan volatilitas lebih besar
+   *   - γ_i = 0: simetrik (sama dengan GARCH standar)
+   *
+   * Estimasi: L-BFGS dengan analytical gradient.
+   */
+  estimate_tgarch(): void;
+  /**
+   * Hitung conditional variance untuk TGARCH secara manual (untuk inspeksi).
+   */
+  calculate_tgarch_variance(omega: number, alpha: Float64Array, gamma: Float64Array, beta: Float64Array): Float64Array;
+  /**
+   * ARCH-LM Test (Engle 1982)
+   * H0: No ARCH effects (α_1 = α_2 = ... = α_q = 0)
+   * Auxiliary regression: e²_t = β_0 + β_1·e²_{t-1} + ... + β_q·e²_{t-q}
+   * Test statistics:
+   *   Obs*R² (LM stat) ~ Chi²(q)   [matches EViews "Obs*R-squared"]
+   *   F-stat ~ F(q, n-q-1)          [matches EViews "F-statistic"]
+   */
+  static arch_lm_test(residuals: Float64Array, lags: number): ArchLMResult;
   /**
    * Calculate conditional variance: σ²_t = ω + Σα_i·ε²_{t-i} + Σβ_j·σ²_{t-j}
    */
@@ -367,62 +418,6 @@ export class GARCH {
   set_gamma(gamma: Float64Array): void;
   set_mu_se(se: number): void;
   set_omega(omega: number): void;
-  /**
-   * Calculate AIC: -2·LL + 2·k
-   */
-  calculate_aic(log_likelihood: number): number;
-  /**
-   * Calculate BIC: -2·LL + k·ln(n)
-   */
-  calculate_bic(log_likelihood: number, n: number): number;
-  /**
-   * Estimasi GARCH(p,q) via L-BFGS dengan analytical gradient.
-   */
-  estimate(): void;
-  /**
-   * EGARCH(p,q) — Exponential GARCH
-   *
-   * Model: log(σ²_t) = ω + Σ[α_i·|z_{t-i}| + γ_i·z_{t-i}] + Σ β_j·log(σ²_{t-j})
-   * dimana z_t = ε_t/σ_t (standardized residual)
-   *
-   * Keunggulan EGARCH:
-   *   - σ² selalu positif tanpa constraint eksplisit (karena exp())
-   *   - γ_i menangkap leverage effect (bad news impact lebih besar)
-   *
-   * Estimasi: L-BFGS dengan analytical gradient pada log-variance recursion.
-   */
-  estimate_egarch(): void;
-  /**
-   * Hitung conditional variance untuk EGARCH secara manual (untuk inspeksi).
-   * Memerlukan parameter lengkap dari luar (biasanya setelah estimate_egarch).
-   */
-  calculate_egarch_variance(omega: number, alpha: Float64Array, gamma: Float64Array, beta: Float64Array): Float64Array;
-  /**
-   * TGARCH(p,q) / GJR-GARCH — Threshold GARCH
-   *
-   * Model: σ²_t = ω + Σ(α_i + γ_i·I_{t-i})·ε²_{t-i} + Σ β_j·σ²_{t-j}
-   * dimana I_{t-i} = 1 jika ε_{t-i} < 0 (leverage effect indicator)
-   *
-   * Interpretasi γ_i:
-   *   - γ_i > 0: bad news (ε < 0) meningkatkan volatilitas lebih besar
-   *   - γ_i = 0: simetrik (sama dengan GARCH standar)
-   *
-   * Estimasi: L-BFGS dengan analytical gradient.
-   */
-  estimate_tgarch(): void;
-  /**
-   * Hitung conditional variance untuk TGARCH secara manual (untuk inspeksi).
-   */
-  calculate_tgarch_variance(omega: number, alpha: Float64Array, gamma: Float64Array, beta: Float64Array): Float64Array;
-  /**
-   * ARCH-LM Test (Engle 1982)
-   * H0: No ARCH effects (α_1 = α_2 = ... = α_q = 0)
-   * Auxiliary regression: e²_t = β_0 + β_1·e²_{t-1} + ... + β_q·e²_{t-q}
-   * Test statistics:
-   *   Obs*R² (LM stat) ~ Chi²(q)   [matches EViews "Obs*R-squared"]
-   *   F-stat ~ F(q, n-q-1)          [matches EViews "F-statistic"]
-   */
-  static arch_lm_test(residuals: Float64Array, lags: number): ArchLMResult;
 }
 
 export class MultipleLinearRegression {
@@ -527,6 +522,19 @@ export class SimpleExponentialRegression {
 export class SimpleLinearRegression {
   free(): void;
   [Symbol.dispose](): void;
+  calculate_pvalue(): Float64Array;
+  calculate_t_stat(): Float64Array;
+  calculate_regression(): void;
+  calculate_standard_error(): Float64Array;
+  get_y_prediction(): Float64Array;
+  set_y_prediction(y_prediction: Float64Array): void;
+  constructor(x: Float64Array, y: Float64Array);
+  get_x(): Float64Array;
+  get_y(): Float64Array;
+  get_b0(): number;
+  get_b1(): number;
+  set_b0(b0: number): void;
+  set_b1(b1: number): void;
   calculate_dw(): number;
   calculate_r2(): number;
   calculate_aic(): number;
@@ -542,19 +550,6 @@ export class SimpleLinearRegression {
   calculate_se_reg(): number;
   calculate_mean_dep(): number;
   calculate_log_likelihood(): number;
-  calculate_pvalue(): Float64Array;
-  calculate_t_stat(): Float64Array;
-  calculate_regression(): void;
-  calculate_standard_error(): Float64Array;
-  get_y_prediction(): Float64Array;
-  set_y_prediction(y_prediction: Float64Array): void;
-  constructor(x: Float64Array, y: Float64Array);
-  get_x(): Float64Array;
-  get_y(): Float64Array;
-  get_b0(): number;
-  get_b1(): number;
-  set_b0(b0: number): void;
-  set_b1(b1: number): void;
 }
 
 export class Smoothing {
@@ -564,12 +559,12 @@ export class Smoothing {
   constructor(data: Float64Array);
   get_data(): Float64Array;
   set_data(data: Float64Array): void;
+  calculate_dma(distance: number): Float64Array;
+  calculate_sma(distance: number): Float64Array;
   calculate_des(alpha: number): Float64Array;
   calculate_ses(alpha: number): Float64Array;
   calculate_holt(alpha: number, beta: number): Float64Array;
   calculate_winter(alpha: number, beta: number, gamma: number, period: number): Float64Array;
-  calculate_dma(distance: number): Float64Array;
-  calculate_sma(distance: number): Float64Array;
 }
 
 export function get_gamma_0_tab1(): Float64Array;
@@ -762,107 +757,6 @@ export interface InitOutput {
   readonly dickeyfuller_get_test_stat: (a: number) => number;
   readonly simpleexponentialregression_get_b0: (a: number) => number;
   readonly simpleexponentialregression_get_b1: (a: number) => number;
-  readonly arima_calculate_aic: (a: number) => number;
-  readonly arima_calculate_dw: (a: number) => number;
-  readonly arima_calculate_f_prob: (a: number) => number;
-  readonly arima_calculate_f_stat: (a: number) => number;
-  readonly arima_calculate_hqc: (a: number) => number;
-  readonly arima_calculate_log_likelihood: (a: number) => number;
-  readonly arima_calculate_mean_dep: (a: number) => number;
-  readonly arima_calculate_mse: (a: number) => number;
-  readonly arima_calculate_r2: (a: number) => number;
-  readonly arima_calculate_r2_adj: (a: number) => number;
-  readonly arima_calculate_sbc: (a: number) => number;
-  readonly arima_calculate_sd_dep: (a: number) => number;
-  readonly arima_calculate_se_reg: (a: number) => number;
-  readonly arima_calculate_sse: (a: number) => number;
-  readonly arima_calculate_sst: (a: number) => number;
-  readonly arima_coeficient_se: (a: number) => [number, number];
-  readonly arima_est_res: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
-  readonly arima_estimate_coef: (a: number) => [number, number];
-  readonly arima_estimate_se: (a: number) => [number, number];
-  readonly arima_forecast: (a: number) => [number, number];
-  readonly arima_forecasting_evaluation: (a: number) => any;
-  readonly arima_intercept_se: (a: number) => number;
-  readonly arima_p_value: (a: number) => [number, number];
-  readonly arima_res_sum_of_square: (a: number) => number;
-  readonly arima_res_variance: (a: number) => number;
-  readonly arima_selection_criteria: (a: number) => [number, number];
-  readonly arima_t_stat: (a: number) => [number, number];
-  readonly garch_calculate_variance: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
-  readonly __wbg_garch_free: (a: number, b: number) => void;
-  readonly garch_get_aic: (a: number) => number;
-  readonly garch_get_alpha: (a: number) => [number, number];
-  readonly garch_get_alpha_p: (a: number) => [number, number];
-  readonly garch_get_alpha_se: (a: number) => [number, number];
-  readonly garch_get_alpha_z: (a: number) => [number, number];
-  readonly garch_get_beta: (a: number) => [number, number];
-  readonly garch_get_beta_p: (a: number) => [number, number];
-  readonly garch_get_beta_se: (a: number) => [number, number];
-  readonly garch_get_beta_z: (a: number) => [number, number];
-  readonly garch_get_bic: (a: number) => number;
-  readonly garch_get_data: (a: number) => [number, number];
-  readonly garch_get_gamma: (a: number) => [number, number];
-  readonly garch_get_gamma_p: (a: number) => [number, number];
-  readonly garch_get_gamma_se: (a: number) => [number, number];
-  readonly garch_get_gamma_z: (a: number) => [number, number];
-  readonly garch_get_log_likelihood: (a: number) => number;
-  readonly garch_get_mu: (a: number) => number;
-  readonly garch_get_mu_p: (a: number) => number;
-  readonly garch_get_mu_se: (a: number) => number;
-  readonly garch_get_mu_z: (a: number) => number;
-  readonly garch_get_omega: (a: number) => number;
-  readonly garch_get_omega_p: (a: number) => number;
-  readonly garch_get_omega_se: (a: number) => number;
-  readonly garch_get_omega_z: (a: number) => number;
-  readonly garch_get_p: (a: number) => number;
-  readonly garch_get_q: (a: number) => number;
-  readonly garch_get_residuals: (a: number) => [number, number];
-  readonly garch_get_variance: (a: number) => [number, number];
-  readonly garch_new: (a: number, b: number, c: number, d: number) => number;
-  readonly garch_set_aic: (a: number, b: number) => void;
-  readonly garch_set_alpha: (a: number, b: number, c: number) => void;
-  readonly garch_set_alpha_p: (a: number, b: number, c: number) => void;
-  readonly garch_set_alpha_se: (a: number, b: number, c: number) => void;
-  readonly garch_set_alpha_z: (a: number, b: number, c: number) => void;
-  readonly garch_set_beta: (a: number, b: number, c: number) => void;
-  readonly garch_set_beta_p: (a: number, b: number, c: number) => void;
-  readonly garch_set_beta_se: (a: number, b: number, c: number) => void;
-  readonly garch_set_beta_z: (a: number, b: number, c: number) => void;
-  readonly garch_set_bic: (a: number, b: number) => void;
-  readonly garch_set_gamma: (a: number, b: number, c: number) => void;
-  readonly garch_set_gamma_p: (a: number, b: number, c: number) => void;
-  readonly garch_set_gamma_se: (a: number, b: number, c: number) => void;
-  readonly garch_set_gamma_z: (a: number, b: number, c: number) => void;
-  readonly garch_set_log_likelihood: (a: number, b: number) => void;
-  readonly garch_set_mu: (a: number, b: number) => void;
-  readonly garch_set_mu_p: (a: number, b: number) => void;
-  readonly garch_set_mu_se: (a: number, b: number) => void;
-  readonly garch_set_mu_z: (a: number, b: number) => void;
-  readonly garch_set_omega: (a: number, b: number) => void;
-  readonly garch_set_omega_p: (a: number, b: number) => void;
-  readonly garch_set_omega_se: (a: number, b: number) => void;
-  readonly garch_set_omega_z: (a: number, b: number) => void;
-  readonly garch_set_variance: (a: number, b: number, c: number) => void;
-  readonly simplelinearregression_calculate_aic: (a: number) => number;
-  readonly simplelinearregression_calculate_dw: (a: number) => number;
-  readonly simplelinearregression_calculate_f_prob: (a: number) => number;
-  readonly simplelinearregression_calculate_f_stat: (a: number) => number;
-  readonly simplelinearregression_calculate_hqc: (a: number) => number;
-  readonly simplelinearregression_calculate_log_likelihood: (a: number) => number;
-  readonly simplelinearregression_calculate_mean_dep: (a: number) => number;
-  readonly simplelinearregression_calculate_mse: (a: number) => number;
-  readonly simplelinearregression_calculate_r2: (a: number) => number;
-  readonly simplelinearregression_calculate_r2_adj: (a: number) => number;
-  readonly simplelinearregression_calculate_sbc: (a: number) => number;
-  readonly simplelinearregression_calculate_sd_dep: (a: number) => number;
-  readonly simplelinearregression_calculate_se_reg: (a: number) => number;
-  readonly simplelinearregression_calculate_sse: (a: number) => number;
-  readonly simplelinearregression_calculate_sst: (a: number) => number;
-  readonly smoothing_calculate_des: (a: number, b: number) => [number, number];
-  readonly smoothing_calculate_holt: (a: number, b: number, c: number) => [number, number];
-  readonly smoothing_calculate_ses: (a: number, b: number) => [number, number];
-  readonly smoothing_calculate_winter: (a: number, b: number, c: number, d: number, e: number) => [number, number];
   readonly __wbg_ardl_free: (a: number, b: number) => void;
   readonly ardl_calculate_bounds_test: (a: number, b: number, c: number, d: number) => number;
   readonly ardl_calculate_long_run_coefficients: (a: number, b: number, c: number) => [number, number];
@@ -922,54 +816,6 @@ export interface InitOutput {
   readonly multiplelinearregression_calculate_se_reg: (a: number) => number;
   readonly multiplelinearregression_calculate_sse: (a: number) => number;
   readonly multiplelinearregression_calculate_sst: (a: number) => number;
-  readonly __wbg_decomposition_free: (a: number, b: number) => void;
-  readonly __wbg_nointerceptlinearregression_free: (a: number, b: number) => void;
-  readonly autocorrelation_autocorelate: (a: number, b: number, c: number, d: number, e: number) => void;
-  readonly decomposition_calculate_centered_moving_average: (a: number) => [number, number];
-  readonly decomposition_calculate_multiplicative_seasonal_component: (a: number, b: number, c: number) => [number, number];
-  readonly decomposition_decomposition_evaluation: (a: number, b: number, c: number) => any;
-  readonly decomposition_get_data: (a: number) => [number, number];
-  readonly decomposition_get_irregular_component: (a: number) => [number, number];
-  readonly decomposition_get_period: (a: number) => number;
-  readonly decomposition_get_seasonal_component: (a: number) => [number, number];
-  readonly decomposition_get_seasonal_indices: (a: number) => [number, number];
-  readonly decomposition_get_trend_component: (a: number) => [number, number];
-  readonly decomposition_get_trend_equation: (a: number) => [number, number];
-  readonly decomposition_new: (a: number, b: number, c: number) => number;
-  readonly decomposition_set_irregular_component: (a: number, b: number, c: number) => void;
-  readonly decomposition_set_seasonal_component: (a: number, b: number, c: number) => void;
-  readonly decomposition_set_seasonal_indices: (a: number, b: number, c: number) => void;
-  readonly decomposition_set_trend_component: (a: number, b: number, c: number) => void;
-  readonly decomposition_set_trend_equation: (a: number, b: number, c: number) => void;
-  readonly garch_arch_lm_test: (a: number, b: number, c: number) => number;
-  readonly nointerceptlinearregression_calculate_aic: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_dw: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_f_prob: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_f_stat: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_hqc: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_log_likelihood: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_mean_dep: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_mse: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_pvalue: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_r2: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_r2_adj: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_regression: (a: number) => void;
-  readonly nointerceptlinearregression_calculate_sbc: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_sd_dep: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_se_reg: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_sse: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_sst: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_standard_error: (a: number) => number;
-  readonly nointerceptlinearregression_calculate_t_stat: (a: number) => number;
-  readonly nointerceptlinearregression_get_b: (a: number) => number;
-  readonly nointerceptlinearregression_get_x: (a: number) => [number, number];
-  readonly nointerceptlinearregression_get_y: (a: number) => [number, number];
-  readonly nointerceptlinearregression_get_y_prediction: (a: number) => [number, number];
-  readonly nointerceptlinearregression_new: (a: number, b: number, c: number, d: number) => number;
-  readonly nointerceptlinearregression_set_b: (a: number, b: number) => void;
-  readonly nointerceptlinearregression_set_y_prediction: (a: number, b: number, c: number) => void;
-  readonly smoothing_calculate_dma: (a: number, b: number) => [number, number];
-  readonly smoothing_calculate_sma: (a: number, b: number) => [number, number];
   readonly __wbg_archlmresult_free: (a: number, b: number) => void;
   readonly __wbg_boundstestresult_free: (a: number, b: number) => void;
   readonly __wbg_cointegrationresult_free: (a: number, b: number) => void;
@@ -1018,6 +864,155 @@ export interface InitOutput {
   readonly __wbg_get_cointegrationresult_is_cointegrated: (a: number) => number;
   readonly __wbg_get_boundstestresult_f_statistic: (a: number) => number;
   readonly __wbg_get_cointegrationresult_adf_statistic: (a: number) => number;
+  readonly __wbg_decomposition_free: (a: number, b: number) => void;
+  readonly __wbg_nointerceptlinearregression_free: (a: number, b: number) => void;
+  readonly autocorrelation_autocorelate: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly decomposition_calculate_centered_moving_average: (a: number) => [number, number];
+  readonly decomposition_calculate_multiplicative_seasonal_component: (a: number, b: number, c: number) => [number, number];
+  readonly decomposition_decomposition_evaluation: (a: number, b: number, c: number) => any;
+  readonly decomposition_get_data: (a: number) => [number, number];
+  readonly decomposition_get_irregular_component: (a: number) => [number, number];
+  readonly decomposition_get_period: (a: number) => number;
+  readonly decomposition_get_seasonal_component: (a: number) => [number, number];
+  readonly decomposition_get_seasonal_indices: (a: number) => [number, number];
+  readonly decomposition_get_trend_component: (a: number) => [number, number];
+  readonly decomposition_get_trend_equation: (a: number) => [number, number];
+  readonly decomposition_new: (a: number, b: number, c: number) => number;
+  readonly decomposition_set_irregular_component: (a: number, b: number, c: number) => void;
+  readonly decomposition_set_seasonal_component: (a: number, b: number, c: number) => void;
+  readonly decomposition_set_seasonal_indices: (a: number, b: number, c: number) => void;
+  readonly decomposition_set_trend_component: (a: number, b: number, c: number) => void;
+  readonly decomposition_set_trend_equation: (a: number, b: number, c: number) => void;
+  readonly garch_arch_lm_test: (a: number, b: number, c: number) => number;
+  readonly nointerceptlinearregression_calculate_aic: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_dw: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_f_prob: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_f_stat: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_hqc: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_log_likelihood: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_mean_dep: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_mse: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_pvalue: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_r2: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_r2_adj: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_regression: (a: number) => void;
+  readonly nointerceptlinearregression_calculate_sbc: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_sd_dep: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_se_reg: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_sse: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_sst: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_standard_error: (a: number) => number;
+  readonly nointerceptlinearregression_calculate_t_stat: (a: number) => number;
+  readonly nointerceptlinearregression_get_b: (a: number) => number;
+  readonly nointerceptlinearregression_get_x: (a: number) => [number, number];
+  readonly nointerceptlinearregression_get_y: (a: number) => [number, number];
+  readonly nointerceptlinearregression_get_y_prediction: (a: number) => [number, number];
+  readonly nointerceptlinearregression_new: (a: number, b: number, c: number, d: number) => number;
+  readonly nointerceptlinearregression_set_b: (a: number, b: number) => void;
+  readonly nointerceptlinearregression_set_y_prediction: (a: number, b: number, c: number) => void;
+  readonly smoothing_calculate_dma: (a: number, b: number) => [number, number];
+  readonly smoothing_calculate_sma: (a: number, b: number) => [number, number];
+  readonly simplelinearregression_calculate_aic: (a: number) => number;
+  readonly simplelinearregression_calculate_dw: (a: number) => number;
+  readonly simplelinearregression_calculate_f_prob: (a: number) => number;
+  readonly simplelinearregression_calculate_f_stat: (a: number) => number;
+  readonly simplelinearregression_calculate_hqc: (a: number) => number;
+  readonly simplelinearregression_calculate_log_likelihood: (a: number) => number;
+  readonly simplelinearregression_calculate_mean_dep: (a: number) => number;
+  readonly simplelinearregression_calculate_mse: (a: number) => number;
+  readonly simplelinearregression_calculate_r2: (a: number) => number;
+  readonly simplelinearregression_calculate_r2_adj: (a: number) => number;
+  readonly simplelinearregression_calculate_sbc: (a: number) => number;
+  readonly simplelinearregression_calculate_sd_dep: (a: number) => number;
+  readonly simplelinearregression_calculate_se_reg: (a: number) => number;
+  readonly simplelinearregression_calculate_sse: (a: number) => number;
+  readonly simplelinearregression_calculate_sst: (a: number) => number;
+  readonly arima_calculate_aic: (a: number) => number;
+  readonly arima_calculate_dw: (a: number) => number;
+  readonly arima_calculate_f_prob: (a: number) => number;
+  readonly arima_calculate_f_stat: (a: number) => number;
+  readonly arima_calculate_hqc: (a: number) => number;
+  readonly arima_calculate_log_likelihood: (a: number) => number;
+  readonly arima_calculate_mean_dep: (a: number) => number;
+  readonly arima_calculate_mse: (a: number) => number;
+  readonly arima_calculate_r2: (a: number) => number;
+  readonly arima_calculate_r2_adj: (a: number) => number;
+  readonly arima_calculate_sbc: (a: number) => number;
+  readonly arima_calculate_sd_dep: (a: number) => number;
+  readonly arima_calculate_se_reg: (a: number) => number;
+  readonly arima_calculate_sse: (a: number) => number;
+  readonly arima_calculate_sst: (a: number) => number;
+  readonly arima_coeficient_se: (a: number) => [number, number];
+  readonly arima_est_res: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
+  readonly arima_estimate_coef: (a: number) => [number, number];
+  readonly arima_estimate_se: (a: number) => [number, number];
+  readonly arima_forecast: (a: number) => [number, number];
+  readonly arima_forecasting_evaluation: (a: number) => any;
+  readonly arima_intercept_se: (a: number) => number;
+  readonly arima_p_value: (a: number) => [number, number];
+  readonly arima_res_sum_of_square: (a: number) => number;
+  readonly arima_res_variance: (a: number) => number;
+  readonly arima_selection_criteria: (a: number) => [number, number];
+  readonly arima_t_stat: (a: number) => [number, number];
+  readonly garch_calculate_variance: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+  readonly smoothing_calculate_des: (a: number, b: number) => [number, number];
+  readonly smoothing_calculate_ses: (a: number, b: number) => [number, number];
+  readonly __wbg_garch_free: (a: number, b: number) => void;
+  readonly garch_get_aic: (a: number) => number;
+  readonly garch_get_alpha: (a: number) => [number, number];
+  readonly garch_get_alpha_p: (a: number) => [number, number];
+  readonly garch_get_alpha_se: (a: number) => [number, number];
+  readonly garch_get_alpha_z: (a: number) => [number, number];
+  readonly garch_get_beta: (a: number) => [number, number];
+  readonly garch_get_beta_p: (a: number) => [number, number];
+  readonly garch_get_beta_se: (a: number) => [number, number];
+  readonly garch_get_beta_z: (a: number) => [number, number];
+  readonly garch_get_bic: (a: number) => number;
+  readonly garch_get_data: (a: number) => [number, number];
+  readonly garch_get_gamma: (a: number) => [number, number];
+  readonly garch_get_gamma_p: (a: number) => [number, number];
+  readonly garch_get_gamma_se: (a: number) => [number, number];
+  readonly garch_get_gamma_z: (a: number) => [number, number];
+  readonly garch_get_log_likelihood: (a: number) => number;
+  readonly garch_get_mu: (a: number) => number;
+  readonly garch_get_mu_p: (a: number) => number;
+  readonly garch_get_mu_se: (a: number) => number;
+  readonly garch_get_mu_z: (a: number) => number;
+  readonly garch_get_omega: (a: number) => number;
+  readonly garch_get_omega_p: (a: number) => number;
+  readonly garch_get_omega_se: (a: number) => number;
+  readonly garch_get_omega_z: (a: number) => number;
+  readonly garch_get_p: (a: number) => number;
+  readonly garch_get_q: (a: number) => number;
+  readonly garch_get_residuals: (a: number) => [number, number];
+  readonly garch_get_variance: (a: number) => [number, number];
+  readonly garch_new: (a: number, b: number, c: number, d: number) => number;
+  readonly garch_set_aic: (a: number, b: number) => void;
+  readonly garch_set_alpha: (a: number, b: number, c: number) => void;
+  readonly garch_set_alpha_p: (a: number, b: number, c: number) => void;
+  readonly garch_set_alpha_se: (a: number, b: number, c: number) => void;
+  readonly garch_set_alpha_z: (a: number, b: number, c: number) => void;
+  readonly garch_set_beta: (a: number, b: number, c: number) => void;
+  readonly garch_set_beta_p: (a: number, b: number, c: number) => void;
+  readonly garch_set_beta_se: (a: number, b: number, c: number) => void;
+  readonly garch_set_beta_z: (a: number, b: number, c: number) => void;
+  readonly garch_set_bic: (a: number, b: number) => void;
+  readonly garch_set_gamma: (a: number, b: number, c: number) => void;
+  readonly garch_set_gamma_p: (a: number, b: number, c: number) => void;
+  readonly garch_set_gamma_se: (a: number, b: number, c: number) => void;
+  readonly garch_set_gamma_z: (a: number, b: number, c: number) => void;
+  readonly garch_set_log_likelihood: (a: number, b: number) => void;
+  readonly garch_set_mu: (a: number, b: number) => void;
+  readonly garch_set_mu_p: (a: number, b: number) => void;
+  readonly garch_set_mu_se: (a: number, b: number) => void;
+  readonly garch_set_mu_z: (a: number, b: number) => void;
+  readonly garch_set_omega: (a: number, b: number) => void;
+  readonly garch_set_omega_p: (a: number, b: number) => void;
+  readonly garch_set_omega_se: (a: number, b: number) => void;
+  readonly garch_set_omega_z: (a: number, b: number) => void;
+  readonly garch_set_variance: (a: number, b: number, c: number) => void;
+  readonly smoothing_calculate_holt: (a: number, b: number, c: number) => [number, number];
+  readonly smoothing_calculate_winter: (a: number, b: number, c: number, d: number, e: number) => [number, number];
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_exn_store: (a: number) => void;

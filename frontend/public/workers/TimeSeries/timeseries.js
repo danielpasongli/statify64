@@ -2429,15 +2429,123 @@ export class GARCH {
         return ret;
     }
     /**
-     * IGARCH(p,q) — Integrated GARCH
-     *
-     * Model: σ²_t = ω + Σ α_i·ε²_{t-i} + Σ β_j·σ²_{t-j}
-     * dengan restriksi: Σ α_i + Σ β_j = 1
-     *
-     * Estimasi: L-BFGS menggunakan stick-breaking parameterization.
+     * IGARCH(p,q) — Integrated GARCH (Pure EViews formulation: ω=0, Σ α_i + Σ β_j = 1)
      */
     estimate_igarch() {
         wasm.garch_estimate_igarch(this.__wbg_ptr);
+    }
+    /**
+     * Calculate AIC: -2·LL + 2·k
+     * @param {number} log_likelihood
+     * @returns {number}
+     */
+    calculate_aic(log_likelihood) {
+        const ret = wasm.garch_calculate_aic(this.__wbg_ptr, log_likelihood);
+        return ret;
+    }
+    /**
+     * Calculate BIC: -2·LL + k·ln(n)
+     * @param {number} log_likelihood
+     * @param {number} n
+     * @returns {number}
+     */
+    calculate_bic(log_likelihood, n) {
+        const ret = wasm.garch_calculate_bic(this.__wbg_ptr, log_likelihood, n);
+        return ret;
+    }
+    /**
+     * Estimasi GARCH(p,q) via L-BFGS dengan analytical gradient.
+     */
+    estimate() {
+        wasm.garch_estimate(this.__wbg_ptr);
+    }
+    /**
+     * EGARCH(p,q) — Exponential GARCH
+     *
+     * Model: log(σ²_t) = ω + Σ[α_i·|z_{t-i}| + γ_i·z_{t-i}] + Σ β_j·log(σ²_{t-j})
+     * dimana z_t = ε_t/σ_t (standardized residual)
+     *
+     * Keunggulan EGARCH:
+     *   - σ² selalu positif tanpa constraint eksplisit (karena exp())
+     *   - γ_i menangkap leverage effect (bad news impact lebih besar)
+     *
+     * Estimasi: L-BFGS dengan analytical gradient pada log-variance recursion.
+     */
+    estimate_egarch() {
+        wasm.garch_estimate_egarch(this.__wbg_ptr);
+    }
+    /**
+     * Hitung conditional variance untuk EGARCH secara manual (untuk inspeksi).
+     * Memerlukan parameter lengkap dari luar (biasanya setelah estimate_egarch).
+     * @param {number} omega
+     * @param {Float64Array} alpha
+     * @param {Float64Array} gamma
+     * @param {Float64Array} beta
+     * @returns {Float64Array}
+     */
+    calculate_egarch_variance(omega, alpha, gamma, beta) {
+        const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(gamma, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.garch_calculate_egarch_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1, ptr2, len2);
+        var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v4;
+    }
+    /**
+     * TGARCH(p,q) / GJR-GARCH — Threshold GARCH
+     *
+     * Model: σ²_t = ω + Σ(α_i + γ_i·I_{t-i})·ε²_{t-i} + Σ β_j·σ²_{t-j}
+     * dimana I_{t-i} = 1 jika ε_{t-i} < 0 (leverage effect indicator)
+     *
+     * Interpretasi γ_i:
+     *   - γ_i > 0: bad news (ε < 0) meningkatkan volatilitas lebih besar
+     *   - γ_i = 0: simetrik (sama dengan GARCH standar)
+     *
+     * Estimasi: L-BFGS dengan analytical gradient.
+     */
+    estimate_tgarch() {
+        wasm.garch_estimate_tgarch(this.__wbg_ptr);
+    }
+    /**
+     * Hitung conditional variance untuk TGARCH secara manual (untuk inspeksi).
+     * @param {number} omega
+     * @param {Float64Array} alpha
+     * @param {Float64Array} gamma
+     * @param {Float64Array} beta
+     * @returns {Float64Array}
+     */
+    calculate_tgarch_variance(omega, alpha, gamma, beta) {
+        const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(gamma, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.garch_calculate_tgarch_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1, ptr2, len2);
+        var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v4;
+    }
+    /**
+     * ARCH-LM Test (Engle 1982)
+     * H0: No ARCH effects (α_1 = α_2 = ... = α_q = 0)
+     * Auxiliary regression: e²_t = β_0 + β_1·e²_{t-1} + ... + β_q·e²_{t-q}
+     * Test statistics:
+     *   Obs*R² (LM stat) ~ Chi²(q)   [matches EViews "Obs*R-squared"]
+     *   F-stat ~ F(q, n-q-1)          [matches EViews "F-statistic"]
+     * @param {Float64Array} residuals
+     * @param {number} lags
+     * @returns {ArchLMResult}
+     */
+    static arch_lm_test(residuals, lags) {
+        const ptr0 = passArrayF64ToWasm0(residuals, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.garch_arch_lm_test(ptr0, len0, lags);
+        return ArchLMResult.__wrap(ret);
     }
     /**
      * Calculate conditional variance: σ²_t = ω + Σα_i·ε²_{t-i} + Σβ_j·σ²_{t-j}
@@ -2864,119 +2972,6 @@ export class GARCH {
      */
     set_omega(omega) {
         wasm.garch_set_omega(this.__wbg_ptr, omega);
-    }
-    /**
-     * Calculate AIC: -2·LL + 2·k
-     * @param {number} log_likelihood
-     * @returns {number}
-     */
-    calculate_aic(log_likelihood) {
-        const ret = wasm.garch_calculate_aic(this.__wbg_ptr, log_likelihood);
-        return ret;
-    }
-    /**
-     * Calculate BIC: -2·LL + k·ln(n)
-     * @param {number} log_likelihood
-     * @param {number} n
-     * @returns {number}
-     */
-    calculate_bic(log_likelihood, n) {
-        const ret = wasm.garch_calculate_bic(this.__wbg_ptr, log_likelihood, n);
-        return ret;
-    }
-    /**
-     * Estimasi GARCH(p,q) via L-BFGS dengan analytical gradient.
-     */
-    estimate() {
-        wasm.garch_estimate(this.__wbg_ptr);
-    }
-    /**
-     * EGARCH(p,q) — Exponential GARCH
-     *
-     * Model: log(σ²_t) = ω + Σ[α_i·|z_{t-i}| + γ_i·z_{t-i}] + Σ β_j·log(σ²_{t-j})
-     * dimana z_t = ε_t/σ_t (standardized residual)
-     *
-     * Keunggulan EGARCH:
-     *   - σ² selalu positif tanpa constraint eksplisit (karena exp())
-     *   - γ_i menangkap leverage effect (bad news impact lebih besar)
-     *
-     * Estimasi: L-BFGS dengan analytical gradient pada log-variance recursion.
-     */
-    estimate_egarch() {
-        wasm.garch_estimate_egarch(this.__wbg_ptr);
-    }
-    /**
-     * Hitung conditional variance untuk EGARCH secara manual (untuk inspeksi).
-     * Memerlukan parameter lengkap dari luar (biasanya setelah estimate_egarch).
-     * @param {number} omega
-     * @param {Float64Array} alpha
-     * @param {Float64Array} gamma
-     * @param {Float64Array} beta
-     * @returns {Float64Array}
-     */
-    calculate_egarch_variance(omega, alpha, gamma, beta) {
-        const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(gamma, wasm.__wbindgen_malloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
-        const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.garch_calculate_egarch_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1, ptr2, len2);
-        var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v4;
-    }
-    /**
-     * TGARCH(p,q) / GJR-GARCH — Threshold GARCH
-     *
-     * Model: σ²_t = ω + Σ(α_i + γ_i·I_{t-i})·ε²_{t-i} + Σ β_j·σ²_{t-j}
-     * dimana I_{t-i} = 1 jika ε_{t-i} < 0 (leverage effect indicator)
-     *
-     * Interpretasi γ_i:
-     *   - γ_i > 0: bad news (ε < 0) meningkatkan volatilitas lebih besar
-     *   - γ_i = 0: simetrik (sama dengan GARCH standar)
-     *
-     * Estimasi: L-BFGS dengan analytical gradient.
-     */
-    estimate_tgarch() {
-        wasm.garch_estimate_tgarch(this.__wbg_ptr);
-    }
-    /**
-     * Hitung conditional variance untuk TGARCH secara manual (untuk inspeksi).
-     * @param {number} omega
-     * @param {Float64Array} alpha
-     * @param {Float64Array} gamma
-     * @param {Float64Array} beta
-     * @returns {Float64Array}
-     */
-    calculate_tgarch_variance(omega, alpha, gamma, beta) {
-        const ptr0 = passArrayF64ToWasm0(alpha, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(gamma, wasm.__wbindgen_malloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArrayF64ToWasm0(beta, wasm.__wbindgen_malloc);
-        const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.garch_calculate_tgarch_variance(this.__wbg_ptr, omega, ptr0, len0, ptr1, len1, ptr2, len2);
-        var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v4;
-    }
-    /**
-     * ARCH-LM Test (Engle 1982)
-     * H0: No ARCH effects (α_1 = α_2 = ... = α_q = 0)
-     * Auxiliary regression: e²_t = β_0 + β_1·e²_{t-1} + ... + β_q·e²_{t-q}
-     * Test statistics:
-     *   Obs*R² (LM stat) ~ Chi²(q)   [matches EViews "Obs*R-squared"]
-     *   F-stat ~ F(q, n-q-1)          [matches EViews "F-statistic"]
-     * @param {Float64Array} residuals
-     * @param {number} lags
-     * @returns {ArchLMResult}
-     */
-    static arch_lm_test(residuals, lags) {
-        const ptr0 = passArrayF64ToWasm0(residuals, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.garch_arch_lm_test(ptr0, len0, lags);
-        return ArchLMResult.__wrap(ret);
     }
 }
 if (Symbol.dispose) GARCH.prototype[Symbol.dispose] = GARCH.prototype.free;
@@ -3677,111 +3672,6 @@ export class SimpleLinearRegression {
         wasm.__wbg_simplelinearregression_free(ptr, 0);
     }
     /**
-     * @returns {number}
-     */
-    calculate_dw() {
-        const ret = wasm.simplelinearregression_calculate_dw(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_r2() {
-        const ret = wasm.simplelinearregression_calculate_r2(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_aic() {
-        const ret = wasm.simplelinearregression_calculate_aic(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_hqc() {
-        const ret = wasm.simplelinearregression_calculate_hqc(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_mse() {
-        const ret = wasm.simplelinearregression_calculate_mse(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_sbc() {
-        const ret = wasm.simplelinearregression_calculate_sbc(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_sse() {
-        const ret = wasm.simplelinearregression_calculate_sse(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_sst() {
-        const ret = wasm.simplelinearregression_calculate_sst(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_f_prob() {
-        const ret = wasm.simplelinearregression_calculate_f_prob(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_f_stat() {
-        const ret = wasm.simplelinearregression_calculate_f_stat(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_r2_adj() {
-        const ret = wasm.simplelinearregression_calculate_r2_adj(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_sd_dep() {
-        const ret = wasm.simplelinearregression_calculate_sd_dep(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_se_reg() {
-        const ret = wasm.simplelinearregression_calculate_se_reg(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_mean_dep() {
-        const ret = wasm.simplelinearregression_calculate_mean_dep(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    calculate_log_likelihood() {
-        const ret = wasm.simplelinearregression_calculate_log_likelihood(this.__wbg_ptr);
-        return ret;
-    }
-    /**
      * @returns {Float64Array}
      */
     calculate_pvalue() {
@@ -3886,6 +3776,111 @@ export class SimpleLinearRegression {
     set_b1(b1) {
         wasm.simplelinearregression_set_b1(this.__wbg_ptr, b1);
     }
+    /**
+     * @returns {number}
+     */
+    calculate_dw() {
+        const ret = wasm.simplelinearregression_calculate_dw(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_r2() {
+        const ret = wasm.simplelinearregression_calculate_r2(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_aic() {
+        const ret = wasm.simplelinearregression_calculate_aic(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_hqc() {
+        const ret = wasm.simplelinearregression_calculate_hqc(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_mse() {
+        const ret = wasm.simplelinearregression_calculate_mse(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_sbc() {
+        const ret = wasm.simplelinearregression_calculate_sbc(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_sse() {
+        const ret = wasm.simplelinearregression_calculate_sse(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_sst() {
+        const ret = wasm.simplelinearregression_calculate_sst(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_f_prob() {
+        const ret = wasm.simplelinearregression_calculate_f_prob(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_f_stat() {
+        const ret = wasm.simplelinearregression_calculate_f_stat(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_r2_adj() {
+        const ret = wasm.simplelinearregression_calculate_r2_adj(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_sd_dep() {
+        const ret = wasm.simplelinearregression_calculate_sd_dep(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_se_reg() {
+        const ret = wasm.simplelinearregression_calculate_se_reg(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_mean_dep() {
+        const ret = wasm.simplelinearregression_calculate_mean_dep(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    calculate_log_likelihood() {
+        const ret = wasm.simplelinearregression_calculate_log_likelihood(this.__wbg_ptr);
+        return ret;
+    }
 }
 if (Symbol.dispose) SimpleLinearRegression.prototype[Symbol.dispose] = SimpleLinearRegression.prototype.free;
 
@@ -3939,6 +3934,26 @@ export class Smoothing {
         wasm.smoothing_set_data(this.__wbg_ptr, ptr0, len0);
     }
     /**
+     * @param {number} distance
+     * @returns {Float64Array}
+     */
+    calculate_dma(distance) {
+        const ret = wasm.smoothing_calculate_dma(this.__wbg_ptr, distance);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @param {number} distance
+     * @returns {Float64Array}
+     */
+    calculate_sma(distance) {
+        const ret = wasm.smoothing_calculate_sma(this.__wbg_ptr, distance);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
      * @param {number} alpha
      * @returns {Float64Array}
      */
@@ -3978,26 +3993,6 @@ export class Smoothing {
      */
     calculate_winter(alpha, beta, gamma, period) {
         const ret = wasm.smoothing_calculate_winter(this.__wbg_ptr, alpha, beta, gamma, period);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @param {number} distance
-     * @returns {Float64Array}
-     */
-    calculate_dma(distance) {
-        const ret = wasm.smoothing_calculate_dma(this.__wbg_ptr, distance);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @param {number} distance
-     * @returns {Float64Array}
-     */
-    calculate_sma(distance) {
-        const ret = wasm.smoothing_calculate_sma(this.__wbg_ptr, distance);
         var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
         return v1;
