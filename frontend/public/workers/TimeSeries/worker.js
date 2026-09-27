@@ -1,10 +1,26 @@
 import init, { GARCH, ECM, ARDL } from "./timeseries.js";
 
+let wasmInitPromise = null;
+function ensureWasmInit() {
+    if (!wasmInitPromise) {
+        wasmInitPromise = (async () => {
+            const wasmUrl = new URL("./timeseries_bg.wasm", import.meta.url);
+            const res = await fetch(wasmUrl);
+            if (!res.ok) {
+                throw new Error(`Failed to fetch WASM binary (${res.status} ${res.statusText})`);
+            }
+            const bytes = await res.arrayBuffer();
+            await init(bytes);
+        })();
+    }
+    return wasmInitPromise;
+}
+
 self.onmessage = async (e) => {
     const { type, payload } = e.data;
     
     try {
-        await init(new URL("./timeseries_bg.wasm?v=" + Date.now(), import.meta.url));
+        await ensureWasmInit();
         
         let result = {};
         
