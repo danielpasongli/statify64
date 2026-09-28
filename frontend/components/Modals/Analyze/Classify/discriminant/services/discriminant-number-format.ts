@@ -3,6 +3,7 @@
 // Cell formatting for the discriminant output tables, following SPSS pivot-table
 // conventions. These are for display only: never parse the strings back into a
 // calculation. The Rust engine, Save and the XML export all keep full precision.
+import { formatDisplayNumber } from "@/hooks/useFormatter";
 
 type Cell = number | string | null | undefined;
 
@@ -85,6 +86,18 @@ export function formatPercent(value: Cell): string {
   if (text !== null) return text;
   const decimals = comparisonDecimals();
   return decimals ? precise(value as number, decimals) : fixed(value as number, PERCENT_DECIMALS);
+}
+
+/**
+ * The assumption tables keep the app-wide number style (formatDisplayNumber),
+ * except in precision mode, where they follow the other tables.
+ */
+export function formatAssumptionStat(value: number): string {
+  return comparisonDecimals() ? formatStat(value) : formatDisplayNumber(value) ?? "";
+}
+
+export function formatAssumptionSig(value: number): string {
+  return comparisonDecimals() ? formatSig(value) : formatDisplayNumber(value) ?? "";
 }
 
 /**
