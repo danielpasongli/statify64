@@ -25,7 +25,6 @@ import { useDataStore } from "@/stores/useDataStore";
 import { analyzeKNN } from "@/components/Modals/Analyze/Classify/nearest-neighbor/services/nearest-neighbor-analysis";
 import { getUserFriendlyKNNError } from "@/components/Modals/Analyze/Classify/nearest-neighbor/services/nearest-neighbor-error-messages";
 import { useNearestNeighborValidation } from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborValidation";
-import { validateCustomSavedNames } from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborSaveRules";
 import { clearFormData, getFormData, saveFormData } from "@/hooks/useIndexedDB";
 
 import { toast } from "sonner";
@@ -261,7 +260,7 @@ export const KNNContainer = ({ onClose }: KNNContainerProps) => {
   const isUsingPartitionVariable = formData.partition.UseVariable;
   const isUsingFoldVariable = formData.partition.VFoldUsePartitioningVar;
 
-  const { validation, validateFeatureSelection, validateNumericInputs } =
+  const { validation, validateFeatureSelection, validateBeforeRun } =
     useNearestNeighborValidation(formData);
 
   return (
@@ -426,10 +425,7 @@ export const KNNContainer = ({ onClose }: KNNContainerProps) => {
         <div className="flex items-center justify-end gap-4">
         <Button
           onClick={() => {
-            const error =
-              validateFeatureSelection() ??
-              validateNumericInputs() ??
-              validateCustomSavedNames(formData.save);
+            const error = validateBeforeRun();
 
             if (error) {
               toast.error(error, { id: KNN_VALIDATION_ERROR_TOAST_ID });

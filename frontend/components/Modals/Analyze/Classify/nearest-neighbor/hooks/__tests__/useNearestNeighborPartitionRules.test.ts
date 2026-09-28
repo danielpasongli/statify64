@@ -1,22 +1,17 @@
-/**
- * PENGUJIAN MENU — Aturan Menu Nearest Neighbor tab Partition
- *
- * Mencakup: kapan bagian "Cross Validation Folds" aktif, kapan opsi
- * "Set Seed for Mersenne Twister" tidak tersedia, dan bagaimana nilai
- * default disesuaikan otomatis ketika pengguna berpindah antar opsi
- * Auto K Selection / Feature Selection.
- */
+/** @jest-environment jsdom */
 
-import type { KNNPartitionType } from "@/components/Modals/Analyze/Classify/nearest-neighbor/types/nearest-neighbor";
+import '@testing-library/jest-dom';
 import {
-  isCrossValidationEnabled,
-  isSeedUnavailable,
-  enforcePartitionRules,
-  applyCrossValidationDefaults,
-} from "../useNearestNeighborPartitionRules";
+    isCrossValidationEnabled,
+    isSeedUnavailable,
+    enforcePartitionRules,
+    applyCrossValidationDefaults,
+} from '@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborPartitionRules';
+import type { KNNPartitionType } from '@/components/Modals/Analyze/Classify/nearest-neighbor/types/nearest-neighbor';
 
-function makeState(overrides: Partial<KNNPartitionType> = {}): KNNPartitionType {
-  return {
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+/** State tab Partition bawaan: partisi & fold acak, Set Seed nonaktif. */
+const makeState = (overrides: Partial<KNNPartitionType> = {}): KNNPartitionType => ({
     PartitioningVariable: null,
     UseRandomly: true,
     UseVariable: false,
@@ -24,87 +19,147 @@ function makeState(overrides: Partial<KNNPartitionType> = {}): KNNPartitionType 
     VFoldUseRandomly: true,
     VFoldUsePartitioningVar: false,
     TrainingNumber: 70,
-    NumPartition: null,
+    NumPartition: 10,
     SetSeed: false,
     Seed: null,
     ...overrides,
-  };
-}
-
-describe("isCrossValidationEnabled — kapan bagian Cross Validation Folds aktif", () => {
-  it("TCP01: Auto K Selection nonaktif -> Cross Validation Folds tetap terkunci", () => {
-    expect(isCrossValidationEnabled(false, false)).toBe(false);
-    expect(isCrossValidationEnabled(false, true)).toBe(false);
-  });
-
-  it("TCP02: Auto K Selection aktif TAPI Feature Selection juga aktif -> Cross Validation Folds tetap terkunci", () => {
-    expect(isCrossValidationEnabled(true, true)).toBe(false);
-  });
-
-  it("TCP03: Auto K Selection aktif DAN Feature Selection nonaktif -> Cross Validation Folds terbuka", () => {
-    expect(isCrossValidationEnabled(true, false)).toBe(true);
-  });
 });
 
-describe("isSeedUnavailable — kapan opsi Set Seed tidak tersedia", () => {
-  it("TCP04: Partition TIDAK menggunakan variabel -> Set Seed tetap tersedia", () => {
-    expect(isSeedUnavailable(makeState({ UseVariable: false, VFoldUsePartitioningVar: true }))).toBe(false);
-  });
-
-  it("TCP05: Partition pakai variabel TAPI fold tidak pakai variabel -> Set Seed tetap tersedia", () => {
-    expect(isSeedUnavailable(makeState({ UseVariable: true, VFoldUsePartitioningVar: false }))).toBe(false);
-  });
-
-  it("TCP06: Partition DAN fold sama-sama pakai variabel -> Set Seed tidak tersedia", () => {
-    expect(isSeedUnavailable(makeState({ UseVariable: true, VFoldUsePartitioningVar: true }))).toBe(true);
-  });
+/** State hasil muat ulang (form lama) yang field fold-nya belum pernah terisi. */
+const makeUnsetFoldState = (): KNNPartitionType => makeState({
+    VFoldUseRandomly: undefined as unknown as boolean,
+    VFoldUsePartitioningVar: undefined as unknown as boolean,
+    NumPartition: null,
 });
 
-describe("enforcePartitionRules — memaksa Set Seed nonaktif bila tidak tersedia", () => {
-  it("TCP07: Seed tersedia -> Set Seed=true dibiarkan apa adanya", () => {
-    const state = makeState({ UseVariable: false, VFoldUsePartitioningVar: false, SetSeed: true });
-    expect(enforcePartitionRules(state)).toEqual(state);
-  });
+// ─── Analisis Basis Path ───────────────────────────────────────────────────────
+//
+//  Unit yang diuji: hooks/useNearestNeighborPartitionRules.ts
+//  Node keputusan = setiap kondisi atomik pada if, &&, ||, dan ??.
+//  V(G) = jumlah node keputusan + 1.
+//
+//  (1) isCrossValidationEnabled — kapan bagian Cross Validation Folds aktif
+//   D1: isAutoK                                              (baris 13, &&)
+//   D2: !isFeatureSelectionActive                            (baris 13)
+//   Jalur Independen:
+//   P1 (TC-KNN-CV-01): D1=T, D2=T                → true
+//   P2 (TC-KNN-CV-02): D1=F                      → false
+//   P3 (TC-KNN-CV-03): D1=T, D2=F                → false
+//   Cyclomatic Complexity V(G) = 2 + 1 = 3
+//
+//  (2) isSeedUnavailable — kapan opsi Set Seed tidak tersedia
+//   D1: state.UseVariable                                    (baris 19, &&)
+//   D2: state.VFoldUsePartitioningVar                        (baris 19)
+//   Jalur Independen:
+//   P1 (TC-KNN-SEED-01): D1=T, D2=T              → true
+//   P2 (TC-KNN-SEED-02): D1=F                    → false
+//   P3 (TC-KNN-SEED-03): D1=T, D2=F              → false
+//   Cyclomatic Complexity V(G) = 2 + 1 = 3
+//
+//  (3) enforcePartitionRules — memaksa Set Seed nonaktif bila tidak tersedia
+//   D1: !isSeedUnavailable(state)                            (baris 25, ||)
+//   D2: !state.SetSeed                                       (baris 25)
+//   Jalur Independen:
+//   P1 (TC-KNN-ENF-01): D1=T                     → state dikembalikan apa adanya
+//   P2 (TC-KNN-ENF-02): D1=F, D2=T               → state dikembalikan apa adanya
+//   P3 (TC-KNN-ENF-03): D1=F, D2=F               → SetSeed dipaksa false
+//   Cyclomatic Complexity V(G) = 2 + 1 = 3
+//
+//  (4) applyCrossValidationDefaults — penyesuaian default saat berpindah opsi
+//   D1: crossValidationEnabled                               (baris 38)
+//   D2: state.VFoldUseRandomly ?? true                       (baris 41)
+//   D3: state.VFoldUsePartitioningVar ?? false               (baris 42)
+//   D4: state.NumPartition ?? 10                             (baris 43)
+//   D5: featureSelectionActive                               (baris 47)
+//   Jalur Independen:
+//   P1 (TC-KNN-CVDEF-01): D1=T, D2–D4=kosong     → diisi default (acak, tanpa variabel, 10 fold)
+//   P2 (TC-KNN-CVDEF-02): D1=T, D2=terisi        → VFoldUseRandomly pengguna dipertahankan
+//   P3 (TC-KNN-CVDEF-03): D1=T, D3=terisi        → VFoldUsePartitioningVar pengguna dipertahankan
+//   P4 (TC-KNN-CVDEF-04): D1=T, D4=terisi        → NumPartition pengguna dipertahankan
+//   P5 (TC-KNN-CVDEF-05): D1=F, D5=T             → kedua opsi fold dipaksa nonaktif
+//   P6 (TC-KNN-CVDEF-06): D1=F, D5=F             → state dikembalikan apa adanya
+//   Cyclomatic Complexity V(G) = 5 + 1 = 6
 
-  it("TCP08: Seed tidak tersedia TAPI Set Seed memang sudah false -> tidak ada perubahan", () => {
-    const state = makeState({ UseVariable: true, VFoldUsePartitioningVar: true, SetSeed: false });
-    expect(enforcePartitionRules(state)).toEqual(state);
-  });
+// ─── (1) isCrossValidationEnabled ──────────────────────────────────────────────
+describe('isCrossValidationEnabled – bagian Cross Validation Folds (P1–P3)', () => {
+    it('TC-KNN-CV-01 [P1]: k otomatis & feature selection nonaktif → Cross Validation terbuka', () => {
+        expect(isCrossValidationEnabled(true, false)).toBe(true);
+    });
 
-  it("TCP09: Seed tidak tersedia DAN Set Seed=true -> dipaksa menjadi false", () => {
-    const state = makeState({ UseVariable: true, VFoldUsePartitioningVar: true, SetSeed: true });
-    const result = enforcePartitionRules(state);
-    expect(result.SetSeed).toBe(false);
-  });
+    it('TC-KNN-CV-02 [P2]: k manual → Cross Validation terkunci', () => {
+        expect(isCrossValidationEnabled(false, false)).toBe(false);
+    });
+
+    it('TC-KNN-CV-03 [P3]: k otomatis tetapi feature selection aktif → Cross Validation terkunci', () => {
+        expect(isCrossValidationEnabled(true, true)).toBe(false);
+    });
 });
 
-describe("applyCrossValidationDefaults — penyesuaian default saat berpindah opsi", () => {
-  it("TCP10: Cross Validation baru aktif & field fold masih kosong -> diisi nilai default (acak, 10 lipatan)", () => {
-    const state = makeState({ VFoldUseRandomly: null as unknown as boolean, VFoldUsePartitioningVar: null as unknown as boolean, NumPartition: null });
-    const result = applyCrossValidationDefaults(state, true, false);
-    expect(result.VFoldUseRandomly).toBe(true);
-    expect(result.VFoldUsePartitioningVar).toBe(false);
-    expect(result.NumPartition).toBe(10);
-  });
+// ─── (2) isSeedUnavailable ─────────────────────────────────────────────────────
+describe('isSeedUnavailable – ketersediaan Set Seed (P1–P3)', () => {
+    it('TC-KNN-SEED-01 [P1]: Partisi & fold sama-sama memakai variabel → Set Seed tidak tersedia', () => {
+        expect(isSeedUnavailable({ UseVariable: true, VFoldUsePartitioningVar: true })).toBe(true);
+    });
 
-  it("TCP11: Cross Validation aktif TAPI field fold sudah pernah diisi pengguna -> nilai yang ada dipertahankan", () => {
-    const state = makeState({ VFoldUseRandomly: false, VFoldUsePartitioningVar: true, NumPartition: 5 });
-    const result = applyCrossValidationDefaults(state, true, false);
-    expect(result.VFoldUseRandomly).toBe(false);
-    expect(result.VFoldUsePartitioningVar).toBe(true);
-    expect(result.NumPartition).toBe(5);
-  });
+    it('TC-KNN-SEED-02 [P2]: Partisi tidak memakai variabel → Set Seed tersedia', () => {
+        expect(isSeedUnavailable({ UseVariable: false, VFoldUsePartitioningVar: true })).toBe(false);
+    });
 
-  it("TCP12: Cross Validation nonaktif TAPI Feature Selection aktif -> kedua opsi fold dipaksa nonaktif", () => {
-    const state = makeState({ VFoldUseRandomly: true, VFoldUsePartitioningVar: true });
-    const result = applyCrossValidationDefaults(state, false, true);
-    expect(result.VFoldUseRandomly).toBe(false);
-    expect(result.VFoldUsePartitioningVar).toBe(false);
-  });
+    it('TC-KNN-SEED-03 [P3]: Partisi memakai variabel, fold acak → Set Seed tersedia', () => {
+        expect(isSeedUnavailable({ UseVariable: true, VFoldUsePartitioningVar: false })).toBe(false);
+    });
+});
 
-  it("TCP13: Cross Validation nonaktif DAN Feature Selection nonaktif -> tidak ada penyesuaian apa pun", () => {
-    const state = makeState({ VFoldUseRandomly: true, VFoldUsePartitioningVar: false, NumPartition: 3 });
-    const result = applyCrossValidationDefaults(state, false, false);
-    expect(result).toEqual(state);
-  });
+// ─── (3) enforcePartitionRules ─────────────────────────────────────────────────
+describe('enforcePartitionRules – memaksa Set Seed nonaktif (P1–P3)', () => {
+    it('TC-KNN-ENF-01 [P1]: Seed tersedia → state tidak diubah', () => {
+        const state = makeState({ SetSeed: true });
+        expect(enforcePartitionRules(state)).toBe(state);
+    });
+
+    it('TC-KNN-ENF-02 [P2]: Seed tidak tersedia, Set Seed sudah false → state tidak diubah', () => {
+        const state = makeState({ UseVariable: true, VFoldUsePartitioningVar: true, SetSeed: false });
+        expect(enforcePartitionRules(state)).toBe(state);
+    });
+
+    it('TC-KNN-ENF-03 [P3]: Seed tidak tersedia & Set Seed aktif → Set Seed dipaksa false', () => {
+        const state = makeState({ UseVariable: true, VFoldUsePartitioningVar: true, SetSeed: true });
+        expect(enforcePartitionRules(state)).toEqual({ ...state, SetSeed: false });
+    });
+});
+
+// ─── (4) applyCrossValidationDefaults ──────────────────────────────────────────
+describe('applyCrossValidationDefaults – default saat berpindah opsi (P1–P6)', () => {
+    it('TC-KNN-CVDEF-01 [P1]: Cross Validation aktif & field fold kosong → diisi default', () => {
+        const result = applyCrossValidationDefaults(makeUnsetFoldState(), true, false);
+        expect(result.VFoldUseRandomly).toBe(true);
+        expect(result.VFoldUsePartitioningVar).toBe(false);
+        expect(result.NumPartition).toBe(10);
+    });
+
+    it('TC-KNN-CVDEF-02 [P2]: Cross Validation aktif, VFoldUseRandomly sudah diisi → dipertahankan', () => {
+        const result = applyCrossValidationDefaults({ ...makeUnsetFoldState(), VFoldUseRandomly: false }, true, false);
+        expect(result.VFoldUseRandomly).toBe(false);
+    });
+
+    it('TC-KNN-CVDEF-03 [P3]: Cross Validation aktif, VFoldUsePartitioningVar sudah diisi → dipertahankan', () => {
+        const result = applyCrossValidationDefaults({ ...makeUnsetFoldState(), VFoldUsePartitioningVar: true }, true, false);
+        expect(result.VFoldUsePartitioningVar).toBe(true);
+    });
+
+    it('TC-KNN-CVDEF-04 [P4]: Cross Validation aktif, NumPartition sudah diisi → dipertahankan', () => {
+        const result = applyCrossValidationDefaults({ ...makeUnsetFoldState(), NumPartition: 5 }, true, false);
+        expect(result.NumPartition).toBe(5);
+    });
+
+    it('TC-KNN-CVDEF-05 [P5]: Cross Validation nonaktif & feature selection aktif → kedua opsi fold dinonaktifkan', () => {
+        const result = applyCrossValidationDefaults(makeState({ VFoldUsePartitioningVar: true }), false, true);
+        expect(result.VFoldUseRandomly).toBe(false);
+        expect(result.VFoldUsePartitioningVar).toBe(false);
+    });
+
+    it('TC-KNN-CVDEF-06 [P6]: Cross Validation & feature selection nonaktif → state tidak diubah', () => {
+        const state = makeState();
+        expect(applyCrossValidationDefaults(state, false, false)).toBe(state);
+    });
 });

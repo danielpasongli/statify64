@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { KNNType } from "@/components/Modals/Analyze/Classify/nearest-neighbor/types/nearest-neighbor";
+import { validateCustomSavedNames } from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborSaveRules";
 
 export type NearestNeighborValidationResult = {
   isValid: boolean;
@@ -70,7 +71,13 @@ export function useNearestNeighborValidation(formData: KNNType) {
   const validateNumericInputs = (): string | null =>
     getNumericInputError(formData);
 
-  return { validation, validateFeatureSelection, validateNumericInputs };
+  // Pemeriksaan saat tombol OK ditekan; mengembalikan pesan error pertama.
+  const validateBeforeRun = (): string | null =>
+    validateFeatureSelection() ??
+    validateNumericInputs() ??
+    validateCustomSavedNames(formData.save);
+
+  return { validation, validateFeatureSelection, validateNumericInputs, validateBeforeRun };
 }
 
 const isWholeNumber = (value: number | null | undefined): value is number =>
