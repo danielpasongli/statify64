@@ -4,7 +4,8 @@ Library ini menghitung tabulasi silang dua variabel (baris × kolom) dengan duku
 
 ## Dependensi & Sumber Perhitungan
 - Utils internal: `checkIsMissing`, `isNumeric`, `isDateString`, `dateStringToSpssSeconds`, `spssSecondsToDateString`, `toSPSSFixed` (di `../utils/utils.js`).
-- Semua rumus kontingensi dihitung di sini (internal). Tidak menggunakan library statistik eksternal.
+- Mesin statistik kategorik: `../categoricalTests/categoricalChiSquare.js`.
+- Tidak menggunakan library statistik eksternal.
 
 ## Penanganan Tipe Data
 - numeric/string/date didukung sebagai kategori baris/kolom.
@@ -30,12 +31,25 @@ Diberikan `f_ij` = bobot pada sel (i,j), `rowTotals[i]`, `colTotals[j]`, dan \( 
 Ringkasan yang dikembalikan berisi:
 - `rows`, `cols`, `totalCases (= W)`, `valid`, `missing`, `rowCategories`, `colCategories`, `rowTotals`, `colTotals`.
 
-## Uji Chi-Square (tersedia sebagai metode tambahan)
-- Pearson Chi-Square: \( \chi^2 = \sum_{i,j} \dfrac{(f_{ij} - E_{ij})^2}{E_{ij}} \) dengan \( df = (R-1)(C-1) \).
+## Uji Chi-Square dan Proporsi
+
+`categoricalChiSquare.js` membentuk tabel kontingensi dan menghitung:
+
+- Uji Kebebasan Pearson Chi-Square;
+- Uji Kesamaan Proporsi Binomial untuk tepat dua kategori hasil;
+- Uji Kesamaan Proporsi Multinomial untuk minimal tiga kategori hasil.
+
+Ketiga konteks memakai statistik Pearson yang sama:
+
+\[ \chi^2 = \sum_{i,j} \dfrac{(f_{ij} - E_{ij})^2}{E_{ij}}, \qquad df = (R-1)(C-1). \]
+
+Perbedaannya terletak pada hipotesis dan konteks penarikan kesimpulan. Modul juga menghitung p-value, expected count eksak, keputusan pada alpha, dan diagnostik aturan expected count.
 
 ## Ringkasan Sumber Perhitungan
-- Semua metrik crosstab dihitung di file ini (internal).
-- Utilitas tanggal/missing/pembulatan: dari `../utils/utils.js`.
+- Tabel kontingensi dan pengujian kategorik: `../categoricalTests/categoricalChiSquare.js`.
+- Statistik sel untuk tampilan: `crosstabs.js`.
+- Utilitas tanggal, missing, dan pembulatan tampilan: `../utils/utils.js`.
+- Chi-Square goodness-of-fit satu sampel pada menu Nonparametric Tests merupakan modul terpisah.
 
 ## Batasan & Catatan
 - Expected untuk tampilan dibulatkan ke 1 desimal dengan kebijakan "bankers rounding" (`toSPSSFixed`); perhitungan residual memakai nilai eksak yang tidak dibulatkan.

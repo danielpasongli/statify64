@@ -16,6 +16,7 @@ function loadWorker() {
 
   // Load libs
   require(path.join(process.cwd(), 'public/workers/DescriptiveStatistics/libs/utils/utils.js'));
+  require(path.join(process.cwd(), 'public/workers/DescriptiveStatistics/libs/categoricalTests/categoricalChiSquare.js'));
   require(path.join(process.cwd(), 'public/workers/DescriptiveStatistics/libs/crosstabs/crosstabs.js'));
 
   const workerPath = path.join(process.cwd(), 'public/workers/DescriptiveStatistics/crosstabs.worker.js');

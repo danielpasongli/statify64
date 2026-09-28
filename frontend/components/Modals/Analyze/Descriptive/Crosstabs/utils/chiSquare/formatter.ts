@@ -19,6 +19,7 @@ export const formatChiSquareTestsTable = (
 
   const pearson = result?.chiSquare?.pearson;
   if (!pearson) return null;
+  const proportion = result?.chiSquare?.proportion;
 
   const columnHeaders: ColumnHeader[] = [
     { header: '', key: 'rh1' },
@@ -61,10 +62,12 @@ export const formatChiSquareTestsTable = (
     description: buildChiSquareDescription({
       rowName: getVariableName(params.rowVariables[0], 'variabel baris'),
       columnName: getVariableName(params.columnVariables[0], 'variabel kolom'),
-      outcomeCategoryCount: result.summary?.colCategories?.length ?? 0,
-      value: pearson.value,
-      df: pearson.df,
-      pValue: pearson.pValue,
+      outcomeCategoryCount: proportion?.outcomeCategoryCount
+        ?? result.summary?.colCategories?.length
+        ?? 0,
+      value: proportion?.value ?? pearson.value,
+      df: proportion?.df ?? pearson.df,
+      pValue: proportion?.pValue ?? pearson.pValue,
       sampleSize: result.summary?.valid,
       diagnostics,
     }),

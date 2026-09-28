@@ -44,7 +44,8 @@
  *    (Jika dilanggar, hasil Chi-Square bisa tidak akurat dan disarankan
  *     menggunakan Fisher's Exact Test atau menggabungkan kategori).
  *
- * LANGKAH ALGORITMA DI DALAM KODE INI:
+ * LANGKAH ALGORITMA:
+ * Implementasi berada di `../categoricalTests/categoricalChiSquare.js`.
  * 1. Bangun tabel: Kumpulkan seluruh data mentah dan bangun matriks
  *    kontingensi RxC beserta total baris (Row Totals) dan total kolom (Col Totals).
  * 2. Hitung frekuensi harapan: Untuk setiap sel, hitung (Total Baris * Total Kolom) / N.
@@ -128,86 +129,6 @@ if (typeof self !== 'undefined' && typeof self.importScripts === 'function') {
     }
 }
 
-// =========================
-// Utilitas numerik untuk nilai-p Chi-Square
-// =========================
-function logGamma(x) {
-    const coeff = [
-        676.5203681218851,
-        -1259.1392167224028,
-        771.32342877765313,
-        -176.61502916214059,
-        12.507343278686905,
-        -0.13857109526572012,
-        9.9843695780195716e-6,
-        1.5056327351493116e-7,
-    ];
-
-    if (x < 0.5) {
-        return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * x)) - logGamma(1 - x);
-    }
-
-    let z = x - 1;
-    let a = 0.99999999999980993;
-    for (let i = 0; i < coeff.length; i++) {
-        a += coeff[i] / (z + i + 1);
-    }
-    const t = z + coeff.length - 0.5;
-    return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
-}
-
-function regularizedGammaP(a, x) {
-    if (!(a > 0) || !(x >= 0)) return NaN;
-    if (x === 0) return 0;
-
-    if (x < a + 1) {
-        let sum = 1 / a;
-        let term = sum;
-        for (let n = 1; n < 1000; n++) {
-            term *= x / (a + n);
-            sum += term;
-            if (Math.abs(term) < Math.abs(sum) * 1e-15) break;
-        }
-        return sum * Math.exp(-x + a * Math.log(x) - logGamma(a));
-    }
-
-    let b = x + 1 - a;
-    let c = 1e30;
-    let d = 1 / b;
-    let h = d;
-
-    for (let i = 1; i < 1000; i++) {
-        const an = -i * (i - a);
-        b += 2;
-        d = an * d + b;
-        if (Math.abs(d) < 1e-30) d = 1e-30;
-        c = b + an / c;
-        if (Math.abs(c) < 1e-30) c = 1e-30;
-        d = 1 / d;
-        const delta = d * c;
-        h *= delta;
-        if (Math.abs(delta - 1) < 1e-15) break;
-    }
-
-    const q = Math.exp(-x + a * Math.log(x) - logGamma(a)) * h;
-    return 1 - q;
-}
-
-function chiSquareCDF(x, df) {
-    if (!(df > 0)) return NaN;
-    if (x <= 0) return 0;
-    const cdf = regularizedGammaP(df / 2, x / 2);
-    if (!Number.isFinite(cdf)) return NaN;
-    return Math.min(1, Math.max(0, cdf));
-}
-
-function chiSquarePValue(x, df) {
-    if (!(df > 0) || !Number.isFinite(x)) return null;
-    const p = 1 - chiSquareCDF(x, df);
-    if (!Number.isFinite(p)) return null;
-    return Math.min(1, Math.max(0, p));
-}
-
 class CrosstabsCalculator {
     constructor({ variable, data, weights, options }) {
         if (!variable || !variable.row || !variable.col) {
@@ -251,8 +172,13 @@ class CrosstabsCalculator {
         const rowData = this.data.map(d => d[this.rowVar.name]);
         const colData = this.data.map(d => d[this.colVar.name]);
 
-        const rowCatSet = new Set();
-        const colCatSet = new Set();
+        if (!self.CategoricalChiSquare) {
+            throw new Error('Mesin statistik kategorik belum dimuat.');
+        }
+
+        const validRows = [];
+        const validColumns = [];
+        const validWeights = [];
 
         for (let i = 0; i < this.data.length; i++) {
             const rawWeight = this.weights ? (this.weights[i] ?? 1) : 1;
@@ -274,83 +200,36 @@ class CrosstabsCalculator {
             const isColMissing = checkIsMissing(processedColValue, this.colVar.missing, isNumeric(processedColValue));
 
             if (!isRowMissing && !isColMissing) {
-                rowCatSet.add(processedRowValue);
-                colCatSet.add(processedColValue);
-                this.validWeight += weight;
+                validRows.push(processedRowValue);
+                validColumns.push(processedColValue);
+                validWeights.push(weight);
             } else {
                 this.missingWeight += weight;
             }
         }
 
-        const sortValues = (arr) => {
-            return Array.from(arr).sort((a, b) => {
-                const aNum = (typeof a === 'number') ? a : (isNumeric(a) ? Number(a) : NaN);
-                const bNum = (typeof b === 'number') ? b : (isNumeric(b) ? Number(b) : NaN);
-                if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
-                return String(a).localeCompare(String(b), undefined, { numeric: true });
-            });
-        };
-        this.rowCategories = sortValues(rowCatSet);
-        this.colCategories = sortValues(colCatSet);
+        const nonIntegerWeights = (this.options && this.options.nonintegerWeights) || 'noAdjustment';
+        const cellAdjustment = nonIntegerWeights === 'roundCell'
+            ? 'round'
+            : nonIntegerWeights === 'truncateCell'
+                ? 'truncate'
+                : 'none';
+        const tableResult = self.CategoricalChiSquare.buildContingencyTable(
+            validRows,
+            validColumns,
+            validWeights,
+            cellAdjustment,
+        );
+
+        this.rowCategories = tableResult.rowCategories;
+        this.colCategories = tableResult.columnCategories;
         this.R = this.rowCategories.length;
         this.C = this.colCategories.length;
-
-        this.table = Array(this.R).fill(0).map(() => Array(this.C).fill(0));
-        this.rowTotals = Array(this.R).fill(0);
-        this.colTotals = Array(this.C).fill(0);
-
-        for (let i = 0; i < this.data.length; i++) {
-            const rawWeight = this.weights ? (this.weights[i] ?? 1) : 1;
-            const weight = this.#adjustCaseWeight(rawWeight);
-
-            // Konversi data tanggal ke SPSS seconds jika diperlukan
-            let processedRowValue = rowData[i];
-            let processedColValue = colData[i];
-
-            if (this.isRowDateData && typeof rowData[i] === 'string' && isDateString(rowData[i])) {
-                processedRowValue = dateStringToSpssSeconds(rowData[i]);
-            }
-            if (this.isColDateData && typeof colData[i] === 'string' && isDateString(colData[i])) {
-                processedColValue = dateStringToSpssSeconds(colData[i]);
-            }
-
-            const isRowMissing = checkIsMissing(processedRowValue, this.rowVar.missing, isNumeric(processedRowValue));
-            const isColMissing = checkIsMissing(processedColValue, this.colVar.missing, isNumeric(processedColValue));
-
-            if (isRowMissing || isColMissing || typeof weight !== 'number' || weight <= 0) continue;
-
-            const rowIndex = this.rowCategories.indexOf(processedRowValue);
-            const colIndex = this.colCategories.indexOf(processedColValue);
-
-            if (rowIndex > -1 && colIndex > -1) {
-                this.table[rowIndex][colIndex] += weight;
-                this.rowTotals[rowIndex] += weight;
-                this.colTotals[colIndex] += weight;
-                this.W += weight;
-            }
-        }
-
-        // Terapkan penyesuaian bobot non-integer pada level sel jika dipilih
-        const nonInt = (this.options && this.options.nonintegerWeights) || 'noAdjustment';
-        if (nonInt === 'roundCell' || nonInt === 'truncateCell') {
-            const adjustFn = nonInt === 'roundCell' ? Math.round : (x) => (x < 0 ? Math.ceil(x) : Math.trunc(x));
-            const newTable = this.table.map(row => row.map(v => adjustFn(v)));
-            // Hitung ulang total baris, kolom, dan grand total dari tabel yang telah disesuaikan
-            const newRowTotals = newTable.map(row => row.reduce((a, b) => a + b, 0));
-            const newColTotals = Array(this.C).fill(0);
-            for (let j = 0; j < this.C; j++) {
-                let s = 0;
-                for (let iR = 0; iR < this.R; iR++) s += newTable[iR][j];
-                newColTotals[j] = s;
-            }
-            const newW = newRowTotals.reduce((a, b) => a + b, 0);
-
-            this.table = newTable;
-            this.rowTotals = newRowTotals;
-            this.colTotals = newColTotals;
-            this.W = newW;
-            this.validWeight = newW;
-        }
+        this.table = tableResult.observed;
+        this.rowTotals = tableResult.rowTotals;
+        this.colTotals = tableResult.columnTotals;
+        this.W = tableResult.total;
+        this.validWeight = tableResult.total;
 
         this.initialized = true;
     }
@@ -365,7 +244,11 @@ class CrosstabsCalculator {
     _getExpectedCount(i, j) {
         this.#initialize();
         if (this.W === 0) return null;
-        const expected = (this.rowTotals[i] * this.colTotals[j]) / this.W;
+        const expected = self.CategoricalChiSquare.calculateExpectedCount(
+            this.rowTotals[i],
+            this.colTotals[j],
+            this.W,
+        );
         return toSPSSFixed(expected, 1);
     }
 
@@ -379,7 +262,11 @@ class CrosstabsCalculator {
                 const f_ij = this.table[i][j];
 
                 // 1) Frekuensi harapan – simpan nilai tepat untuk perhitungan dan nilai bulat untuk tampilan
-                const expectedExact = (this.rowTotals[i] * this.colTotals[j]) / this.W;
+                const expectedExact = self.CategoricalChiSquare.calculateExpectedCount(
+                    this.rowTotals[i],
+                    this.colTotals[j],
+                    this.W,
+                );
                 const expectedRounded = toSPSSFixed(expectedExact, 1);
 
                 // 2) Residual berdasarkan frekuensi harapan tepat agar sesuai dengan perilaku SPSS
@@ -453,12 +340,25 @@ class CrosstabsCalculator {
             cellStatistics: cellStats,
             chiSquare: {
                 pearson: this.getPearsonChiSquare(),
+                proportion: this.getProportionTest(),
             },
         };
     }
 
+    getProportionTest() {
+        this.#initialize();
+        const hasEmptyMargin = this.rowTotals.some(total => total <= 0)
+            || this.colTotals.some(total => total <= 0);
+        if (this.R < 2 || this.C < 2 || this.W === 0 || hasEmptyMargin) return null;
+
+        if (this.C === 2) {
+            return self.CategoricalChiSquare.binomialProportionTest(this.table);
+        }
+        return self.CategoricalChiSquare.multinomialProportionTest(this.table);
+    }
+
     /**
-     * Menghitung Statistik Pearson Chi-Square
+     * Mendelegasikan Statistik Pearson Chi-Square
      *
      * Uji Pearson Chi-Square pada Crosstabs (tabel kontingensi) digunakan untuk menguji
      * independensi (kebebasan) antara dua variabel kategorik (Baris dan Kolom).
@@ -483,7 +383,7 @@ class CrosstabsCalculator {
      *   - Untuk melihat apakah proporsi/distribusi kategori kolom berbeda antar kategori baris.
      *   - Contoh: Apakah ada hubungan antara 'Jenis Kelamin' (L/P) dan 'Minat Beli' (Ya/Tidak)?
     *
-    * LANGKAH KOMPUTASI DI FUNGSI INI (sesuai implementasi):
+    * LANGKAH KOMPUTASI DI MESIN STATISTIK KATEGORIK:
     *   1) Hitung df = (R-1)(C-1); bila df=0 atau N=0, hasil dikembalikan default/null.
     *   2) Loop semua sel tabel kontingensi.
     *   3) Hitung expected count per sel: E_ij = (rowTotal_i * colTotal_j) / N.
@@ -523,11 +423,15 @@ class CrosstabsCalculator {
     getPearsonChiSquare() {
         this.#initialize();
         const df = (this.R > 1 && this.C > 1) ? (this.R - 1) * (this.C - 1) : 0;
-        if (this.W === 0 || df === 0) {
+        const hasEmptyMargin = this.rowTotals.some(total => total <= 0)
+            || this.colTotals.some(total => total <= 0);
+        if (this.W === 0 || df === 0 || hasEmptyMargin) {
             return {
                 value: 0,
                 df,
                 pValue: null,
+                testType: 'independence',
+                expectedCounts: [],
                 expectedDiagnostics: {
                     minExpectedCount: null,
                     cellsUnder5: 0,
@@ -536,39 +440,7 @@ class CrosstabsCalculator {
                 },
             };
         }
-
-        let chi = 0;
-        let minExpectedCount = Number.POSITIVE_INFINITY;
-        let cellsUnder5 = 0;
-        let totalCells = 0;
-
-        for (let i = 0; i < this.R; i++) {
-            for (let j = 0; j < this.C; j++) {
-                const expected = (this.rowTotals[i] * this.colTotals[j]) / this.W;
-                if (expected > 0) {
-                    totalCells += 1;
-                    if (expected < minExpectedCount) minExpectedCount = expected;
-                    if (expected < 5) cellsUnder5 += 1;
-
-                    const diff = this.table[i][j] - expected;
-                    chi += (diff * diff) / expected;
-                }
-            }
-        }
-
-        const percentCellsUnder5 = totalCells > 0 ? (cellsUnder5 / totalCells) * 100 : 0;
-
-        return {
-            value: chi,
-            df,
-            pValue: chiSquarePValue(chi, df),
-            expectedDiagnostics: {
-                minExpectedCount: Number.isFinite(minExpectedCount) ? minExpectedCount : null,
-                cellsUnder5,
-                totalCells,
-                percentCellsUnder5,
-            },
-        };
+        return self.CategoricalChiSquare.chiSquareIndependenceTest(this.table);
     }
 }
 
