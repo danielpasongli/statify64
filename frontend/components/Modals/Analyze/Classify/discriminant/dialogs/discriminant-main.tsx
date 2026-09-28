@@ -18,12 +18,12 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Stores & Hooks
 import { useVariableStore } from "@/stores/useVariableStore";
 import { useModalStore } from "@/stores/useModalStore";
 import { useDataStore } from "@/stores/useDataStore";
-import { useResultStore } from "@/stores/useResultStore";
 
 // Tab panels & sub-dialogs
 import { DiscriminantStatistics } from "./statistics";
@@ -44,6 +44,12 @@ import { useTourGuide } from "@/components/Modals/Analyze/Descriptive/Descriptiv
 import { TourPopup, ActiveElementHighlight } from "@/components/Common/TourComponents";
 import { dialogTourSteps } from "../hooks/tourConfig";
 import { validateDefineRange } from "../services/discriminant-validation";
+import {
+  createSplitVariable,
+  DEFAULT_SPLIT_SEED,
+  DEFAULT_TRAINING_PERCENT,
+  validateSplitOptions,
+} from "../services/discriminant-split";
 
 /** Boxes a variable can be moved into on the Variables tab. */
 type DropTarget = "GroupingVariable" | "IndependentVariables" | "SelectionVariable";
@@ -56,7 +62,6 @@ export const DiscriminantMain = () => {
   const { closeModal } = useModalStore();
   const variablesFromStore = useVariableStore((state) => state.variables);
   const { data } = useDataStore();
-  const { addLog, addAnalytic, addStatistic } = useResultStore();
 
   const {
     formData,
@@ -102,6 +107,7 @@ export const DiscriminantMain = () => {
     setPendingMaxRange(formData.defineRange?.maxRange ?? "");
     setDefineRangeError(null);
     setIsSetValueOpen(false);
+    setIsSplitOpen(false);
     setIsDefineRangeOpen(true);
   };
 
@@ -129,6 +135,7 @@ export const DiscriminantMain = () => {
   const handleSetValueOpen = () => {
     setPendingValue(formData.setValue?.Value ?? "");
     setIsDefineRangeOpen(false);
+    setIsSplitOpen(false);
     setIsSetValueOpen(true);
   };
 
@@ -137,13 +144,58 @@ export const DiscriminantMain = () => {
     setIsSetValueOpen(false);
   };
 
-  const variables = useVariableStore((state) => state.variables);
+  // Generate Split inline panel: draws a training/testing split into a new variable
+  // (1 = training, 0 = testing) and makes it the Selection Variable with Value 1.
+  const [isSplitOpen, setIsSplitOpen] = useState(false);
+  const [splitPercent, setSplitPercent] = useState<number | string>(DEFAULT_TRAINING_PERCENT);
+  const [splitSeed, setSplitSeed] = useState<number | string>(DEFAULT_SPLIT_SEED);
+  const [splitStratified, setSplitStratified] = useState(true);
+  const [splitError, setSplitError] = useState<string | null>(null);
+  const [isSplitting, setIsSplitting] = useState(false);
+
+  const handleSplitOpen = () => {
+    setSplitError(null);
+    setIsDefineRangeOpen(false);
+    setIsSetValueOpen(false);
+    setIsSplitOpen(true);
+  };
+
+  const handleSplitGenerate = async () => {
+    const optionError = validateSplitOptions(splitPercent, splitSeed);
+    if (optionError) {
+      setSplitError(optionError);
+      return;
+    }
+    // Stratifying needs the grouping variable; without one the split is simple random.
+    const stratifyBy =
+      splitStratified && formData.main.GroupingVariable ? formData.main.GroupingVariable : null;
+
+    setIsSplitting(true);
+    setSplitError(null);
+    try {
+      const created = await createSplitVariable(data as string[][], variablesFromStore, {
+        trainingPercent: Number(splitPercent),
+        seed: Number(splitSeed),
+        stratifyBy,
+      });
+      updateFormData("main", "SelectionVariable", created.name);
+      updateFormData("setValue", "Value", 1);
+      setIsSplitOpen(false);
+      toast.success(
+        `Created ${created.name}: ${created.training} training and ${created.testing} testing cases. It is now the Selection Variable (Value = 1).`
+      );
+    } catch (err) {
+      setSplitError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSplitting(false);
+    }
+  };
 
   const mainData = formData.main;
 
   // Method applies only to the stepwise method; Bootstrap only to "enter
-  // independents together". They are mutually exclusive, so we show just the
-  // relevant one to keep the single tab row from getting crowded.
+  // independents together". They are mutually exclusive, so only the relevant one
+  // is shown, which keeps the single tab row from getting crowded.
   const showMethod = mainData.Stepwise;
   const showBootstrap = !mainData.Stepwise;
 
@@ -339,8 +391,8 @@ export const DiscriminantMain = () => {
     updateFormData("main", "Together", !isStepwise);
     updateFormData("main", "Stepwise", isStepwise);
     // Bootstrap only applies to "enter independents together". Switching to the
-    // stepwise method clears any previously-checked bootstrap so it doesn't keep
-    // running silently (its tab is hidden under stepwise).
+    // stepwise method unchecks it so it does not run unseen (its tab is hidden under
+    // stepwise).
     if (isStepwise && formData.bootstrap?.PerformBootStrapping) {
       updateFormData("bootstrap", "PerformBootStrapping", false);
     }
@@ -653,20 +705,37 @@ export const DiscriminantMain = () => {
                               )}
                             </ScrollArea>
                           </div>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={handleSetValueOpen}
-                          >
-                            Value...
-                          </Button>
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleSetValueOpen}
+                            >
+                              Value...
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleSplitOpen}
+                              title="Create a training/testing split variable and use it as the Selection Variable"
+                            >
+                              Generate Split...
+                            </Button>
+                          </div>
                         </div>
+                        {mainData.SelectionVariable && (
+                          <p className="text-xs text-muted-foreground">
+                            {formData.setValue?.Value === null || formData.setValue?.Value === undefined
+                              ? "Set a Value: only cases with that value are analysed."
+                              : `Analysis uses cases with ${mainData.SelectionVariable} = ${formData.setValue.Value}; the other cases are classified as testing cases.`}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Right: inline panel (Define Range or Set Value) */}
-                  {(isDefineRangeOpen || isSetValueOpen) && (
+                  {/* Right: inline panel (Define Range, Set Value or Generate Split) */}
+                  {(isDefineRangeOpen || isSetValueOpen || isSplitOpen) && (
                     <div className="flex flex-col gap-3 w-44 flex-shrink-0 rounded-lg border p-3">
                       {isDefineRangeOpen ? (
                         <>
@@ -706,6 +775,68 @@ export const DiscriminantMain = () => {
                               size="sm"
                               variant="secondary"
                               onClick={() => setIsDefineRangeOpen(false)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </>
+                      ) : isSplitOpen ? (
+                        <>
+                          <Label className="font-semibold text-sm">Generate Split</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Adds a variable (1 = training, 0 = testing) and uses it as the
+                            Selection Variable with Value 1.
+                          </p>
+                          <div className="flex flex-col gap-1">
+                            <Label className="text-xs text-muted-foreground">Training (%)</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={99}
+                              value={splitPercent}
+                              onChange={(e) => {
+                                setSplitPercent(e.target.value);
+                                setSplitError(null);
+                              }}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Label className="text-xs text-muted-foreground">Seed</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={splitSeed}
+                              onChange={(e) => {
+                                setSplitSeed(e.target.value);
+                                setSplitError(null);
+                              }}
+                            />
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <Checkbox
+                              id="discriminant-split-stratified"
+                              checked={splitStratified && !!mainData.GroupingVariable}
+                              disabled={!mainData.GroupingVariable}
+                              onCheckedChange={(checked) => setSplitStratified(checked === true)}
+                            />
+                            <Label htmlFor="discriminant-split-stratified" className="text-xs leading-tight">
+                              Stratify by grouping variable
+                              {!mainData.GroupingVariable && " (select one first)"}
+                            </Label>
+                          </div>
+                          {splitError && (
+                            <p className="text-xs text-destructive">{splitError}</p>
+                          )}
+                          <div className="flex flex-col gap-2 pt-1">
+                            <Button size="sm" onClick={handleSplitGenerate} disabled={isSplitting}>
+                              {isSplitting ? "Generating..." : "Generate"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setIsSplitOpen(false)}
+                              disabled={isSplitting}
                             >
                               Cancel
                             </Button>

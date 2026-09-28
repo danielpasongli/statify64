@@ -4,6 +4,13 @@ use rayon::prelude::*;
 use crate::models::{ result::GroupStatistics, AnalysisData, DiscriminantConfig };
 use super::core::{ extract_analyzed_dataset, calculate_std_dev };
 
+/// Group Statistics table, per group and for all groups together ("Total"):
+///
+/// mean x̄ = Σx / n,   standard deviation s = √[Σ(x − x̄)² / (n − 1)]
+///
+/// and the valid N (unweighted and weighted, equal because no case weights are
+/// applied). Means and standard deviations are filled only with Statistics → Means;
+/// the valid N always.
 pub fn calculate_group_statistics(
     data: &AnalysisData,
     config: &DiscriminantConfig

@@ -39,7 +39,7 @@ pub fn calculate_box_m_test(
     data: &AnalysisData,
     config: &DiscriminantConfig,
 ) -> Result<BoxMTest, String> {
-    web_sys::console::log_1(&"Executing calculate_box_m_test".into());
+    crate::debug_log!("Executing calculate_box_m_test");
 
     // Extract analyzed dataset
     let dataset = match extract_analyzed_dataset(data, config) {
@@ -60,12 +60,30 @@ pub fn calculate_box_m_test(
             .collect()
     };
 
-    web_sys::console::log_1(&format!(
-        "Box M: using {} variables: {:?}",
+    crate::debug_log!("Box M: using {} variables: {:?}",
         variables.len(),
-        variables
-    ).into());
+        variables);
 
+    box_m_test_for(
+        &dataset,
+        &variables,
+        "box_m_test",
+        "Note: Tests null hypothesis of equal population covariance matrices.",
+    )
+}
+
+/// Box's M on `variables` of an already-extracted dataset.
+///
+/// Split out of `calculate_box_m_test` so Separate-groups classification can run
+/// the same test on the canonical discriminant function scores (SPSS displays
+/// that test under /CLASSIFY=SEPARATE). `warning_context` labels the warning raised
+/// when groups have to be left out of the test.
+pub fn box_m_test_for(
+    dataset: &AnalyzedDataset,
+    variables: &[String],
+    warning_context: &str,
+    note: &str,
+) -> Result<BoxMTest, String> {
     // Compute per-group covariance matrices and log determinants
     let (all_group_covs, all_group_log_dets, all_group_sizes, all_group_names) =
         compute_group_covariances(&dataset, &variables)?;
@@ -114,7 +132,7 @@ pub fn calculate_box_m_test(
     }
     if !excluded.is_empty() {
         push_analysis_warning(
-            "box_m_test",
+            warning_context,
             format!(
                 "Box's M was computed without {}. Its log determinant is not defined, so the test covers only the remaining groups.",
                 excluded.join("; ")
@@ -180,13 +198,10 @@ pub fn calculate_box_m_test(
         1.0
     };
 
-    // Add explanatory note based on Box's M documentation
-    let note = "Note: Tests null hypothesis of equal population covariance matrices.".to_string();
+    let note = note.to_string();
 
-    web_sys::console::log_1(&format!(
-        "Box M Result: M={}, f_approx={}, df1={}, df2={}, p_value={}, c1={}, c2={}, b={}",
-        box_m, f_approx, v1, v2, p_value, c1, c2, b
-    ).into());
+    crate::debug_log!("Box M Result: M={}, f_approx={}, df1={}, df2={}, p_value={}, c1={}, c2={}, b={}",
+        box_m, f_approx, v1, v2, p_value, c1, c2, b);
 
     Ok(BoxMTest {
         box_m,
@@ -282,7 +297,7 @@ fn compute_group_covariances(
     Ok((group_covs, group_log_dets, group_sizes, group_names))
 }
 
-/// Computes the covariance matrix for a specific group.
+/// Covariance matrix of one group, Sᵢ = Σ (x − x̄ᵢ)(x − x̄ᵢ)ᵀ / (nᵢ − 1).
 ///
 /// # Parameters
 /// * `dataset` - The analyzed dataset
@@ -419,7 +434,7 @@ fn compute_c1_factor(p: usize, k: usize, group_sizes: &[usize], total_sample_siz
     let denominator = 6.0 * (p_f64 + 1.0) * (k_f64 - 1.0);
 
     if denominator > EPSILON {
-        numerator / denominator // A₁, bukan ρ = 1 − A₁: aproksimasi F memakai A₁ langsung
+        numerator / denominator // A₁ itself, not ρ = 1 − A₁
     } else {
         0.0
     }

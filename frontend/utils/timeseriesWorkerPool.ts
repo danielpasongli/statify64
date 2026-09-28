@@ -6,7 +6,7 @@
 //
 // WASM (~479KB) hanya di-load sekali per sesi, bukan setiap kali analisis.
 
-const WORKER_URL = "/workers/TimeSeries/worker.js?v=ecm_correlogram_v2";
+const WORKER_URL = "/workers/TimeSeries/worker.js?v=garch_v3";
 const MAX_POOL = 2;
 
 interface PooledWorker {

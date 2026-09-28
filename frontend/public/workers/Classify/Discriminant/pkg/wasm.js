@@ -244,9 +244,6 @@ function __wbg_get_imports() {
             const ret = arg0.length;
             return ret;
         },
-        __wbg_log_7e1aa9064a1dbdbd: function(arg0) {
-            console.log(arg0);
-        },
         __wbg_msCrypto_bd5a034af96bcba6: function(arg0) {
             const ret = arg0.msCrypto;
             return ret;

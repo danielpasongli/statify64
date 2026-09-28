@@ -1,10 +1,26 @@
 import init, { GARCH, ECM, ARDL } from "./timeseries.js";
 
+let wasmInitPromise = null;
+function ensureWasmInit() {
+    if (!wasmInitPromise) {
+        wasmInitPromise = (async () => {
+            const wasmUrl = new URL("./timeseries_bg.wasm", import.meta.url);
+            const res = await fetch(wasmUrl);
+            if (!res.ok) {
+                throw new Error(`Failed to fetch WASM binary (${res.status} ${res.statusText})`);
+            }
+            const bytes = await res.arrayBuffer();
+            await init(bytes);
+        })();
+    }
+    return wasmInitPromise;
+}
+
 self.onmessage = async (e) => {
     const { type, payload } = e.data;
     
     try {
-        await init();
+        await ensureWasmInit();
         
         let result = {};
         
@@ -210,12 +226,13 @@ self.onmessage = async (e) => {
 
         if (type === "GARCH" || type === "ARCH") {
             const { data, p, q } = payload;
-            const model = new GARCH(new Float64Array(data), p, q);
+            const effectiveP = type === "ARCH" ? 0 : p;
+            const model = new GARCH(new Float64Array(data), effectiveP, q);
             model.estimate();
             
             result = {
                 modelType: type,
-                p, q,
+                p: effectiveP, q,
                 coefficients: {
                     mu: fmt(model.get_mu()),
                     mu_se: fmt(model.get_mu_se()),
@@ -232,12 +249,12 @@ self.onmessage = async (e) => {
                     alpha_z: fmtArray(Array.from(model.get_alpha_z())),
                     alpha_p: fmtArray(Array.from(model.get_alpha_p())),
 
-                    beta: fmtArray(Array.from(model.get_beta())),
-                    beta_se: fmtArray(Array.from(model.get_beta_se())),
-                    beta_z: fmtArray(Array.from(model.get_beta_z())),
-                    beta_p: fmtArray(Array.from(model.get_beta_p())),
+                    beta: effectiveP > 0 ? fmtArray(Array.from(model.get_beta())) : undefined,
+                    beta_se: effectiveP > 0 ? fmtArray(Array.from(model.get_beta_se())) : undefined,
+                    beta_z: effectiveP > 0 ? fmtArray(Array.from(model.get_beta_z())) : undefined,
+                    beta_p: effectiveP > 0 ? fmtArray(Array.from(model.get_beta_p())) : undefined,
                 },
-                diagnostics: computeDiagnostics(model, Array.from(model.get_data()), Array.from(model.get_residuals()), p, q, type),
+                diagnostics: computeDiagnostics(model, Array.from(model.get_data()), Array.from(model.get_residuals()), effectiveP, q, type),
                 variance: Array.from(model.get_variance()),
                 residuals: Array.from(model.get_residuals()),
                 data: Array.from(model.get_data())
