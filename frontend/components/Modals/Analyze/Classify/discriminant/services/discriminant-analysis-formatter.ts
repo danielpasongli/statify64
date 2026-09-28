@@ -1,8 +1,8 @@
 // discriminant-analysis-formatter.ts
-import { formatDisplayNumber } from "@/hooks/useFormatter";
 import {
   compareGroupLabels,
-  comparisonDecimals,
+  formatAssumptionSig as assumptionSig,
+  formatAssumptionStat as assumptionStat,
   formatCount,
   formatPercent,
   formatSig,
@@ -16,13 +16,6 @@ import type { Chart } from "@/types/Chart";
 // the name of those cases in the plot legend.
 const UNGROUPED_GROUP = "ungrouped";
 const UNGROUPED_CASES = "Ungrouped Cases";
-
-// The assumption tables keep the app-wide number style, except in precision mode
-// (see discriminant-number-format.ts), where they follow the other tables.
-const assumptionStat = (value: number) =>
-  comparisonDecimals() ? formatStat(value) : formatDisplayNumber(value);
-const assumptionSig = (value: number) =>
-  comparisonDecimals() ? formatSig(value) : formatDisplayNumber(value);
 
 export function transformDiscriminantResult(data: any): ResultJson {
   const resultJson: ResultJson = {
@@ -457,14 +450,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
         },
       ],
     };
-
-    // Interpretation (homogeneity-of-covariance assumption), surfaced as the
-    // section Description by store.ts.
-    const boxMp = data.box_m_test.p_value;
-    (table as Table & { footer?: string }).footer =
-      typeof boxMp === "number" && boxMp < 0.05
-        ? "Not met: Box's M is significant (p < 0.05), so the group covariance matrices are not equal. Consider separate-covariance (quadratic) classification."
-        : "Met: Box's M is not significant (p ≥ 0.05), so equal group covariance matrices can be assumed.";
 
     resultJson.tables.push(table);
   }
@@ -2630,9 +2615,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
         ],
         rows: [],
       };
-      let anyViolated = false;
       for (const r of assumptions.summary) {
-        if (r.violated) anyViolated = true;
         table.rows.push({
           rowHeader: [r.assumption],
           test: r.test,
@@ -2640,9 +2623,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
           status: r.violated ? "⚠ Violated" : "Met",
         });
       }
-      (table as Table & { footer?: string }).footer = anyViolated
-        ? "⚠ One or more assumptions are not met — interpret the results with caution. See the detail tables below."
-        : "All checked assumptions are met.";
       resultJson.tables.push(table);
     }
 
@@ -2666,7 +2646,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
           vif: assumptionStat(mc.vif[i]),
         });
       }
-      (table as Table & { footer?: string }).footer = mc.note;
       resultJson.tables.push(table);
     }
 
@@ -2697,7 +2676,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
           mvn: !tested ? "Not tested (n ≤ p)" : mv.normal[i] ? "YES" : "⚠ NO",
         });
       }
-      (table as Table & { footer?: string }).footer = mv.note;
       resultJson.tables.push(table);
     }
 
@@ -2725,7 +2703,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
           normality: uv.normal[i] ? "YES" : "⚠ NO",
         });
       }
-      (table as Table & { footer?: string }).footer = uv.note;
       resultJson.tables.push(table);
     }
   }

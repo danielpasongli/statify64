@@ -1,5 +1,6 @@
 import { transformDiscriminantResult } from "@/components/Modals/Analyze/Classify/discriminant/services/formatter";
 import { comparisonDecimals } from "@/components/Modals/Analyze/Classify/discriminant/services/discriminant-number-format";
+import { interpretDiscriminantResult } from "@/components/Modals/Analyze/Classify/discriminant/services/discriminant-interpretation";
 import { useResultStore } from "@/stores/useResultStore";
 import type { Table } from "@/types/Table";
 
@@ -10,86 +11,20 @@ function withPrecisionNote(title: string): string {
     return decimals ? `${title} (precision mode: ${decimals} decimals)` : title;
 }
 
-// Plain-language, one-line interpretation per table, shown in the section
-// "Description". Assumption tables (and Box's M) are intentionally omitted —
-// their dynamic footer note already is the interpretation.
-const TABLE_INTERPRETATIONS: Record<string, string> = {
-    processing_summary:
-        "How many cases were valid and how many were excluded from the analysis.",
-    group_statistics:
-        "Mean and standard deviation of each predictor within each group, with the case count per group.",
-    equality_tests:
-        "Tests whether each predictor's mean differs across groups. A small Sig. (< 0.05) means the predictor separates the groups well.",
-    pooled_covariance_matrix:
-        "Within-groups covariances pooled across groups — the common spread used to fit the discriminant functions.",
-    pooled_correlation_matrix:
-        "Within-groups correlations between predictors, pooled across groups.",
-    covariance_matrices:
-        "Covariance of the predictors computed separately for each group.",
-    log_determinants:
-        "Log determinant of each group's covariance matrix; large differences suggest unequal covariances (tested by Box's M).",
-    stepwise_statistics:
-        "The variable entered (or removed) at each step of the stepwise selection.",
-    variables_in_analysis:
-        "Statistics for the variables already in the model at each step.",
-    variables_not_in_analysis:
-        "Statistics for the variables not yet in the model, showing which could enter next.",
-    stepwise_wilks_lambda:
-        "Wilks' Lambda after each step; smaller values mean better group separation.",
-    pairwise_group_comparisons:
-        "F test of the distance between each pair of group centroids at each step. A small Sig. (< 0.05) means the two groups are significantly separated.",
-    eigenvalues:
-        "Each discriminant function's eigenvalue and the share of between-group variance it explains.",
-    wilks_lambda_test:
-        "Tests the significance of the discriminant functions. A small Sig. (< 0.05) means they separate the groups.",
-    standardized_coefficients:
-        "Standardized weights showing each predictor's relative contribution to each function.",
-    structure_matrix:
-        "Correlations between each predictor and the functions; larger absolute values show a stronger link.",
-    canonical_discriminant_function_coefficients:
-        "Unstandardized weights used to compute each case's discriminant score.",
-    functions_at_group_centroids:
-        "Average discriminant score of each group — the group centers in discriminant space.",
-    prior_probabilities:
-        "Prior probability assumed for each group before classification, with the cases used.",
-    classification_function_coefficients:
-        "Fisher's classification coefficients; each case is assigned to the group with the highest score.",
-    classification_processing_summary:
-        "How many cases were processed and used in the classification step.",
-    separate_groups_covariance_matrices:
-        "Each group's covariance matrix of the discriminant scores. With the Separate-groups option these matrices, not the pooled one, are used to classify the cases.",
-    separate_groups_log_determinants:
-        "Log determinant of each group's covariance matrix of the discriminant functions; it enters the Separate-groups classification rule.",
-    separate_groups_box_m_test:
-        "Tests whether the groups' covariance matrices of the discriminant functions are equal. A small Sig. (< 0.05) supports classifying with separate-groups matrices.",
-    casewise_statistics:
-        "Per-case results: actual vs predicted group and the discriminant scores. ** marks a misclassified case.",
-    classification_results:
-        "Confusion matrix of actual vs predicted groups; the note gives the overall percent correctly classified.",
-    bootstrap_standardized_coefficients:
-        "Bootstrap bias, standard error, and confidence interval for each standardized coefficient.",
-};
-
 // Escape text so it is safe to embed in the HTML the Description editor expects
-// (several notes contain "<", e.g. "VIF < 10").
+// (several notes contain "<", e.g. "p (Sig.) < .001").
 function escapeHtml(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Build the section Description (an interpretation plus every footnote) and a
-// copy of the table with its footer + footnote rows stripped out, so footnotes
-// show only once — in the Description.
+// Build the section Description (the table's interpretation, then every footnote)
+// and a copy of the table with its footnote rows stripped out, so footnotes show
+// only once — in the Description.
 function buildSectionDescription(
     table: Table,
-    key: string,
+    interpretation: string | undefined,
 ): { description: string; cleaned: Table } {
-    const parts: string[] = [];
-
-    const base = TABLE_INTERPRETATIONS[key];
-    if (base) parts.push(base);
-
-    const footer = (table as Table & { footer?: string }).footer;
-    if (typeof footer === "string" && footer.length > 0) parts.push(footer);
+    const parts: string[] = interpretation ? [interpretation] : [];
 
     // Footnote/caption rows carry only a single text rowHeader and no data cells.
     const dataRows: Table["rows"] = [];
@@ -108,8 +43,7 @@ function buildSectionDescription(
         }
     }
 
-    const { footer: _omit, ...rest } = table as Table & { footer?: string };
-    const cleaned = { ...rest, rows: dataRows } as Table;
+    const cleaned = { ...table, rows: dataRows };
 
     const description =
         parts.length > 0
@@ -143,6 +77,7 @@ const ASSUMPTION_SECTIONS = [
 // the full-analysis save and the on-demand assumption-checks save.
 async function renderDiscriminantSection(
     tables: Table[],
+    interpretations: Record<string, string>,
     analyticId: number,
     key: string,
     title: string,
@@ -152,7 +87,7 @@ async function renderDiscriminantSection(
     const tableObj = tables.find((t: Table) => t.key === key);
     if (!tableObj) return;
 
-    const { description, cleaned } = buildSectionDescription(tableObj, key);
+    const { description, cleaned } = buildSectionDescription(tableObj, interpretations[key]);
 
     // The table title is the only visible heading for the table (the
     // component header shows the group name), so carry the section title in.
@@ -166,6 +101,7 @@ async function renderDiscriminantSection(
 
 export async function saveDiscriminantResult(rawResults: unknown) {
     const formattedResult = transformDiscriminantResult(rawResults);
+    const interpretations = interpretDiscriminantResult(rawResults);
     const { addLog, addAnalytic, addStatistic } = useResultStore.getState();
 
     const logId = await addLog({ log: "Discriminant Analysis" });
@@ -175,7 +111,7 @@ export async function saveDiscriminantResult(rawResults: unknown) {
     });
 
     const renderSection = (key: string, title: string, group: string) =>
-        renderDiscriminantSection(formattedResult.tables, analyticId, key, title, group);
+        renderDiscriminantSection(formattedResult.tables, interpretations, analyticId, key, title, group);
 
     // Output order follows the actual workflow of a discriminant analysis so the
     // reader can follow each step from assumptions → data → model → classification.
@@ -292,6 +228,7 @@ export async function saveDiscriminantResult(rawResults: unknown) {
 // the Output Viewer without running (or saving) the full discriminant analysis.
 export async function saveDiscriminantAssumptions(rawResults: unknown) {
     const formattedResult = transformDiscriminantResult(rawResults);
+    const interpretations = interpretDiscriminantResult(rawResults);
     const hasAny = ASSUMPTION_SECTIONS.some((s) =>
         formattedResult.tables.some((t) => t.key === s.key)
     );
@@ -311,6 +248,7 @@ export async function saveDiscriminantAssumptions(rawResults: unknown) {
     for (const section of ASSUMPTION_SECTIONS) {
         await renderDiscriminantSection(
             formattedResult.tables,
+            interpretations,
             analyticId,
             section.key,
             section.title,

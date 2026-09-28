@@ -39,10 +39,10 @@ use super::core::{
 /// under stratified sampling, and predictor values (in the same order as the
 /// variable list of the model).
 #[derive(Clone)]
-struct Case {
-    group: String,
-    stratum: String,
-    values: Vec<f64>,
+pub struct Case {
+    pub group: String,
+    pub stratum: String,
+    pub values: Vec<f64>,
 }
 
 /// Top-level bootstrap entry point. Returns `Err` when bootstrap is not
@@ -480,7 +480,7 @@ fn resample_simple(cases: &[Case], rng: &mut Mt) -> Vec<Case> {
 /// user picked Strata Variables, in which case it is their crossed cells.
 /// Strata are visited in first-appearance order, so a given seed always produces
 /// the same draws.
-fn resample_stratified(cases: &[Case], rng: &mut Mt) -> Vec<Case> {
+pub fn resample_stratified(cases: &[Case], rng: &mut Mt) -> Vec<Case> {
     let mut order: Vec<&String> = Vec::new();
     let mut by_stratum: HashMap<&String, Vec<&Case>> = HashMap::new();
     for c in cases {
@@ -713,7 +713,7 @@ fn percentile_interval(estimates: &[f64], alpha: f64) -> (f64, f64) {
 /// θ̂ = original estimate, a = jackknife acceleration (`jackknife_acceleration`),
 /// Q = Type-7 quantile. The proportion is kept within [10⁻⁶, 1 − 10⁻⁶] so that z₀
 /// stays finite.
-fn bca_interval(estimates: &[f64], original: f64, accel: f64, alpha: f64) -> (f64, f64) {
+pub fn bca_interval(estimates: &[f64], original: f64, accel: f64, alpha: f64) -> (f64, f64) {
     let n = estimates.len();
     if n < 2 {
         return (original, original);
