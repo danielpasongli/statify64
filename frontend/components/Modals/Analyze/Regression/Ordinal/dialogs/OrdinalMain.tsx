@@ -378,6 +378,29 @@ const OrdinalMain: React.FC = () => {
         throw new Error("Dataset kosong atau tidak tersedia.");
       }
 
+      // Validasi parameter options (tidak boleh minus / negatif)
+      if (optParams.maxIterations < 0) {
+        throw new Error("Maximum iterations tidak boleh minus.");
+      }
+      if (optParams.maxStepHalving < 0) {
+        throw new Error("Maximum step-halving tidak boleh minus.");
+      }
+      if (optParams.logLikelihoodConvergence < 0) {
+        throw new Error("Log-likelihood convergence tidak boleh minus.");
+      }
+      if (optParams.parameterConvergence < 0) {
+        throw new Error("Parameter convergence tidak boleh minus.");
+      }
+      if (optParams.confidenceInterval < 0) {
+        throw new Error("Confidence interval tidak boleh minus.");
+      }
+      if (optParams.delta < 0) {
+        throw new Error("Delta tidak boleh minus.");
+      }
+      if (optParams.singularityTolerance < 0) {
+        throw new Error("Singularity tolerance tidak boleh minus.");
+      }
+
       const factors = options.factors;
       const covariates = options.covariates;
 
@@ -1010,6 +1033,18 @@ const OrdinalMain: React.FC = () => {
     }
   };
 
+  const isOptionsInvalid = useMemo(() => {
+    return (
+      optParams.maxIterations < 0 ||
+      optParams.maxStepHalving < 0 ||
+      optParams.logLikelihoodConvergence < 0 ||
+      optParams.parameterConvergence < 0 ||
+      optParams.confidenceInterval < 0 ||
+      optParams.delta < 0 ||
+      optParams.singularityTolerance < 0
+    );
+  }, [optParams]);
+
   // --- RENDER ---
   return (
     <div className="flex flex-col h-full bg-background">
@@ -1106,7 +1141,7 @@ const OrdinalMain: React.FC = () => {
           </TooltipProvider>
         </div>
         <div className="flex items-center space-x-4">
-          <Button onClick={handleAnalyze} disabled={isLoading || !options.dependent}>
+          <Button onClick={handleAnalyze} disabled={isLoading || !options.dependent || isOptionsInvalid}>
             {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> OK</> : "OK"}
           </Button>
           <Button
