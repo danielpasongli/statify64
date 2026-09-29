@@ -1,0 +1,149 @@
+{
+  "case_processing_summary": {
+    "total_instances": 150,
+    "valid_instances": 148,
+    "excluded_target_missing": 2,
+    "target_variable": "Species",
+    "attribute_variables": ["SoilType", "PetalLength", "PetalWidth"],
+    "validation_scenario": {
+      "method": "holdout",
+      "training_percentage": 70,
+      "holdout_percentage": 30,
+      "folds": null,
+      "seed": 12345
+    }
+  },
+  "attribute_distribution": [
+    {
+      "name": "SoilType",
+      "role": "categorical",
+      "classes": ["setosa", "versicolor", "virginica"],
+      "categories": [
+        {
+          "category": "loam",
+          "per_class": [
+            { "class": "setosa", "raw_count": 20, "smoothed_count": 21, "probability": 0.42, "total": 50 },
+            { "class": "versicolor", "raw_count": 15, "smoothed_count": 16, "probability": 0.32, "total": 50 },
+            { "class": "virginica", "raw_count": 10, "smoothed_count": 11, "probability": 0.22, "total": 50 }
+          ]
+        },
+        {
+          "category": "clay",
+          "per_class": [
+            { "class": "setosa", "raw_count": 18, "smoothed_count": 19, "probability": 0.38, "total": 50 },
+            { "class": "versicolor", "raw_count": 20, "smoothed_count": 21, "probability": 0.42, "total": 50 },
+            { "class": "virginica", "raw_count": 25, "smoothed_count": 26, "probability": 0.52, "total": 50 }
+          ]
+        },
+        {
+          "category": "(Missing)",
+          "per_class": [
+            { "class": "setosa", "raw_count": 0, "smoothed_count": 1, "probability": 0.02, "total": 50 },
+            { "class": "versicolor", "raw_count": 1, "smoothed_count": 2, "probability": 0.04, "total": 50 },
+            { "class": "virginica", "raw_count": 2, "smoothed_count": 3, "probability": 0.06, "total": 50 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PetalLength",
+      "role": "numerical",
+      "classes": ["setosa", "versicolor", "virginica"],
+      "numeric": {
+        "per_class": [
+          { "class": "setosa", "mean": 1.46, "std_dev": 0.17 },
+          { "class": "versicolor", "mean": 4.26, "std_dev": 0.47 },
+          { "class": "virginica", "mean": 5.55, "std_dev": 0.55 }
+        ]
+      }
+    },
+    {
+      "name": "PetalWidth",
+      "role": "numerical",
+      "classes": ["setosa", "versicolor", "virginica"],
+      "numeric": {
+        "per_class": [
+          { "class": "setosa", "mean": 0.24, "std_dev": 0.11 },
+          { "class": "versicolor", "mean": 1.33, "std_dev": 0.2 },
+          { "class": "virginica", "mean": 2.03, "std_dev": 0.27 }
+        ]
+      }
+    }
+  ],
+  "evaluation_metrics": {
+    "classes": ["setosa", "versicolor", "virginica"],
+    "per_class": [
+      { "class": "setosa", "accuracy": 1.0, "precision": 1.0, "recall": 1.0, "f1": 1.0 },
+      { "class": "versicolor", "accuracy": 0.93, "precision": 0.91, "recall": 0.9, "f1": 0.905 },
+      { "class": "virginica", "accuracy": 0.95, "precision": 0.92, "recall": 0.93, "f1": 0.925 }
+    ],
+    "macro_avg": { "precision": 0.943, "recall": 0.943, "f1": 0.943 },
+    "weighted_avg": { "precision": 0.944, "recall": 0.944, "f1": 0.944 },
+    "micro_avg": { "precision": 0.944, "recall": 0.944, "f1": 0.944 },
+    "overall_accuracy": 0.944,
+    "cohens_kappa": 0.917
+  },
+  "confusion_matrix": {
+    "classes": ["setosa", "versicolor", "virginica"],
+    "matrix": [
+      [16, 0, 0],
+      [0, 14, 1],
+      [0, 1, 13]
+    ],
+    "row_totals": [16, 15, 14],
+    "col_totals": [16, 15, 14],
+    "grand_total": 45,
+    "percentages": [
+      [100, 0, 0],
+      [0, 93.3, 6.7],
+      [0, 7.1, 92.9]
+    ]
+  },
+  "trained_model": {
+    "schema_version": "1.0",
+    "model_type": "naive_bayes",
+    "trained_at": "2026-09-28T00:00:00.000Z",
+    "target": {
+      "name": "Species",
+      "classes": ["setosa", "versicolor", "virginica"],
+      "class_priors": [0.333, 0.333, 0.334]
+    },
+    "features": [
+      {
+        "name": "SoilType",
+        "role": "categorical",
+        "categories": ["loam", "clay", "(Missing)"],
+        "distribution": {
+          "setosa": [0.42, 0.38, 0.02],
+          "versicolor": [0.32, 0.42, 0.04],
+          "virginica": [0.22, 0.52, 0.06]
+        }
+      },
+      {
+        "name": "PetalLength",
+        "role": "numerical",
+        "mean": { "setosa": 1.46, "versicolor": 4.26, "virginica": 5.55 },
+        "variance": { "setosa": 0.03, "versicolor": 0.22, "virginica": 0.3 }
+      },
+      {
+        "name": "PetalWidth",
+        "role": "numerical",
+        "mean": { "setosa": 0.24, "versicolor": 1.33, "virginica": 2.03 },
+        "variance": { "setosa": 0.01, "versicolor": 0.04, "virginica": 0.07 }
+      }
+    ],
+    "smoothing_alpha": 1,
+    "variance_floor": 1e-9,
+    "feature_order": ["SoilType", "PetalLength", "PetalWidth"],
+    "label_mapping": { "setosa": 0, "versicolor": 1, "virginica": 2 },
+    "validation_config": {
+      "method": "holdout",
+      "training_percentage": 70,
+      "holdout_percentage": 30,
+      "folds": null,
+      "seed": 12345
+    },
+    "missing_value_policy": "Kategorik missing dianggap kategori '(Missing)'; numerik missing dikecualikan per-atribut untuk kelas terkait; target missing dibuang (listwise).",
+    "unseen_category_policy": "Kategori tak dikenal pada evaluasi diberi probabilitas kecil melalui smoothing, bukan error."
+  }
+}

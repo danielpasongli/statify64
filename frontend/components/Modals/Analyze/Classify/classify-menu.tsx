@@ -36,6 +36,11 @@ const ClassifyMenu: React.FC = () => {
                 >
                     Nearest Neighbor
                 </MenubarItem>
+                <MenubarItem
+                    onClick={() => openModal(ModalType.ModalNaiveBayes)}
+                >
+                    Naive Bayes
+                </MenubarItem>
                 <MenubarSeparator />
                 <MenubarItem
                     disabled={true}
