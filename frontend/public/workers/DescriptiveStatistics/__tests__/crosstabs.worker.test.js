@@ -109,6 +109,35 @@ describe('crosstabs.worker', () => {
     expect(proportion.value).toBe(0);
     expect(proportion.df).toBe(2);
   });
+
+  test('menghitung kategori teks mentah tanpa recode dan mencatat sel kosong sebagai missing', () => {
+    const postSpy = jest.fn();
+    global.postMessage = postSpy;
+    loadWorker();
+
+    const variable = {
+      row: { name: 'Pendidikan', measure: 'nominal', type: 'STRING' },
+      col: { name: 'Pekerjaan', measure: 'nominal', type: 'STRING' },
+    };
+    const data = [
+      { Pendidikan: ' SMA ', Pekerjaan: 'Bekerja' },
+      { Pendidikan: 'SMA', Pekerjaan: ' Tidak bekerja ' },
+      { Pendidikan: 'SMP', Pekerjaan: 'Bekerja' },
+      { Pendidikan: ' SMP ', Pekerjaan: 'Tidak bekerja' },
+      { Pendidikan: '', Pekerjaan: 'Bekerja' },
+      { Pendidikan: 'SMA', Pekerjaan: '   ' },
+    ];
+
+    global.onmessage({ data: { variable, data, options: {} } });
+
+    const payload = postSpy.mock.calls[0][0];
+    expect(payload.status).toBe('success');
+    expect(payload.results.summary.rowCategories).toEqual(['SMA', 'SMP']);
+    expect(payload.results.summary.colCategories).toEqual(['Bekerja', 'Tidak bekerja']);
+    expect(payload.results.summary.valid).toBe(4);
+    expect(payload.results.summary.missing).toBe(2);
+    expect(payload.results.chiSquare.pearson.df).toBe(1);
+  });
 });
 
 

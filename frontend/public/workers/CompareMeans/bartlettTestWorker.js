@@ -82,7 +82,7 @@ function calculateVariance(data) {
     // Konversi ke Float64Array jika belum
     const values = data instanceof Float64Array ? data : new Float64Array(data);
 
-    // Hitung rata-rata (mean) dengan traditional for loop (tercepat)
+    // Hitung rata-rata dengan satu perulangan agar tidak membuat larik tambahan.
     let sum = 0;
     for (let i = 0; i < n; i++) {
         sum += values[i];
@@ -123,7 +123,7 @@ function safeLog(value) {
 /**
  * Mengelompokkan data berdasarkan nilai variabel pengelompokan
  *
- * OPTIMASI: Menggunakan traditional for loop untuk performa terbaik
+ * Implementasi memakai perulangan langsung untuk menghindari alokasi larik tambahan.
  * dan Float64Array untuk penyimpanan data numerik.
  *
  * @param {number[]} testData - Data variabel yang diuji
@@ -167,13 +167,13 @@ function groupDataByFactor(testData, factorData, testVariable = {}, factorVariab
     // LANGKAH 1: Hitung jumlah item per grup (first pass)
     const groupCounts = Object.create(null);
     for (let i = 0; i < n; i++) {
-        // Skip missing values
+        // Lewati kasus dengan nilai uji atau faktor yang missing.
         if (!isValidCase(i)) continue;
 
         const factorValue = String(factorData[i]);
         const testValue = Number(testData[i]);
 
-        // Skip jika konversi gagal
+        // Lewati nilai yang tidak dapat dikonversi menjadi angka.
         if (isNaN(testValue)) {
             console.warn(`[WARN] Worker - Invalid number at index ${i}:`, testData[i]);
             continue;
@@ -195,13 +195,13 @@ function groupDataByFactor(testData, factorData, testVariable = {}, factorVariab
 
     // LANGKAH 3: Isi data ke Float64Array pada iterasi kedua
     for (let i = 0; i < n; i++) {
-        // Skip missing values
+        // Lewati kasus dengan nilai uji atau faktor yang missing.
         if (!isValidCase(i)) continue;
 
         const factorValue = String(factorData[i]);
         const testValue = Number(testData[i]);
 
-        // Skip jika konversi gagal
+        // Lewati nilai yang tidak dapat dikonversi menjadi angka.
         if (isNaN(testValue)) continue;
 
         // Tambahkan nilai ke Float64Array
@@ -297,7 +297,7 @@ function calculateBartlettTest(groupedData) {
     const validGroupNames = [];
     const validGroupSizes = [];
 
-    // Menggunakan traditional for loop (lebih cepat dari for...of untuk objek)
+    // Periksa setiap kelompok tanpa membuat salinan data kelompok.
     const groupKeys = Object.keys(groupedData);
     for (let i = 0; i < groupKeys.length; i++) {
         const groupKey = groupKeys[i];
@@ -362,7 +362,7 @@ function calculateBartlettTest(groupedData) {
     // Rumus: sp² = Σ(Nᵢ-1)×sᵢ² / (N-k)
     //
     // Pooled variance adalah rata-rata tertimbang dari varians semua kelompok
-    // Menggunakan traditional for loop untuk performa optimal
+    // Akumulasikan pembilang pooled variance tanpa membuat larik perantara.
 
     let pooledNumerator = 0;
     for (let i = 0; i < numGroups; i++) {
@@ -401,7 +401,7 @@ function calculateBartlettTest(groupedData) {
 
     const numeratorPart1 = totalDF * safeLog(pooledVariance);
 
-    // Menggunakan traditional for loop untuk performa optimal
+    // Akumulasikan bagian kedua statistik M untuk seluruh kelompok.
     let numeratorPart2 = 0;
     for (let i = 0; i < numGroups; i++) {
         numeratorPart2 += degreesOfFreedom[i] * safeLog(variances[i]);
@@ -426,7 +426,7 @@ function calculateBartlettTest(groupedData) {
     //
     //   C = 1 + 0.1111 = 1.1111
 
-    // Menggunakan traditional for loop untuk performa optimal
+    // Jumlahkan kebalikan derajat bebas setiap kelompok untuk faktor koreksi.
     let sumInverseDf = 0;
     for (let i = 0; i < numGroups; i++) {
         sumInverseDf += 1 / degreesOfFreedom[i];

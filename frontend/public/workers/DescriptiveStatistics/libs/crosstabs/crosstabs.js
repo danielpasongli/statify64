@@ -176,6 +176,8 @@ class CrosstabsCalculator {
             throw new Error('Mesin statistik kategorik belum dimuat.');
         }
 
+        // Adapter ini hanya menyiapkan data aplikasi. Pembentukan tabel dan
+        // perhitungan Chi-Square dilakukan oleh CategoricalChiSquare.
         const validRows = [];
         const validColumns = [];
         const validWeights = [];
@@ -185,7 +187,7 @@ class CrosstabsCalculator {
             const weight = this.#adjustCaseWeight(rawWeight);
             if (typeof weight !== 'number' || weight <= 0) continue;
 
-            // Konversi data tanggal ke SPSS seconds jika diperlukan
+            // Samakan tanggal dengan representasi numerik SPSS sebelum dikelompokkan.
             let processedRowValue = rowData[i];
             let processedColValue = colData[i];
 
@@ -208,6 +210,7 @@ class CrosstabsCalculator {
             }
         }
 
+        // Penyesuaian bobot per sel dilakukan setelah seluruh kasus dijumlahkan.
         const nonIntegerWeights = (this.options && this.options.nonintegerWeights) || 'noAdjustment';
         const cellAdjustment = nonIntegerWeights === 'roundCell'
             ? 'round'
@@ -230,6 +233,7 @@ class CrosstabsCalculator {
         this.colTotals = tableResult.columnTotals;
         this.W = tableResult.total;
         this.validWeight = tableResult.total;
+        this.missingWeight += tableResult.excludedWeight;
 
         this.initialized = true;
     }
@@ -261,7 +265,7 @@ class CrosstabsCalculator {
             for (let j = 0; j < this.C; j++) {
                 const f_ij = this.table[i][j];
 
-                // 1) Frekuensi harapan – simpan nilai tepat untuk perhitungan dan nilai bulat untuk tampilan
+                // Nilai tepat dipakai untuk perhitungan; pembulatan hanya untuk tampilan.
                 const expectedExact = self.CategoricalChiSquare.calculateExpectedCount(
                     this.rowTotals[i],
                     this.colTotals[j],
@@ -269,7 +273,7 @@ class CrosstabsCalculator {
                 );
                 const expectedRounded = toSPSSFixed(expectedExact, 1);
 
-                // 2) Residual berdasarkan frekuensi harapan tepat agar sesuai dengan perilaku SPSS
+                // Residual dihitung dari expected count yang belum dibulatkan.
                 const residual = toSPSSFixed(f_ij - expectedExact, 1);
 
                 let standardizedResidual = null;
@@ -303,7 +307,7 @@ class CrosstabsCalculator {
             }
         }
 
-        // Konversi kembali kategori ke format tanggal jika diperlukan
+        // Kembalikan kategori tanggal ke bentuk yang dibaca pengguna.
         const displayRowCategories = this.isRowDateData
             ? this.rowCategories.map(value => {
                 if (typeof value === 'number') {

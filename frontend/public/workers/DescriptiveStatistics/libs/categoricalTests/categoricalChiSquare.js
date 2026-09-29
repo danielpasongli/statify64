@@ -1,3 +1,14 @@
+/**
+ * Mesin statistik untuk data kategorik.
+ *
+ * Urutan pemrosesan:
+ * 1. buildContingencyTable() membersihkan kategori mentah dan membentuk frekuensi observed.
+ * 2. calculatePearsonChiSquare() menghitung expected count, X^2, df, dan p-value.
+ * 3. Fungsi uji khusus menambahkan tujuan serta hipotesis yang sesuai.
+ *
+ * Uji kebebasan dan uji kesamaan proporsi memakai perhitungan Pearson yang sama,
+ * tetapi mempunyai pertanyaan penelitian dan hipotesis yang berbeda.
+ */
 (function exposeCategoricalChiSquare(root) {
     const DEFAULT_ALPHA = 0.05;
 
@@ -7,6 +18,7 @@
         }
     }
 
+    /** Memastikan matriks observed layak dihitung sebagai tabel kontingensi. */
     function validateObserved(observed) {
         if (!Array.isArray(observed) || observed.length < 2) {
             throw new RangeError('Matriks observed membutuhkan minimal dua baris.');
@@ -53,6 +65,10 @@
         };
     }
 
+    /**
+     * Menghitung ln(Gamma(x)) dengan aproksimasi Lanczos.
+     * Nilai ini dipakai oleh distribusi Chi-Square saat menghitung p-value.
+     */
     function logGamma(value) {
         const coefficients = [
             676.5203681218851,
@@ -81,6 +97,7 @@
             + Math.log(series);
     }
 
+    /** Menghitung fungsi gamma tidak lengkap teratur bagian bawah P(a, x). */
     function regularizedGammaP(shape, value) {
         if (value === 0) return 0;
 
@@ -95,6 +112,10 @@
         return sum * Math.exp(-value + shape * Math.log(value) - logGamma(shape));
     }
 
+    /**
+     * Menghitung peluang ekor atas Q(a, x).
+     * Deret dipakai untuk x kecil dan pecahan berlanjut untuk x yang lebih besar.
+     */
     function regularizedGammaQ(shape, value) {
         if (value === 0) return 1;
         if (value < shape + 1) return 1 - regularizedGammaP(shape, value);
@@ -120,6 +141,7 @@
         return Math.exp(-value + shape * Math.log(value) - logGamma(shape)) * fraction;
     }
 
+    /** Mengubah statistik X^2 menjadi peluang ekor atas berdasarkan df. */
     function chiSquarePValue(statistic, degreesOfFreedom) {
         if (statistic === Number.POSITIVE_INFINITY && degreesOfFreedom > 0) return 0;
         if (!Number.isFinite(statistic) || statistic < 0 || degreesOfFreedom <= 0) return null;
@@ -127,12 +149,21 @@
         return Math.min(1, Math.max(0, probability));
     }
 
+    /**
+     * Menghitung E_ij = (total baris i x total kolom j) / N.
+     * Dua bentuk perkalian dibandingkan untuk mengurangi risiko overflow/underflow.
+     */
     function calculateExpectedCount(rowTotal, columnTotal, total) {
         const usingColumnProportion = rowTotal * (columnTotal / total);
         const usingRowProportion = columnTotal * (rowTotal / total);
         return Math.max(usingColumnProportion, usingRowProportion);
     }
 
+    /**
+     * Menghitung inti Pearson Chi-Square dari matriks frekuensi observed.
+     * Fungsi ini tidak menentukan makna uji; pembungkus di bawahnya yang memberi
+     * konteks uji kebebasan, proporsi binomial, atau proporsi multinomial.
+     */
     function calculatePearsonChiSquare(observed, alpha = DEFAULT_ALPHA) {
         validateAlpha(alpha);
         const {
@@ -199,6 +230,7 @@
         };
     }
 
+    /** Uji apakah dua variabel kategorik saling bebas atau berhubungan. */
     function chiSquareIndependenceTest(observed, alpha = DEFAULT_ALPHA) {
         return {
             ...calculatePearsonChiSquare(observed, alpha),
@@ -208,6 +240,7 @@
         };
     }
 
+    /** Uji kesamaan proporsi untuk hasil yang mempunyai tepat dua kategori. */
     function binomialProportionTest(observed, alpha = DEFAULT_ALPHA) {
         const columnCount = Array.isArray(observed) && Array.isArray(observed[0])
             ? observed[0].length
@@ -225,6 +258,7 @@
         };
     }
 
+    /** Uji kesamaan distribusi proporsi untuk hasil dengan minimal tiga kategori. */
     function multinomialProportionTest(observed, alpha = DEFAULT_ALPHA) {
         const columnCount = Array.isArray(observed) && Array.isArray(observed[0])
             ? observed[0].length
@@ -242,6 +276,7 @@
         };
     }
 
+    /** Mengurutkan kategori numerik secara numerik dan kategori lain sebagai teks. */
     function sortCategories(categories) {
         return Array.from(categories).sort((left, right) => {
             const leftNumber = left === '' || left === null || left === undefined
@@ -257,6 +292,33 @@
         });
     }
 
+    /**
+     * Menyiapkan satu nilai kategori sebelum tabel kontingensi dibentuk.
+     *
+     * Data kategorik tidak harus direcode menjadi angka. Nilai teks dapat dipakai
+     * langsung; spasi di awal/akhir dibuang agar variasi pengetikan seperti
+     * "SMA" dan " SMA " tidak membentuk dua kategori. Sel kosong dan angka yang
+     * tidak berhingga dikembalikan sebagai null agar dihitung sebagai missing.
+     * Huruf besar-kecil tidak disamakan karena dapat mewakili kategori berbeda.
+     */
+    function normalizeCategoryValue(value) {
+        if (typeof value === 'string') {
+            const trimmedValue = value.trim();
+            return trimmedValue === '' ? null : trimmedValue;
+        }
+        if (typeof value === 'number') {
+            return Number.isFinite(value) ? value : null;
+        }
+        return value === null || value === undefined ? null : value;
+    }
+
+    /**
+     * Membentuk matriks frekuensi dari pasangan kategori baris dan kolom.
+     * Setiap elemen pada indeks yang sama dianggap berasal dari satu kasus.
+     * Kasus dengan salah satu kategori kosong dikeluarkan dan bobotnya dicatat
+     * pada excludedWeight, sehingga pengguna tidak perlu melakukan recode hanya
+     * untuk mengubah kategori teks menjadi kode numerik.
+     */
     function buildContingencyTable(
         rowValues,
         columnValues,
@@ -283,8 +345,25 @@
             throw new RangeError('Penyesuaian sel harus none, round, atau truncate.');
         }
 
-        const rowCategories = sortCategories(new Set(rowValues));
-        const columnCategories = sortCategories(new Set(columnValues));
+        const normalizedRows = [];
+        const normalizedColumns = [];
+        const includedWeights = [];
+        let excludedWeight = 0;
+
+        for (let index = 0; index < rowValues.length; index += 1) {
+            const rowValue = normalizeCategoryValue(rowValues[index]);
+            const columnValue = normalizeCategoryValue(columnValues[index]);
+            if (rowValue === null || columnValue === null) {
+                excludedWeight += caseWeights[index];
+                continue;
+            }
+            normalizedRows.push(rowValue);
+            normalizedColumns.push(columnValue);
+            includedWeights.push(caseWeights[index]);
+        }
+
+        const rowCategories = sortCategories(new Set(normalizedRows));
+        const columnCategories = sortCategories(new Set(normalizedColumns));
         const rowIndexByValue = new Map(rowCategories.map((value, index) => [value, index]));
         const columnIndexByValue = new Map(columnCategories.map((value, index) => [value, index]));
         let observed = Array.from(
@@ -292,10 +371,10 @@
             () => Array(columnCategories.length).fill(0),
         );
 
-        for (let index = 0; index < rowValues.length; index += 1) {
-            const rowIndex = rowIndexByValue.get(rowValues[index]);
-            const columnIndex = columnIndexByValue.get(columnValues[index]);
-            observed[rowIndex][columnIndex] += caseWeights[index];
+        for (let index = 0; index < normalizedRows.length; index += 1) {
+            const rowIndex = rowIndexByValue.get(normalizedRows[index]);
+            const columnIndex = columnIndexByValue.get(normalizedColumns[index]);
+            observed[rowIndex][columnIndex] += includedWeights[index];
         }
 
         if (cellAdjustment === 'round') {
@@ -319,10 +398,12 @@
             rowTotals,
             columnTotals,
             total: rowTotals.reduce((sum, value) => sum + value, 0),
+            excludedWeight,
         };
     }
 
     const api = {
+        normalizeCategoryValue,
         buildContingencyTable,
         calculateExpectedCount,
         calculatePearsonChiSquare,

@@ -1,11 +1,11 @@
 /**
  * ============================================================================
- * NORMALITY TESTS CORE UTILITIES
+ * MESIN UJI NORMALITAS
  * ============================================================================
  *
- * General-Purpose Normality Tests (SPSS-Compatible)
+ * Uji normalitas umum dengan bentuk keluaran yang kompatibel dengan SPSS.
  *
- * For regression residual normality testing, see Regression/Assumption Test/normality.js
+ * Uji residual regresi berada pada Regression/Assumption Test/normality.js.
  *
  * Implementasi ini mengikuti Royston (1995) dengan:
  * - SPSS-compatible KS p-values (Dallal-Wilkinson + Lilliefors)
@@ -167,11 +167,11 @@ function cleanNumericData(values) {
             continue;
         }
 
-        // Valid finite number
+        // Masukkan hanya bilangan berhingga yang sudah lolos pemeriksaan.
         cleaned.push(num);
     }
 
-    // Log detailed breakdown if any values were filtered
+    // Catat ringkasan nilai yang dibuang untuk membantu penelusuran data.
     const totalSkipped = nullCount + undefinedCount + nanCount + infinityCount + negInfinityCount;
     if (totalSkipped > 0) {
         const parts = [];
@@ -633,7 +633,7 @@ function shapiroWilkPValue(W, n) {
     let formulaUsed;
 
     // ========================================================================
-    //   of W for 3 observations.
+    // Kasus n=3 menggunakan rumus eksak untuk distribusi W.
     // ========================================================================
     if (n === 3) {
         formulaUsed = 'n=3 (exact formula)';
@@ -653,7 +653,7 @@ function shapiroWilkPValue(W, n) {
     if (n <= 11) {
         formulaUsed = 'n≤11 (Royston 1993 cubic polynomial)';
         console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
-        // g(n): boundary polynomial — if y > g, W is too extreme
+        // g(n) adalah batas polinomial; y > g berarti nilai W terlalu ekstrem.
         const g = -0.0006714 * n ** 3 + 0.025054 * n ** 2 - 0.39978 * n + 0.5440;
         if (y > g) {
             console.log(`[SW-DEBUG] y (${y}) > g (${g}), returning minimum p-value 1e-19`);
@@ -859,9 +859,9 @@ function calculateShapiroWilk(values) {
 
         // ----------------------------------------------------------------
         //
-        // For n ≥ 6:
+        // Untuk n minimal 6:
         //   φ = (Σmᵢ² − 2mₙ² − 2mₙ₋₁²) / (1 − 2aₙ² − 2aₙ₋₁²)
-        // For n = 4, 5:
+        // Untuk n = 4 atau 5:
         //   φ = (Σmᵢ² − 2mₙ²) / (1 − 2aₙ²)
         //
         // ----------------------------------------------------------------
@@ -889,8 +889,8 @@ function calculateShapiroWilk(values) {
                 a[i] = m[i] / constDen;
             }
         } else if (n === 5) {
-            // For n=5: a[2]=0 (center element of odd-length array),
-            // for n < 6, a[1] remains 0 from initialization, so a[3] = 0 as well.
+            // Untuk n=5, a[2] adalah elemen tengah sehingga bernilai 0.
+            // Karena a[1] tetap 0 untuk n<6, pasangan simetris a[3] juga 0.
             a[2] = 0;  // elemen tengah untuk n ganjil = 0
             a[3] = -a[1];  // a[1] = 0 karena p2 tidak digunakan untuk n < 6
         } else if (n === 4) {

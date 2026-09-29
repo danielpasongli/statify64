@@ -9,6 +9,9 @@ Library ini menghitung tabulasi silang dua variabel (baris × kolom) dengan duku
 
 ## Penanganan Tipe Data
 - numeric/string/date didukung sebagai kategori baris/kolom.
+- Kategori teks dapat digunakan langsung tanpa recode menjadi angka.
+- Spasi pada awal dan akhir kategori dibuang; kategori kosong dicatat sebagai missing.
+- Penulisan huruf besar dan kecil tetap dibedakan agar isi data tidak diubah diam-diam.
 - String tanggal `dd-mm-yyyy` dikonversi ke SPSS seconds untuk konsistensi pengurutan/kunci, lalu dikembalikan ke format tanggal untuk tampilan.
 
 ## Inisialisasi Tabel
@@ -50,6 +53,14 @@ Perbedaannya terletak pada hipotesis dan konteks penarikan kesimpulan. Modul jug
 - Statistik sel untuk tampilan: `crosstabs.js`.
 - Utilitas tanggal, missing, dan pembulatan tampilan: `../utils/utils.js`.
 - Chi-Square goodness-of-fit satu sampel pada menu Nonparametric Tests merupakan modul terpisah.
+
+Urutan fungsi utama pada mesin kategorik adalah:
+
+1. `normalizeCategoryValue()` membersihkan nilai kategori mentah.
+2. `buildContingencyTable()` membentuk matriks observed dan total marginal.
+3. `calculatePearsonChiSquare()` menghitung expected count, statistik, df, dan p-value.
+4. `chiSquareIndependenceTest()`, `binomialProportionTest()`, atau
+   `multinomialProportionTest()` menambahkan hipotesis sesuai tujuan pengujian.
 
 ## Batasan & Catatan
 - Expected untuk tampilan dibulatkan ke 1 desimal dengan kebijakan "bankers rounding" (`toSPSSFixed`); perhitungan residual memakai nilai eksak yang tidak dibulatkan.

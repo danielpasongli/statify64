@@ -146,7 +146,25 @@ describe('mesin uji Chi-Square kategorik', () => {
       rowTotals: [5, 1],
       columnTotals: [2, 4],
       total: 6,
+      excludedWeight: 0,
     });
+  });
+
+  test('membersihkan spasi kategori mentah dan mengabaikan kategori kosong tanpa recode', () => {
+    const api = loadApi();
+    const result = api.buildContingencyTable(
+      [' SMA ', 'SMA', 'SMP', ' SMP ', '', 'SMA'],
+      ['Bekerja', ' Tidak bekerja ', 'Bekerja', 'Tidak bekerja', 'Bekerja', '   '],
+    );
+
+    expect(result.rowCategories).toEqual(['SMA', 'SMP']);
+    expect(result.columnCategories).toEqual(['Bekerja', 'Tidak bekerja']);
+    expect(result.observed).toEqual([
+      [1, 1],
+      [1, 1],
+    ]);
+    expect(result.total).toBe(4);
+    expect(result.excludedWeight).toBe(2);
   });
 
   test('menerapkan pembulatan bobot setelah frekuensi setiap sel dijumlahkan', () => {
