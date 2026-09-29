@@ -1,0 +1,40 @@
+[package]
+name = "wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Project Rust-Wasm Statify - Naive Bayes."
+repository = "https://git.stis.ac.id/"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Fase 8 (PLAN.md Bagian B): dependency awal hanya yang dipakai scaffold +
+# wasm dummy (parsing payload lewat serde/wasm-bindgen, JSON statis).
+#
+# Fase 10 ("Stratified split + Mersenne Twister"): TIDAK menambah
+# dependency baru. Algoritma MT19937 itu sendiri ditulis ulang manual di
+# dalam crate ini (`stats/mersenne_twister.rs`) — TIDAK memakai `rand_mt`
+# maupun mengimpor/mem-share kode dari crate `nearest-neighbor`
+# (AGENTS.md §7). Fallback sumber entropi untuk kasus "Set Seed" tidak
+# dicentang (`seeded_rng` di `mersenne_twister.rs`) memakai `js-sys` (sudah
+# jadi dependency sejak Fase 8) lewat `js_sys::Math::random()` saat target
+# `wasm32`, dan `std::time`/`std::hash` bawaan Rust saat `cargo test` di
+# target native — sengaja tanpa menambah crate `rand`/`getrandom` yang
+# butuh resolusi dependency baru dari crates.io.
+[dependencies]
+js-sys = "0.3"
+serde = { version = "1.0.219", features = ["derive"] }
+serde-wasm-bindgen = "0.6.5"
+serde_json = "1.0.140"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+lto = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3"]
