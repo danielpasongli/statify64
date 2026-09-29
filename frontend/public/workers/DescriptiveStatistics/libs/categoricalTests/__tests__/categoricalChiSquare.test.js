@@ -89,6 +89,12 @@ describe('mesin uji Chi-Square kategorik', () => {
     expect(result.pValue).toBe(1);
   });
 
+  test('menjumlahkan nilai dengan compensated summation agar digit kecil tidak hilang', () => {
+    const api = loadApi();
+
+    expect(api.compensatedSum([1e16, 1, -1e16])).toBe(1);
+  });
+
   test('memberi konteks hipotesis Uji Kebebasan', () => {
     const api = loadApi();
 

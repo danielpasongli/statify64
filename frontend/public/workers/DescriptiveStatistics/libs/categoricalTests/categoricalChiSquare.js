@@ -18,6 +18,25 @@
         }
     }
 
+    /**
+     * Menjumlahkan bilangan dengan algoritma Neumaier.
+     * Koreksi disimpan terpisah agar kontribusi kecil tidak langsung hilang ketika
+     * dijumlahkan dengan bilangan yang jauh lebih besar.
+     */
+    function compensatedSum(values) {
+        let sum = 0;
+        let correction = 0;
+        for (let index = 0; index < values.length; index += 1) {
+            const value = values[index];
+            const next = sum + value;
+            correction += Math.abs(sum) >= Math.abs(value)
+                ? (sum - next) + value
+                : (value - next) + sum;
+            sum = next;
+        }
+        return sum + correction;
+    }
+
     /** Memastikan matriks observed layak dihitung sebagai tabel kontingensi. */
     function validateObserved(observed) {
         if (!Array.isArray(observed) || observed.length < 2) {
@@ -37,19 +56,17 @@
             throw new TypeError('Frekuensi observed harus berupa bilangan berhingga dan tidak negatif.');
         }
 
-        const rowTotals = observed.map(row => row.reduce((sum, value) => sum + value, 0));
-        const columnTotals = Array(columnCount).fill(0);
-        for (let rowIndex = 0; rowIndex < observed.length; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
-                columnTotals[columnIndex] += observed[rowIndex][columnIndex];
-            }
-        }
+        const rowTotals = observed.map(row => compensatedSum(row));
+        const columnTotals = Array.from(
+            { length: columnCount },
+            (_, columnIndex) => compensatedSum(observed.map(row => row[columnIndex])),
+        );
 
         if (rowTotals.some(total => total <= 0) || columnTotals.some(total => total <= 0)) {
             throw new RangeError('Setiap baris dan kolom harus memiliki total lebih dari nol.');
         }
 
-        const total = rowTotals.reduce((sum, value) => sum + value, 0);
+        const total = compensatedSum(rowTotals);
         if (!Number.isFinite(total)
             || rowTotals.some(value => !Number.isFinite(value))
             || columnTotals.some(value => !Number.isFinite(value))) {
@@ -179,6 +196,7 @@
             () => Array(columnCount).fill(0),
         );
         let statistic = 0;
+        let statisticCorrection = 0;
         let minExpectedCount = Number.POSITIVE_INFINITY;
         let cellsUnder5 = 0;
 
@@ -197,9 +215,16 @@
                 if (expected < 5) cellsUnder5 += 1;
 
                 const difference = observed[rowIndex][columnIndex] - expected;
-                statistic += difference * (difference / expected);
+                const component = difference * (difference / expected);
+                const nextStatistic = statistic + component;
+                statisticCorrection += Math.abs(statistic) >= Math.abs(component)
+                    ? (statistic - nextStatistic) + component
+                    : (component - nextStatistic) + statistic;
+                statistic = nextStatistic;
             }
         }
+
+        statistic += statisticCorrection;
 
         if (Number.isNaN(statistic)) {
             throw new RangeError('Statistik Chi-Square tidak dapat dihitung secara aman.');
@@ -348,13 +373,13 @@
         const normalizedRows = [];
         const normalizedColumns = [];
         const includedWeights = [];
-        let excludedWeight = 0;
+        const excludedWeights = [];
 
         for (let index = 0; index < rowValues.length; index += 1) {
             const rowValue = normalizeCategoryValue(rowValues[index]);
             const columnValue = normalizeCategoryValue(columnValues[index]);
             if (rowValue === null || columnValue === null) {
-                excludedWeight += caseWeights[index];
+                excludedWeights.push(caseWeights[index]);
                 continue;
             }
             normalizedRows.push(rowValue);
@@ -370,12 +395,27 @@
             { length: rowCategories.length },
             () => Array(columnCategories.length).fill(0),
         );
+        const observedCorrections = Array.from(
+            { length: rowCategories.length },
+            () => Array(columnCategories.length).fill(0),
+        );
 
         for (let index = 0; index < normalizedRows.length; index += 1) {
             const rowIndex = rowIndexByValue.get(normalizedRows[index]);
             const columnIndex = columnIndexByValue.get(normalizedColumns[index]);
-            observed[rowIndex][columnIndex] += includedWeights[index];
+            const current = observed[rowIndex][columnIndex];
+            const weight = includedWeights[index];
+            const next = current + weight;
+            observedCorrections[rowIndex][columnIndex] += Math.abs(current) >= Math.abs(weight)
+                ? (current - next) + weight
+                : (weight - next) + current;
+            observed[rowIndex][columnIndex] = next;
         }
+
+
+        observed = observed.map((row, rowIndex) => row.map(
+            (value, columnIndex) => value + observedCorrections[rowIndex][columnIndex],
+        ));
 
         if (cellAdjustment === 'round') {
             observed = observed.map(row => row.map(value => Math.round(value)));
@@ -383,13 +423,11 @@
             observed = observed.map(row => row.map(value => Math.trunc(value)));
         }
 
-        const rowTotals = observed.map(row => row.reduce((sum, value) => sum + value, 0));
-        const columnTotals = Array(columnCategories.length).fill(0);
-        for (let rowIndex = 0; rowIndex < observed.length; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < columnCategories.length; columnIndex += 1) {
-                columnTotals[columnIndex] += observed[rowIndex][columnIndex];
-            }
-        }
+        const rowTotals = observed.map(row => compensatedSum(row));
+        const columnTotals = Array.from(
+            { length: columnCategories.length },
+            (_, columnIndex) => compensatedSum(observed.map(row => row[columnIndex])),
+        );
 
         return {
             rowCategories,
@@ -397,12 +435,13 @@
             observed,
             rowTotals,
             columnTotals,
-            total: rowTotals.reduce((sum, value) => sum + value, 0),
-            excludedWeight,
+            total: compensatedSum(rowTotals),
+            excludedWeight: compensatedSum(excludedWeights),
         };
     }
 
     const api = {
+        compensatedSum,
         normalizeCategoryValue,
         buildContingencyTable,
         calculateExpectedCount,

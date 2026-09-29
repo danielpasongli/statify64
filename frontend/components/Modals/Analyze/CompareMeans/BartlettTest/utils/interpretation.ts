@@ -15,14 +15,12 @@ export const buildBartlettInterpretation = (
   const variableName = escapeHtml(rawVariableName);
   const pValue = result.pValue as number;
   const significant = pValue < alpha;
-  const pText = pValue < 0.001
-    ? 'p-value < 0.001'
-    : `p-value = ${pValue.toFixed(3)} ${significant ? '<' : '≥'} α = ${alpha.toFixed(3)}`;
+  const pText = `p-value = ${String(pValue)} ${significant ? '<' : '≥'} α = ${String(alpha)}`;
   const decision = significant
     ? 'H₀ ditolak, artinya terdapat minimal dua kelompok memiliki varians antar kelompok berbeda.'
     : 'gagal menolak H₀, artinya belum terdapat cukup bukti untuk membuktikan bahwa varians antar kelompok berbeda (varians antar kelompok sama).';
 
-  return `<p>Bartlett <br> ${variableName}: χ²(${Math.round(result.df as number)}) = ${(result.statistic as number).toFixed(3)}, ${pText}; ${decision}</p>`;
+  return `<p>Bartlett <br> ${variableName}: χ²(${String(result.df)}) = ${String(result.statistic)}, ${pText}; ${decision}</p>`;
 };
 
 export const buildBartlettDescription = (

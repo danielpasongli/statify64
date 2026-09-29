@@ -57,6 +57,21 @@
 import chiSquareCdf from 'https://cdn.jsdelivr.net/npm/@stdlib/stats-base-dists-chisquare-cdf@0.2.2/+esm';
 import { checkIsMissing } from './libs/utils.js';
 
+/** Menjumlahkan nilai dengan koreksi Neumaier untuk mengurangi galat floating point. */
+function compensatedSum(length, valueAt) {
+    let sum = 0;
+    let correction = 0;
+    for (let index = 0; index < length; index++) {
+        const value = valueAt(index);
+        const next = sum + value;
+        correction += Math.abs(sum) >= Math.abs(value)
+            ? (sum - next) + value
+            : (value - next) + sum;
+        sum = next;
+    }
+    return sum + correction;
+}
+
 /**
  * Menghitung varians dari larik data menggunakan Typed Array yang dioptimalkan
  *
@@ -82,21 +97,19 @@ function calculateVariance(data) {
     // Konversi ke Float64Array jika belum
     const values = data instanceof Float64Array ? data : new Float64Array(data);
 
-    // Hitung rata-rata dengan satu perulangan agar tidak membuat larik tambahan.
-    let sum = 0;
-    for (let i = 0; i < n; i++) {
-        sum += values[i];
-    }
-    const mean = sum / n;
+    // Gunakan nilai pertama sebagai origin agar pengurangan pada data ber-offset
+    // besar tetap mempertahankan selisih antarpengamatan.
+    const origin = values[0];
+    const meanOffset = compensatedSum(n, index => values[index] - origin) / n;
+    const mean = origin + meanOffset;
 
     console.log('[DEBUG] Worker - Mean calculated:', mean);
 
     // Hitung jumlah kuadrat deviasi dari mean
-    let sumSquaredDeviations = 0;
-    for (let i = 0; i < n; i++) {
-        const diff = values[i] - mean;
-        sumSquaredDeviations += diff * diff;
-    }
+    const sumSquaredDeviations = compensatedSum(n, index => {
+        const diff = (values[index] - origin) - meanOffset;
+        return diff * diff;
+    });
 
     console.log('[DEBUG] Worker - Sum squared deviations:', sumSquaredDeviations);
 
@@ -364,10 +377,10 @@ function calculateBartlettTest(groupedData) {
     // Pooled variance adalah rata-rata tertimbang dari varians semua kelompok
     // Akumulasikan pembilang pooled variance tanpa membuat larik perantara.
 
-    let pooledNumerator = 0;
-    for (let i = 0; i < numGroups; i++) {
-        pooledNumerator += degreesOfFreedom[i] * variances[i];
-    }
+    const pooledNumerator = compensatedSum(
+        numGroups,
+        index => degreesOfFreedom[index] * variances[index],
+    );
     const pooledVariance = pooledNumerator / totalDF;
 
     console.log('[DEBUG] Worker - Pooled Variance:', pooledVariance);
@@ -402,10 +415,10 @@ function calculateBartlettTest(groupedData) {
     const numeratorPart1 = totalDF * safeLog(pooledVariance);
 
     // Akumulasikan bagian kedua statistik M untuk seluruh kelompok.
-    let numeratorPart2 = 0;
-    for (let i = 0; i < numGroups; i++) {
-        numeratorPart2 += degreesOfFreedom[i] * safeLog(variances[i]);
-    }
+    const numeratorPart2 = compensatedSum(
+        numGroups,
+        index => degreesOfFreedom[index] * safeLog(variances[index]),
+    );
     const M = numeratorPart1 - numeratorPart2;
 
     console.log('[DEBUG] Worker - M:', M, 'numeratorPart1:', numeratorPart1, 'numeratorPart2:', numeratorPart2);    // ========================================================================
@@ -427,10 +440,7 @@ function calculateBartlettTest(groupedData) {
     //   C = 1 + 0.1111 = 1.1111
 
     // Jumlahkan kebalikan derajat bebas setiap kelompok untuk faktor koreksi.
-    let sumInverseDf = 0;
-    for (let i = 0; i < numGroups; i++) {
-        sumInverseDf += 1 / degreesOfFreedom[i];
-    }
+    const sumInverseDf = compensatedSum(numGroups, index => 1 / degreesOfFreedom[index]);
     const correctionTerm = (sumInverseDf - (1 / totalDF)) / (3 * (numGroups - 1));
     const C = 1 + correctionTerm;
 
@@ -490,9 +500,9 @@ function calculateBartlettTest(groupedData) {
 /**
  * Memformat angka dengan presisi tertentu
  */
-function formatNumber(num, decimals = 6) {
+function formatNumber(num) {
     if (typeof num !== 'number' || isNaN(num)) return 'N/A';
-    return num.toFixed(decimals);
+    return String(num);
 }
 
 /**

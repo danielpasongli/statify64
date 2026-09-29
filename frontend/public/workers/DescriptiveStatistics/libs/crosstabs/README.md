@@ -3,7 +3,7 @@
 Library ini menghitung tabulasi silang dua variabel (baris × kolom) dengan dukungan bobot, missing, dan tanggal. Menghasilkan contingency table, expected counts, residuals, dan persentase baris/kolom/total.
 
 ## Dependensi & Sumber Perhitungan
-- Utils internal: `checkIsMissing`, `isNumeric`, `isDateString`, `dateStringToSpssSeconds`, `spssSecondsToDateString`, `toSPSSFixed` (di `../utils/utils.js`).
+- Utils internal: `checkIsMissing`, `isNumeric`, `isDateString`, `dateStringToSpssSeconds`, dan `spssSecondsToDateString` (di `../utils/utils.js`).
 - Mesin statistik kategorik: `../categoricalTests/categoricalChiSquare.js`.
 - Tidak menggunakan library statistik eksternal.
 
@@ -63,5 +63,7 @@ Urutan fungsi utama pada mesin kategorik adalah:
    `multinomialProportionTest()` menambahkan hipotesis sesuai tujuan pengujian.
 
 ## Batasan & Catatan
-- Expected untuk tampilan dibulatkan ke 1 desimal dengan kebijakan "bankers rounding" (`toSPSSFixed`); perhitungan residual memakai nilai eksak yang tidak dibulatkan.
+- Expected count, residual, statistik uji, dan p-value dikembalikan tanpa pembulatan desimal tetap.
+- JavaScript/TypeScript memakai IEEE-754 double precision. Modul mengurangi galat akumulasi dengan compensated summation, tetapi presisinya tetap dibatasi representasi `number`.
+- Opsi pembulatan atau truncation bobot hanya dijalankan bila pengguna memilihnya secara eksplisit; nilai default adalah `noAdjustment`.
 - Kategori dapat campuran numerik/teks; algoritme pengurutan mencoba numerik terlebih dulu, lalu fallback ke urutan string natural.

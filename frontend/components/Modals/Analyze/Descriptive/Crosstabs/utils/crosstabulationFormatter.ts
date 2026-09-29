@@ -42,12 +42,12 @@ export const formatCrosstabulationTable = (
   }> = [];
 
   // Helper functions for percentage formatting
-  const pct = (value: number): string => (isFinite(value) ? `${(value * 100).toFixed(1)  }%` : '');
+  const pct = (value: number): string => (isFinite(value) ? `${String(value * 100)}%` : '');
 
   // Helper untuk formatting desimal: satu posisi
   const dec = (value: number): string => {
     if (!isFinite(value)) return '';
-    return value.toFixed(1);
+    return String(value);
   };
 
   // Convert nullable numeric value to string | number for display

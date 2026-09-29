@@ -1,4 +1,4 @@
-import { DEFAULT_ALPHA, escapeHtml, formatNumber } from '@/components/Modals/Analyze/shared/statisticalOutput';
+import { DEFAULT_ALPHA, escapeHtml } from '@/components/Modals/Analyze/shared/statisticalOutput';
 import type { ExpectedCountDiagnostics } from './validation';
 import { evaluateExpectedCountAssumption } from './validation';
 
@@ -19,8 +19,8 @@ export interface ChiSquareInterpretationInput {
 export const getProportionContext = (outcomeCategoryCount: number): ProportionContext =>
   outcomeCategoryCount === 2 ? 'binomial' : 'multinomial';
 
-const formatIndonesianDecimal = (value: number, decimals: number): string =>
-  value.toFixed(decimals).replace('.', ',');
+const formatIndonesianDecimal = (value: number): string =>
+  String(value).replace('.', ',');
 
 const logGamma = (value: number): number => {
   const coefficients = [
@@ -99,15 +99,15 @@ export const buildChiSquareDescription = ({
   const context = getProportionContext(outcomeCategoryCount);
   const significant = pValue !== null && pValue < alpha;
   const criticalValue = chiSquareCriticalValue(df, alpha);
-  const alphaPercent = formatIndonesianDecimal(alpha * 100, Number.isInteger(alpha * 100) ? 0 : 1);
+  const alphaPercent = formatIndonesianDecimal(alpha * 100);
   const sampleText = Number.isFinite(sampleSize)
     ? `jumlah sampel sebanyak ${sampleSize} yang digunakan`
     : 'jumlah sampel yang digunakan';
   const independenceInterpretation = pValue === null
-    ? `Nilai statistik uji Chi-Square sebesar χ²(${df}) = ${formatNumber(value)}, tetapi p-value tidak tersedia sehingga keputusan uji kebebasan antara ${safeRowName} dan ${safeColumnName} tidak dapat ditentukan.`
+    ? `Nilai statistik uji Chi-Square sebesar χ²(${df}) = ${String(value)}, tetapi p-value tidak tersedia sehingga keputusan uji kebebasan antara ${safeRowName} dan ${safeColumnName} tidak dapat ditentukan.`
     : significant
-      ? `Karena nilai statistik uji Chi-Square sebesar χ²(${df}) = ${formatNumber(value)} menghasilkan ${pValue < 0.001 ? 'p-value < 0,001' : `p-value = ${formatIndonesianDecimal(pValue, 3)}`} yang lebih kecil dari tingkat signifikansi yang digunakan (${formatIndonesianDecimal(alpha, 2)}), maka diperoleh keputusan menolak H₀. Dengan demikian dapat disimpulkan bahwa dari data tersebut terdapat hubungan antara ${safeRowName} dan ${safeColumnName}.`
-      : `Karena nilai statistik uji Chi-Square sebesar χ²(${df}) = ${formatNumber(value)} menghasilkan p-value = ${formatIndonesianDecimal(pValue, 3)} yang lebih besar atau sama dengan tingkat signifikansi yang digunakan (${formatIndonesianDecimal(alpha, 2)}), maka diperoleh keputusan gagal menolak H₀. Dengan demikian dapat disimpulkan bahwa dari data tersebut tidak terdapat hubungan antara ${safeRowName} dan ${safeColumnName}.`;
+      ? `Karena nilai statistik uji Chi-Square sebesar χ²(${df}) = ${String(value)} menghasilkan p-value = ${formatIndonesianDecimal(pValue)} yang lebih kecil dari tingkat signifikansi yang digunakan (${formatIndonesianDecimal(alpha)}), maka diperoleh keputusan menolak H₀. Dengan demikian dapat disimpulkan bahwa dari data tersebut terdapat hubungan antara ${safeRowName} dan ${safeColumnName}.`
+      : `Karena nilai statistik uji Chi-Square sebesar χ²(${df}) = ${String(value)} menghasilkan p-value = ${formatIndonesianDecimal(pValue)} yang lebih besar atau sama dengan tingkat signifikansi yang digunakan (${formatIndonesianDecimal(alpha)}), maka diperoleh keputusan gagal menolak H₀. Dengan demikian dapat disimpulkan bahwa dari data tersebut tidak terdapat hubungan antara ${safeRowName} dan ${safeColumnName}.`;
   const proportionHypothesis = context === 'binomial'
     ? '<p>H₀: p₁ = p₂ = ⋯ = pₖ — proporsi semua kelompok sama.</p>'
     : '<p>H₀: p₁ⱼ = p₂ⱼ = ⋯ = pₖⱼ untuk setiap kategori j — distribusi proporsi multinomial sama pada seluruh kelompok.</p>';
@@ -117,8 +117,8 @@ export const buildChiSquareDescription = ({
   const proportionDecision = pValue === null
     ? `Dalam konteks proporsi ${context}, keputusan uji tidak dapat ditentukan.`
     : significant
-      ? `Nilai statistik Pearson Chi-Square pada output menunjukkan angka ${formatIndonesianDecimal(value, 3)}. Nilai statistik tersebut lebih besar daripada nilai kritis χ²<sub>${formatIndonesianDecimal(alpha, 2)};${df}</sub> sebesar ${formatIndonesianDecimal(criticalValue, 3)}. Hal ini menunjukkan bahwa diperoleh keputusan menolak H₀. Dengan demikian dapat disimpulkan bahwa pada tingkat signifikansi ${alphaPercent}% dan ${sampleText}, terdapat cukup bukti untuk menyatakan bahwa proporsi ${safeColumnName} antar kelompok ${safeRowName} berbeda.`
-      : `Nilai statistik Pearson Chi-Square pada output menunjukkan angka ${formatIndonesianDecimal(value, 3)}. Nilai statistik tersebut lebih kecil daripada nilai kritis χ²<sub>${formatIndonesianDecimal(alpha, 2)};${df}</sub> sebesar ${formatIndonesianDecimal(criticalValue, 3)}. Hal ini menunjukkan bahwa diperoleh keputusan gagal menolak H₀. Dengan demikian dapat disimpulkan bahwa pada tingkat signifikansi ${alphaPercent}% dan ${sampleText}, belum cukup bukti untuk menyatakan bahwa proporsi ${safeColumnName} antar kelompok ${safeRowName} berbeda.`;
+      ? `Nilai statistik Pearson Chi-Square pada output menunjukkan angka ${formatIndonesianDecimal(value)}. Nilai statistik tersebut lebih besar daripada nilai kritis χ²<sub>${formatIndonesianDecimal(alpha)};${df}</sub> sebesar ${formatIndonesianDecimal(criticalValue)}. Hal ini menunjukkan bahwa diperoleh keputusan menolak H₀. Dengan demikian dapat disimpulkan bahwa pada tingkat signifikansi ${alphaPercent}% dan ${sampleText}, terdapat cukup bukti untuk menyatakan bahwa proporsi ${safeColumnName} antar kelompok ${safeRowName} berbeda.`
+      : `Nilai statistik Pearson Chi-Square pada output menunjukkan angka ${formatIndonesianDecimal(value)}. Nilai statistik tersebut lebih kecil daripada nilai kritis χ²<sub>${formatIndonesianDecimal(alpha)};${df}</sub> sebesar ${formatIndonesianDecimal(criticalValue)}. Hal ini menunjukkan bahwa diperoleh keputusan gagal menolak H₀. Dengan demikian dapat disimpulkan bahwa pada tingkat signifikansi ${alphaPercent}% dan ${sampleText}, belum cukup bukti untuk menyatakan bahwa proporsi ${safeColumnName} antar kelompok ${safeRowName} berbeda.`;
 
   return [
     '<p><strong>Hipotesis uji kebebasan</strong></p>',

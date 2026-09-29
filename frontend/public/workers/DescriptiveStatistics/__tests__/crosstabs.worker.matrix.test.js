@@ -80,6 +80,28 @@ describe('crosstabs.worker – basics and date handling', () => {
     const total = table.flat().reduce((a, b) => a + b, 0);
     expect(total).toBe(2);
   });
+
+  test('menyimpan expected count dan residual tanpa pembulatan antara', () => {
+    const postSpy = jest.fn();
+    global.postMessage = postSpy;
+    loadWorker();
+
+    const variable = {
+      row: { name: 'R', label: 'R' },
+      col: { name: 'C', label: 'C' },
+    };
+    const data = [
+      { R: 'x', C: 'a' },
+      { R: 'y', C: 'b' },
+      { R: 'y', C: 'b' },
+    ];
+
+    global.onmessage({ data: { variable, data, options: { cells: { expected: true }, residuals: {}, nonintegerWeights: 'noAdjustment' } } });
+
+    const cell = postSpy.mock.calls[0][0].results.cellStatistics[0][0];
+    expect(cell.expected).toBe(1 / 3);
+    expect(cell.residual).toBe(1 - (1 / 3));
+  });
 });
 
 

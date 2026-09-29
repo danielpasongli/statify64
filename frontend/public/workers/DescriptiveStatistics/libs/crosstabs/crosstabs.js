@@ -253,7 +253,7 @@ class CrosstabsCalculator {
             this.colTotals[j],
             this.W,
         );
-        return toSPSSFixed(expected, 1);
+        return expected;
     }
 
 
@@ -265,23 +265,21 @@ class CrosstabsCalculator {
             for (let j = 0; j < this.C; j++) {
                 const f_ij = this.table[i][j];
 
-                // Nilai tepat dipakai untuk perhitungan; pembulatan hanya untuk tampilan.
+                // Simpan nilai penuh. Pemformatan tampilan tidak boleh mengubah hasil mentah.
                 const expectedExact = self.CategoricalChiSquare.calculateExpectedCount(
                     this.rowTotals[i],
                     this.colTotals[j],
                     this.W,
                 );
-                const expectedRounded = toSPSSFixed(expectedExact, 1);
-
                 // Residual dihitung dari expected count yang belum dibulatkan.
-                const residual = toSPSSFixed(f_ij - expectedExact, 1);
+                const residual = f_ij - expectedExact;
 
                 let standardizedResidual = null;
                 let adjustedResidual = null;
 
                 if (expectedExact && expectedExact > 0) {
                     const unroundedStandardized = (f_ij - expectedExact) / Math.sqrt(expectedExact);
-                    standardizedResidual = toSPSSFixed(unroundedStandardized, 3);
+                    standardizedResidual = unroundedStandardized;
 
                     if (this.W > 0) {
                         const rowProp = this.rowTotals[i] / this.W;
@@ -289,17 +287,17 @@ class CrosstabsCalculator {
                         const denom = Math.sqrt(expectedExact * (1 - rowProp) * (1 - colProp));
                         if (denom !== 0) {
                             const unroundedAdjusted = (f_ij - expectedExact) / denom;
-                            adjustedResidual = toSPSSFixed(unroundedAdjusted, 3);
+                            adjustedResidual = unroundedAdjusted;
                         }
                     }
                 }
 
                 cellStats[i][j] = {
                     count: f_ij,
-                    expected: expectedRounded,      // nilai tampilan, dibulatkan menjadi 1 desimal
-                    residual,                       // residual tidak terstandardisasi, 1 desimal
-                    standardizedResidual,           // 3 desimal
-                    adjustedResidual,               // 3 desimal
+                    expected: expectedExact,
+                    residual,
+                    standardizedResidual,
+                    adjustedResidual,
                     rowPercent: this.rowTotals[i] > 0 ? 100 * (f_ij / this.rowTotals[i]) : 0,
                     colPercent: this.colTotals[j] > 0 ? 100 * (f_ij / this.colTotals[j]) : 0,
                     totalPercent: this.W > 0 ? 100 * (f_ij / this.W) : 0,

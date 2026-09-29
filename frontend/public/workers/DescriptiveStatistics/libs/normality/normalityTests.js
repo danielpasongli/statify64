@@ -207,12 +207,23 @@ function cleanNumericData(values) {
  * normalityMean([2, 4, 6]);
  * // => 4
  */
-function normalityMean(values) {
+/** Menjumlahkan nilai dengan koreksi Neumaier untuk mengurangi galat floating point. */
+function normalityCompensatedSum(length, valueAt) {
     let sum = 0;
-    for (let i = 0; i < values.length; i++) {
-        sum += values[i];
+    let correction = 0;
+    for (let i = 0; i < length; i++) {
+        const value = valueAt(i);
+        const next = sum + value;
+        correction += Math.abs(sum) >= Math.abs(value)
+            ? (sum - next) + value
+            : (value - next) + sum;
+        sum = next;
     }
-    return sum / values.length;
+    return sum + correction;
+}
+
+function normalityMean(values) {
+    return normalityCompensatedSum(values.length, index => values[index]) / values.length;
 }
 
 /**
@@ -240,11 +251,10 @@ function normalityMean(values) {
 function normalityStandardDeviation(values, valuesMean = undefined) {
     const m = valuesMean !== undefined ? valuesMean : normalityMean(values);
     const divisor = values.length > 1 ? values.length - 1 : values.length;
-    let sumSqDev = 0;
-    for (let i = 0; i < values.length; i++) {
+    const sumSqDev = normalityCompensatedSum(values.length, i => {
         const diff = values[i] - m;
-        sumSqDev += diff * diff;
-    }
+        return diff * diff;
+    });
     const variance = sumSqDev / divisor;
     return Math.sqrt(variance);
 }
@@ -280,17 +290,19 @@ function normalityPearsonCorrelation(x, y) {
     const xm = normalityMean(x);
     const ym = normalityMean(y);
 
-    let numerator = 0;
-    let xDenom = 0;
-    let yDenom = 0;
-
-    for (let i = 0; i < n; i++) {
+    const numerator = normalityCompensatedSum(n, i => {
         const xd = x[i] - xm;
         const yd = y[i] - ym;
-        numerator += xd * yd;
-        xDenom += xd * xd;
-        yDenom += yd * yd;
-    }
+        return xd * yd;
+    });
+    const xDenom = normalityCompensatedSum(n, i => {
+        const xd = x[i] - xm;
+        return xd * xd;
+    });
+    const yDenom = normalityCompensatedSum(n, i => {
+        const yd = y[i] - ym;
+        return yd * yd;
+    });
 
     const denom = Math.sqrt(xDenom * yDenom);
     if (!isFinite(denom) || denom === 0) return 0;
@@ -919,14 +931,11 @@ function calculateShapiroWilk(values) {
     //
     //
     const meanX = normalityMean(x);
-    let numerator = 0;
-    let S2 = 0;  // sum of squares = Σ(xᵢ - x̄)²
-
-    for (let i = 0; i < n; i++) {
-        numerator += a[i] * x[i];
+    const numerator = normalityCompensatedSum(n, i => a[i] * x[i]);
+    const S2 = normalityCompensatedSum(n, i => {
         const diff = x[i] - meanX;
-        S2 += diff * diff;
-    }
+        return diff * diff;
+    });
 
     if (S2 === 0) {
         console.warn('[SW] WARNING: S² = 0 (all data identical), test aborted');
@@ -1213,9 +1222,9 @@ function runNormalityTests(values, options = {}) {
  * formatNormalityNumber(NaN);
  * // => 'N/A'
  */
-function formatNormalityNumber(num, decimals = 6) {
+function formatNormalityNumber(num) {
     if (typeof num !== 'number' || isNaN(num)) return 'N/A';
-    return num.toFixed(decimals);
+    return String(num);
 }
 
 /**
@@ -1346,6 +1355,7 @@ if (typeof self !== 'undefined') {
     self.shapiroWilkPValue = shapiroWilkPValue;
     self.runNormalityTests = runNormalityTests;
     self.printNormalityLog = printNormalityLog;
+    self.normalityMean = normalityMean;
 }
 
 // Expose ke globalThis untuk environment hybrid/test harness
@@ -1356,6 +1366,7 @@ if (typeof globalThis !== 'undefined') {
     globalThis.shapiroWilkPValue = shapiroWilkPValue;
     globalThis.runNormalityTests = runNormalityTests;
     globalThis.printNormalityLog = printNormalityLog;
+    globalThis.normalityMean = normalityMean;
 }
 
 // Expose ke CommonJS untuk unit testing dengan require()
@@ -1367,5 +1378,6 @@ if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
         shapiroWilkPValue,
         runNormalityTests,
         printNormalityLog,
+        normalityMean,
     };
 }

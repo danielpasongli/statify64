@@ -1,7 +1,9 @@
-import { formatNumber, formatPValue } from '@/components/Modals/Analyze/shared/statisticalOutput';
 import type { CrosstabsAnalysisParams, CrosstabsWorkerResult } from '../../types';
 import type { ColumnHeader, FormattedTable, TableRowData } from '../helpers';
 import { buildChiSquareDescription } from './interpretation';
+
+const formatExactNumber = (value: number | null | undefined): string =>
+  Number.isFinite(value) ? String(value) : '';
 
 const getVariableName = (
   variable: { label?: string; name?: string } | undefined,
@@ -31,9 +33,9 @@ export const formatChiSquareTestsTable = (
   const rows: TableRowData[] = [
     {
       rowHeader: ['Pearson Chi-Square'],
-      value: formatNumber(pearson.value),
+      value: formatExactNumber(pearson.value),
       df: String(pearson.df),
-      sig: formatPValue(pearson.pValue),
+      sig: formatExactNumber(pearson.pValue),
     },
     {
       rowHeader: ['N of Valid Cases'],
@@ -47,10 +49,10 @@ export const formatChiSquareTestsTable = (
   const footer: string[] = [];
   if (diagnostics) {
     footer.push(
-      `${diagnostics.cellsUnder5} cells (${formatNumber(diagnostics.percentCellsUnder5, 1)}%) have expected count less than 5.`,
+      `${diagnostics.cellsUnder5} cells (${formatExactNumber(diagnostics.percentCellsUnder5)}%) have expected count less than 5.`,
     );
     if (diagnostics.minExpectedCount !== null) {
-      footer.push(`The minimum expected count is ${formatNumber(diagnostics.minExpectedCount, 2)}.`);
+      footer.push(`The minimum expected count is ${formatExactNumber(diagnostics.minExpectedCount)}.`);
     }
   }
 

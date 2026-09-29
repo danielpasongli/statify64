@@ -1,4 +1,4 @@
-import { DEFAULT_ALPHA, formatNumber, formatPValue } from '@/components/Modals/Analyze/shared/statisticalOutput';
+import { DEFAULT_ALPHA } from '@/components/Modals/Analyze/shared/statisticalOutput';
 import type { ExploreAnalysisParams } from '../../types';
 import type { ColumnHeader, FormattedTable, ExploreAggregatedResults, TableRowData } from '../helpers';
 import { getFactorLabel, regroupByDepVar } from '../helpers';
@@ -15,8 +15,11 @@ const getDisplayName = (
 
 const formatDf = (value: number | null | undefined): string => {
   if (value === null || value === undefined || !Number.isFinite(value)) return '';
-  return String(Math.round(value));
+  return String(value);
 };
+
+const formatExactNumber = (value: number | null | undefined): string =>
+  Number.isFinite(value) ? String(value) : '';
 
 export const formatTestsOfNormalityTable = (
   results: ExploreAggregatedResults,
@@ -73,12 +76,12 @@ export const formatTestsOfNormalityTable = (
 
       rows.push({
         rowHeader,
-        ks_statistic: formatNumber(ks?.statistic),
+        ks_statistic: formatExactNumber(ks?.statistic),
         ks_df: formatDf(ks?.df),
-        ks_sig: formatPValue(ks?.pValue) + (ks?.isLowerBound ? '*' : ''),
-        sw_statistic: formatNumber(sw?.statistic),
+        ks_sig: formatExactNumber(ks?.pValue) + (ks?.isLowerBound ? '*' : ''),
+        sw_statistic: formatExactNumber(sw?.statistic),
         sw_df: formatDf(sw?.df),
-        sw_sig: formatPValue(sw?.pValue),
+        sw_sig: formatExactNumber(sw?.pValue),
       });
 
       if (ks?.isLowerBound) {
