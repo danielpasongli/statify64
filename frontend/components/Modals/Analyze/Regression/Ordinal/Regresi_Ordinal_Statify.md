@@ -44,13 +44,14 @@ Model regresi ordinal standar mengasumsikan bahwa pengaruh variabel prediktor be
 Modal dialog Regresi Ordinal di Statify diakses melalui menu:  
 `Analyze > Regression > Ordinal...`
 
-Antarmuka terdiri dari 4 tab fungsional aktif:
+Antarmuka terdiri dari tab fungsional aktif:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │  Ordinal Regression                                                [X] │
 ├────────────────────────────────────────────────────────────────────────┤
 │  [ Variables ]   [ Location ]   [ Options ]   [ Output ]               │
+│  *(Catatan: Tab 'Scale' disiapkan untuk pemodelan heteroskedastisitas) │
 │                                                                        │
 │  • Dependent (Response)  : Pilih variabel ordinal (min. 3 kategori)    │
 │  • Factor(s)             : Variabel independen kategorik (nominal)     │
@@ -64,18 +65,21 @@ Antarmuka terdiri dari 4 tab fungsional aktif:
 
 ### 2.1 Tab "Variables"
 1. **Dependent Variable**: Pilih variabel respon ordinal bertipe numerik atau string terurut. Minimal harus memiliki **3 kategori unik**.
-2. **Factor(s)**: Variabel independen kategorik (misal: Jenis Kelamin, Kelompok Perlakuan). Sistem secara otomatis mengonversinya menjadi variabel boneka (*dummy variables*) dengan level tertinggi sebagai kategori referensi.
+2. **Factor(s)**: Variabel independen kategorik (misal: Jenis Kelamin, Kelompok Perlakuan). Sistem secara otomatis mengonversinya menjadi variabel boneka (*dummy variables*) dengan level tertinggi sebagai kategori referensi (*redundant*).
 3. **Covariate(s)**: Variabel independen numerik kontinu (misal: Usia, Tekanan Darah, Pendapatan).
 4. **Link Function Dropdown**: Pilihan fungsi tautan langsung dari tab utama (default: *Logit*).
 
-> **PENTING:** Satu variabel tidak boleh dimasukkan sekaligus ke dalam kelompok *Factors* dan *Covariates*.
+> **PENTING:** Satu variabel tidak boleh dimasukkan sekaligus ke dalam kelompok *Factors* dan *Covariates*. Pemilihan variabel juga terintegrasi dengan store persisten `useOrdinalFormStore` sehingga pilihan tersimpan saat modal ditutup sementara.
 
 ### 2.2 Tab "Location"
 Mengatur komponen model lokasi (apakah model hanya memuat efek utama (*main effects*) atau menyertakan interaksi antarvariabel).
 - Pengguna dapat membuat suku interaksi (*Interaction Terms*), misalnya `Perlakuan * Dosis`.
 - Interaksi wajib melibatkan minimal 2 variabel yang sah dan bukan variabel respon.
 
-### 2.3 Tab "Options"
+### 2.3 Tab "Scale" (Status Pengembangan)
+Disediakan berkas `ScaleTab.tsx` dan struktur Rust untuk pemodelan komponen skala ($\tau$ / dispersi heteroskedastisitas). Jika pengguna memasukkan prediktor skala pada versi rilis saat ini, sistem memberikan validasi *"Fitur belum tersedia"* demi menjaga keandalan model lokasi murni.
+
+### 2.4 Tab "Options"
 Pengaturan parameter estimasi numerik:
 - **Link Function**:
   - `Logit`: Digunakan untuk kategori yang tersebar merata (default).
@@ -83,19 +87,26 @@ Pengaturan parameter estimasi numerik:
   - `Complementary Log-Log (CLogLog)`: Digunakan jika kategori tingkatan tinggi mendominasi (skewness kanan).
   - `Negative Log-Log`: Digunakan jika kategori tingkatan rendah mendominasi (skewness kiri).
   - `Cauchit`: Digunakan jika data memiliki ekor tebal (*heavy tails*) atau pencilan ekstrem.
-- **Toleransi Konvergensi**: Batas perubahan log-likelihood ($10^{-8}$) dan perubahan parameter ($10^{-6}$).
+- **Kriteria Konvergensi**: Batas perubahan log-likelihood (default: `0` / dinonaktifkan jika mengacu parameter), toleransi konvergensi parameter ($10^{-6}$), dan nilai singularitas ($10^{-8}$).
 - **Maksimum Iterasi**: Batas loop algoritma (default: 100 iterasi).
 - **Maksimum Step-Halving**: Batas pemotongan langkah jika terjadi divergensi (default: 5).
 - **Selang Kepercayaan (CI)**: Default 95%.
 
-### 2.4 Tab "Output"
+### 2.5 Tab "Output"
 Pengaturan statistik dan tabel luaran:
-- **Tampilan Tabel**: *Goodness-of-Fit*, *Model Fitting Information*, *Parameter Estimates*, *Test of Parallel Lines*, *Summary Statistics*, *Cell Information*, *Asymptotic Correlation/Covariance*, serta *Iteration History*.
-- **Save Variables (Simpan ke Lembar Data)**:
-  - `Predicted Response Category`: Menyimpan kategori hasil prediksi ke kolom baru `PRE_1`.
-  - `Estimated Response Probabilities`: Menyimpan kolom peluang tiap kategori (`EST1_1`, `EST2_1`, dst.).
-  - `Predicted Category Probability`: Peluang dari kategori yang diprediksi (`PPR_1`).
-  - `Actual Category Probability`: Peluang dari kategori aktual subjek (`ACP_1`).
+- **Tampilan Tabel**:
+  - *Goodness-of-Fit* (Pearson & Deviance).
+  - *Summary Statistics* (Model Fitting Information & Pseudo R-Square).
+  - *Parameter Estimates* (Threshold & Location coefficients).
+  - *Test of Parallel Lines* (Proportional odds test).
+  - *Asymptotic Covariance Matrix* & *Asymptotic Correlation Matrix* (dengan penanganan baris redundant `.a`).
+  - *Cell Information* & *Iteration History*.
+- **Save Variables (Simpan Otomatis ke Lembar Data)**:
+  - `Predicted Response Category`: Menyimpan kategori hasil klasifikasi ke kolom baru `PRE_1`, `PRE_2`, dst. (mendukung format numerik maupun label string).
+  - `Estimated Response Probabilities`: Menyimpan kolom peluang tiap tingkatan kategori respon (`EST1_1`, `EST2_1`, dst.).
+  - `Predicted Category Probability`: Peluang dari kategori yang diprediksi (`PCP_1`, `PCP_2`, dst.).
+  - `Actual Category Probability`: Peluang dari kategori aktual subjek (`ACP_1`, `ACP_2`, dst.).
+  - *Sistem penamaan otomatis melacak akhiran batch (`batch_suffix`) yang belum terpakai di lembar data.*
 
 ---
 
@@ -106,7 +117,7 @@ Statify mengadopsi prinsip **Privacy-by-Design** dan **Client-Side High Performa
 ```mermaid
 flowchart TD
     A[Dataset Lembar Kerja Statify] --> B[OrdinalMain.tsx: Validasi Input & Pembersihan Data]
-    B -->|Listwise Deletion| C[plum_design_matrix.ts: Dummy Coding & Matriks X]
+    B -->|Listwise Deletion| C[plum_design_matrix.ts: Dummy Coding, Interaksi & rowIndexMap]
     C -->|JSON Payload Terstruktur| D[Web Worker: ordinal.worker.js]
     D -->|Buffer Memori Biner| E[Rust WebAssembly Engine: statify_ordinal_bg.wasm]
     
@@ -115,14 +126,14 @@ flowchart TD
         F --> G[Inisialisasi Nilai Awal Theta & Beta]
         G --> H[Loop Newton-Raphson / Fisher Scoring]
         H --> I{Konvergen?}
-        I -- Tidak --> J[Step-Halving & Regularisasi Monotonik]
+        I -- Tidak --> J[Step-Halving & Regularisasi Monotonik Threshold]
         J --> H
-        I -- Ya --> K[Kalkulasi Kovarians, SE, Wald, Uji Paralel & GOF]
+        I -- Ya --> K[Kalkulasi Kovarians, SE, Wald, Uji Paralel, GOF, VIF/GVIF & Saved Variables]
     end
     
     K -->|Struct Hasil PlumFitOutput| D
-    D -->|PostMessage Event| L[formatter.ts: Format Tabel Laporan]
-    L --> M[Viewer Hasil Analisis & Penyimpanan Variabel Baru]
+    D -->|PostMessage Event| L[formatter.ts: Agregasi Formatter Tabel]
+    L --> M[Viewer Hasil Analisis & Penyimpanan Variabel Baru ke useDataStore]
 ```
 
 ### Keuntungan Arsitektur Ini:
@@ -141,19 +152,22 @@ Berikut adalah pemetaan berkas pada direktori modul:
 ├── Regresi_Ordinal_Statify.md        # Berkas Dokumentasi Resmi Modul (File Ini)
 ├── dialogs/                          # Komponen Antarmuka Pengguna (React + Tailwind)
 │   ├── OrdinalMain.tsx               # Komponen Utama: State, Validasi, Handler Worker & Error Bahasa Indonesia
-│   ├── VariablesTab.tsx              # Tab Variabel: Dependen, Faktor, Kovariat
+│   ├── VariablesTab.tsx              # Tab Variabel: Dependen, Faktor, Kovariat & Pilihan Link
 │   ├── LocationTab.tsx               # Tab Model Lokasi & Pembangun Interaksi
 │   ├── ScaleTab.tsx                  # Tab Model Skala (Heteroskedastisitas)
-│   ├── OptionsTab.tsx                # Tab Kriteria Konvergensi & Pilihan Fungsi Link
+│   ├── OptionsTab.tsx                # Tab Kriteria Konvergensi & Pilihan Fungsi Link Lanjutan
 │   └── OutputTab.tsx                 # Tab Pengaturan Cetak Tabel & Simpan Variabel
 ├── hooks/
 │   └── tourConfig.ts                 # Konfigurasi Panduan Interaktif Pengguna (Tour Guide)
+├── stores/
+│   └── useOrdinalFormStore.ts        # Penyimpanan Persisten State Input Dialog (Form Hydration)
 ├── services/                         # Logika Pembantu TypeScript
 │   ├── plum_design_matrix.ts         # Pembentukan Matriks Desain X, Pengkodean Dummy & rowIndexMap
 │   ├── syntaxGenerator.ts            # Pembangkit Skrip Sintaks Statify (SPSS Compatible)
 │   ├── formatter.ts                  # Agregator Utama Formatter Tabel Laporan
 │   ├── formatter_context.ts          # Metadata Analisis & Catatan Kaki Tabel
 │   ├── formatter_iteration_history.ts# Format Tabel Riwayat Iterasi
+│   ├── formatter_matrix.ts           # Format Tabel Kovarians & Korelasi Asimtotik (Redundancy-aware)
 │   ├── formatter_model_summary.ts    # Format Tabel Model Fitting, Pseudo R2 & GOF
 │   ├── formatter_parallel_lines.ts   # Format Tabel Uji Asumsi Garis Paralel
 │   ├── formatter_parameter.ts        # Format Tabel Estimasi Parameter & Redundansi (0.000)
@@ -174,7 +188,7 @@ Berikut adalah pemetaan berkas pada direktori modul:
         ├── optimizer/                # Algoritma Optimisasi
         │   ├── mod.rs                # Solver Newton-Raphson/Fisher Scoring & Step-Halving
         │   └── parallel.rs           # Solver Model Non-Paralel untuk Uji Garis Paralel
-        ├── stats/statistics.rs       # Kalkulasi Inversi Hessian, Wald, Uji Chi-Square, Pseudo R2, VIF
+        ├── stats/statistics.rs       # Inversi Hessian, Wald, Chi-Square, Pseudo R2, VIF, GVIF & Correlation
         ├── io/                       # Serialisasi & Validasi Payload Rust
         │   ├── validation.rs         # Validasi Struktur Input & Integritas Matriks
         │   └── output.rs             # Pembentukan Output JSON Terstruktur Termasuk Saved Variables
@@ -194,10 +208,10 @@ Sebelum data dikirim ke WebAssembly, dilakukan eliminasi baris jika:
 
 Untuk menjaga integritas penyimpanan variabel baru (*Save Variables*), dibuat pemetaan indeks asli:
 $$\mathbf{M} = [m_0, m_1, \dots, m_{N_{\text{valid}}-1}]$$
-Baris yang tereliminasi diisi `null` pada kolom baru di lembar kerja, menjaga keselarasan baris data asli.
+Baris yang tereliminasi diisi `null` pada kolom baru di lembar kerja, menjaga keselarasan baris data asli secara sempurna.
 
 ### 5.2 Pengkodean Dummy Faktor Kategorik
-Faktor dengan $L$ level diurutkan $\mathcal{L} = \{\ell_1, \ell_2, \dots, \ell_L\}$. Level terakhir $\ell_L$ dijadikan **Kategori Referensi** (koefisien ditetapkan $0.000$ / *redundant*). Dibuat $L-1$ variabel dummy:
+Faktor dengan $L$ level diurutkan $\mathcal{L} = \{\ell_1, \ell_2, \dots, \ell_L\}$ (mengutamakan urutan value labels eksplisit jika didefinisikan). Level terakhir $\ell_L$ dijadikan **Kategori Referensi** (koefisien ditetapkan $0.000$ / *redundant*). Dibuat $L-1$ variabel dummy:
 $$D_{ik} = \begin{cases} 1, & \text{jika } F_i = \ell_k \\ 0, & \text{jika } F_i \ne \ell_k \end{cases} \quad (k = 1, \dots, L-1)$$
 
 ### 5.3 Persamaan Model Cumulative Link (McCullagh, 1980)
@@ -227,7 +241,7 @@ $$\pi_{i1} = \gamma_{i1}$$
 $$\pi_{ij} = \gamma_{ij} - \gamma_{i, j-1}, \quad j = 2, \dots, J-1$$
 $$\pi_{iJ} = 1 - \gamma_{i, J-1}$$
 
-Secara numerik, nilai $\pi_{ij}$ distabilkan dengan batas minimum $\varepsilon = 10^{-15}$ guna mencegah $\ln(0)$.
+Secara numerik, nilai $\pi_{ij}$ distabilkan dengan fungsi `clamp_prob` ($\varepsilon = 10^{-15}$) guna mencegah $\ln(0)$ dan pembagian dengan nol.
 
 ### 5.6 Agregasi Subpopulasi Kovariat Unik ($M$)
 Data $N$ observasi diagregasikan menjadi $M$ subpopulasi unik $(\mathbf{x}_s)$ dengan frekuensi teramati $n_{sj}$ dan total $m_s = \sum_{j} n_{sj}$. Hal ini memangkas dimensi kalkulasi aljabar dan mempercepat estimasi hingga puluhan kali lipat.
@@ -238,8 +252,9 @@ $$\boldsymbol{\psi}^{(t+1)} = \boldsymbol{\psi}^{(t)} + \alpha \cdot \boldsymbol
 Arah pergerakan $\boldsymbol{\delta}^{(t)}$ diperoleh dengan menyelesaikan sistem persamaan linier:
 $$\mathbf{A}^{(t)} \boldsymbol{\delta}^{(t)} = \mathbf{g}^{(t)}$$
 - $\mathbf{g}$: Vektor gradien turunan pertama log-likelihood.
-- $\mathbf{A}$: Matriks informasi Fisher (Fisher Scoring) atau negatif Hessian (Newton-Raphson).
+- $\mathbf{A}$: Matriks informasi Fisher (Fisher Scoring) atau negatif Hessian (Newton-Raphson) yang dilengkapi regularisasi Ridge adaptif ($\mathbf{A} + \lambda \mathbf{I}$).
 - $\alpha \in \{1.0, 0.5, 0.25, \dots\}$: Faktor *Step-Halving* adaptif jika nilai log-likelihood kandidat memburuk atau terjadi pelanggaran keterurutan threshold ($\theta_j \le \theta_{j-1}$).
+- Algoritma memanggil `enforce_threshold_monotonicity` untuk menjamin ambang batas tetap terurut strictly monoton naik.
 
 ---
 
@@ -249,7 +264,7 @@ Statify menyajikan laporan dalam format tabel profesional siap kutip:
 
 ### 6.1 Model Fitting Information
 Membandingkan model final dengan model tanpa prediktor (*Intercept Only*):
-- **$-2 \text{ Log-Likelihood}$**: Nilai deviance model. Semakin kecil nilainya, semakin baik kecocokan model.
+- **$-2 \text{ Log-Likelihood}$**: Nilai deviance model. Semakin kecil nilainya, semakin baik kecocokan model. Mendukung mode tampilan `Including` (SPSS Compatible dengan multinomial constant) dan `Excluding` (kernel murni).
 - **Chi-Square ($\chi^2$)**: $2 \times (\ell_{\text{final}} - \ell_{\text{null}})$.
 - **Sig. ($p$-value)**: Jika $p < 0.05$, model dengan prediktor secara signifikan lebih baik daripada model acak/tanpa prediktor.
 
@@ -275,9 +290,15 @@ Menampilkan estimasi untuk ambang batas (*Threshold*) dan pengaruh prediktor (*L
 - **95% Confidence Interval**: Rentang taksiran parameter pada tingkat kepercayaan 95%.
 - **Parameter Bernilai $0.000$ (Redundant)**: Diberi catatan kaki *"This parameter is set to zero because it is redundant"*, menandakan kategori referensi dummy.
 
-### 6.5 Test of Parallel Lines (Uji Asumsi Garis Paralel)
+### 6.5 Asymptotic Covariance & Correlation Matrix
+Menampilkan matriks kovarians dan korelasi antar parameter terestimasi:
+- Diagonal utama kovarians menunjukkan varians penduga ($\text{SE}^2$).
+- Untuk parameter kategori referensi yang redundan, sel diisi nilai `.` / `.a` dengan catatan kaki *"One or both parameter estimates are redundant"*, sesuai standar industri SPSS.
+
+### 6.6 Test of Parallel Lines (Uji Asumsi Garis Paralel)
 Menguji validitas asumsi proportional odds:
 - **Hipotesis**: $H_0 = \text{Slope prediktor identik di seluruh tingkatan kategori}$.
+- Membandingkan $-2\text{LL}$ model paralel ($H_0$) dengan model non-paralel umum (*General Model* yang mengestimasi $J-1$ set slope independen melalui modul Rust `parallel.rs`).
 - **Sig. ($p$-value)**:
   - **$p \ge 0.05$ (Gagal Tolak $H_0$)**: Asumsi terpenuhi, model regresi ordinal sah digunakan.
   - **$p < 0.05$ (Tolak $H_0$)**: Asumsi dilanggar. Dianjurkan mempertimbangkan model alternatif seperti *Generalized Ordinal Logistic* atau *Multinomial Logistic Regression*.
@@ -290,18 +311,21 @@ Seluruh pesan kesalahan pada antarmuka [`OrdinalMain.tsx`](file:///g:/Teteh/00/s
 
 | No | Pesan Error | Penyebab | Solusi Pengguna |
 | :---: | :--- | :--- | :--- |
-| 1 | *"Mohon pilih variabel dependen."* | Belum ada variabel respon yang dimasukkan. | Masukkan variabel ordinal ke kotak *Dependent*. |
-| 2 | *"Dataset kosong atau tidak tersedia."* | Lembar kerja aktif tidak memuat baris data. | Buka atau masukkan dataset pada lembar kerja Statify. |
-| 3 | *"Variabel yang sama tidak boleh muncul di factors dan covariates."* | Variabel ganda di Faktor dan Kovariat. | Hapus variabel dari salah satu kotak input. |
-| 4 | *"Minimal 1 variabel independen."* | Tidak ada prediktor yang dipilih. | Masukkan minimal 1 variabel ke *Factors* atau *Covariates*. |
-| 5 | *"Suku interaksi harus memiliki minimal 2 variabel."* | Interaksi diatur hanya dengan 1 variabel. | Pilih minimal 2 variabel untuk membentuk suku interaksi. |
-| 6 | *"Prediktor tidak boleh sama dengan variabel dependen (respon)."* | Variabel dependen dimasukkan sebagai prediktor. | Hapus variabel respon dari daftar prediktor/interaksi. |
-| 7 | *"Prediktor/Suku interaksi tidak boleh duplikat."* | Efek prediktor dimasukkan lebih dari sekali. | Hapus suku interaksi atau prediktor ganda di tab *Location*. |
-| 8 | *"Semua baris terhapus setelah penghapusan data hilang (listwise deletion)."* | Seluruh baris memiliki nilai kosong/missing. | Periksa data; pastikan ada baris observasi yang lengkap. |
-| 9 | *"Variabel dependen (respon) harus memiliki minimal 3 kategori untuk regresi ordinal."* | Kategori respon hanya 1 atau 2. | Gunakan *Binary Logistic Regression* jika hanya ada 2 kategori. |
-| 10 | *"Jumlah parameter aktif melebihi jumlah observasi efektif."* | Overfitting berat; jumlah sampel terlalu kecil untuk model rumit. | Kurangi prediktor atau sederhanakan kategori faktor. |
-| 11 | *"Terjadi kesalahan pada worker."* | Kegagalan thread komputasi latar belakang browser. | Refresh halaman atau periksa konsol pengembang browser. |
-| 12 | *"Gagal menyimpan hasil."* | Kegagalan saat menulis ke store hasil/analitik. | Pastikan sesi aplikasi aktif dan memori browser mencukupi. |
+| 1 | *"Fitur belum tersedia"* | Memasukkan variabel ke tab *Scale*. | Kosongkan variabel pada tab Scale; modul saat ini dioptimalkan untuk model lokasi murni. |
+| 2 | *"Mohon pilih variabel dependen."* | Belum ada variabel respon yang dimasukkan. | Masukkan variabel ordinal ke kotak *Dependent*. |
+| 3 | *"Dataset kosong atau tidak tersedia."* | Lembar kerja aktif tidak memuat baris data. | Buka atau masukkan dataset pada lembar kerja Statify. |
+| 4 | *"Variabel yang sama tidak boleh muncul di factors dan covariates."* | Variabel ganda di Faktor dan Kovariat. | Hapus variabel dari salah satu kotak input. |
+| 5 | *"Minimal 1 variabel independen."* | Tidak ada prediktor yang dipilih. | Masukkan minimal 1 variabel ke *Factors* atau *Covariates*. |
+| 6 | *"Suku interaksi harus memiliki minimal 2 variabel."* | Interaksi diatur hanya dengan 1 variabel. | Pilih minimal 2 variabel untuk membentuk suku interaksi. |
+| 7 | *"Prediktor tidak boleh sama dengan variabel dependen (respon)."* | Variabel dependen dimasukkan sebagai prediktor. | Hapus variabel respon dari daftar prediktor/interaksi. |
+| 8 | *"Prediktor/Suku interaksi tidak boleh duplikat."* | Efek prediktor dimasukkan lebih dari sekali. | Hapus suku interaksi atau prediktor ganda di tab *Location*. |
+| 9 | *"Prediktor '[nama]' harus berada di Faktor atau Kovariat."* | Term lokasi tidak sinkron dengan variabel utama. | Pastikan variabel term model lokasi terdaftar di Faktor/Kovariat. |
+| 10 | *"Semua baris terhapus setelah penghapusan data hilang (listwise deletion)."* | Seluruh baris memiliki nilai kosong/missing. | Periksa data; pastikan ada baris observasi yang lengkap. |
+| 11 | *"Variabel dependen (respon) harus memiliki minimal 3 kategori untuk regresi ordinal."* | Kategori respon hanya 1 atau 2. | Gunakan *Binary Logistic Regression* jika hanya ada 2 kategori. |
+| 12 | *"Pengkodean vektor respon gagal karena kategori tidak valid."* | Nilai respon berada di luar daftar kategori unik. | Periksa kebersihan data variabel dependen. |
+| 13 | *"Jumlah parameter aktif melebihi jumlah observasi efektif."* | Overfitting berat; jumlah sampel terlalu kecil untuk model rumit. | Kurangi prediktor atau sederhanakan kategori faktor. |
+| 14 | *"Terjadi kesalahan pada worker."* | Kegagalan thread komputasi latar belakang browser. | Refresh halaman atau periksa konsol pengembang browser. |
+| 15 | *"Gagal menyimpan hasil."* | Kegagalan saat menulis ke store hasil/analitik. | Pastikan sesi aplikasi aktif dan memori browser mencukupi. |
 
 ---
 
@@ -309,7 +333,15 @@ Seluruh pesan kesalahan pada antarmuka [`OrdinalMain.tsx`](file:///g:/Teteh/00/s
 
 Bagian ini ditujukan bagi Software Engineer / Web Developer yang akan memelihara atau memperluas fungsionalitas modul.
 
-### 8.1 Cara Menambahkan Fungsi Link Baru
+### 8.1 Alur Debugging Terpadu (Ordinal Debug Checklist)
+Untuk memudahkan penelusuran issue komputasi atau antarmuka, ikuti 5 titik observasi log resmi:
+1. **MAIN**: Periksa log `[ORDINAL][MAIN][PAYLOAD_TO_WORKER]` di konsol peramban untuk memastikan format matriks desain $X$ dan vektor respon $Y$ benar.
+2. **WORKER**: Periksa `[ORDINAL][WORKER][RECEIVED]` dan `[ORDINAL][WORKER][PAYLOAD_VALID]` pada Web Worker.
+3. **RUST VALIDATION**: Periksa hasil `plum_validate(payload)` (mendeteksi jika ada field yang belum selaras antara TypeScript dan struct Rust).
+4. **WORKER RESULT**: Periksa log `[ORDINAL][WORKER][NORMALIZED_RESULT]` setelah komputasi WASM selesai.
+5. **MAIN FORMATTER**: Periksa log `[ORDINAL][MAIN][FORMATTED_SECTIONS]` sebelum tabel dirender ke antarmuka hasil.
+
+### 8.2 Cara Menambahkan Fungsi Link Baru
 1. **Rust Enum (`rust/src/types/mod.rs`)**:
    Tambahkan varian baru pada `enum LinkFunction`.
 2. **Kalkulasi Matematis (`rust/src/model/links.rs`)**:
@@ -323,12 +355,13 @@ Bagian ini ditujukan bagi Software Engineer / Web Developer yang akan memelihara
 4. **Dropdown Antarmuka (`VariablesTab.tsx` & `OptionsTab.tsx`)**:
    Tambahkan opsi pada pilihan select antarmuka pengguna.
 
-### 8.2 Stabilitas Numerik & Keamanan Memori
+### 8.3 Stabilitas Numerik & Keamanan Memori
 - **Safe Exponential**: Selalu gunakan fungsi `safe_exp(x)` pada `rust/src/utils/mod.rs` untuk mencegah `f64::INFINITY` ketika $x > 700.0$ atau underflow $0.0$ ketika $x < -700.0$.
-- **Clamping Probabilitas**: Selalu jaga $\pi_{ij} \in [\varepsilon, 1 - \varepsilon]$ dengan $\varepsilon = 10^{-15}$ untuk menghindari $\ln(0)$ atau pembagian nol pada vektor gradien.
+- **Clamping Probabilitas**: Selalu jaga $\pi_{ij} \in [\varepsilon, 1 - \varepsilon]$ dengan `clamp_prob` ($\varepsilon = 10^{-15}$) untuk menghindari $\ln(0)$ atau pembagian nol pada vektor gradien.
 - **Singularitas Matriks**: Gunakan regularisasi Ridge ($\mathbf{A} + \lambda \mathbf{I}$) pada `solve_linear_system()` di `rust/src/optimizer/mod.rs` jika dekomposisi LU gagal akibat multikolinearitas.
+- **Diagnostik Multikolinearitas (VIF & GVIF)**: Modul Rust pada `rust/src/stats/statistics.rs` telah dilengkapi solver `calculate_vif` (OLS auxiliary regression $1/(1-R_j^2)$) serta `compute_gvif_diagnostics` untuk faktor multi-derajat-kebebasan menggunakan dekomposisi Cholesky stabil `cholesky_logdet`.
 
-### 8.3 Cara Kompilasi Ulang WASM (`wasm-pack`)
+### 8.4 Cara Kompilasi Ulang WASM (`wasm-pack`)
 Jika Anda mengedit kode di dalam folder `rust/src/`:
 
 1. **Prasyarat**: Pastikan Rust dan `wasm-pack` terpasang:
@@ -365,13 +398,14 @@ Jika Anda mengedit kode di dalam folder `rust/src/`:
 | **Cumulative Logit** | Logaritma odds dari peluang kumulatif bahwa respon berada pada atau di bawah kategori tertentu ($Y \le j$). |
 | **Threshold ($\theta$)** | Titik potong (ambang batas) laten yang memisahkan kategori respon berdekatan pada kontinum tersembunyi. |
 | **Location Model** | Bagian model regresi yang memprediksi pergeseran rata-rata respon (efek utama faktor & kovariat). |
-| **Scale Model** | Bagian model regresi yang memodelkan dispersi varians / heteroskedastisitas (jika diaktifkan). |
+| **Scale Model** | Bagian model regresi yang memodelkan dispersi varians / heteroskedastisitas. |
 | **Listwise Deletion** | Prosedur eliminasi baris data jika memiliki minimal satu nilai kosong (*missing value*) pada variabel terpilih. |
 | **Proportional Odds** | Asumsi bahwa rasio odds prediktor adalah seragam di seluruh level ambang batas respon. |
 | **Parallel Lines Test** | Uji hipotesis untuk memvalidasi apakah asumsi kemiringan yang sama (*equal slopes*) terpenuhi ($p \ge 0.05$). |
 | **Fisher Scoring** | Algoritma optimisasi turunan kedua yang menggunakan nilai ekspektasi matriks informasi Fisher. |
 | **Newton-Raphson** | Algoritma optimisasi numerik yang menggunakan matriks Hessian observasian empiris. |
 | **Step-Halving** | Teknik pemotongan langkah secara adaptif untuk mencegah divergensi dan menjamin monotonisitas parameter. |
+| **VIF / GVIF** | *Variance Inflation Factor* & *Generalized VIF* untuk mengukur tingkat keparahan multikolinearitas antar prediktor. |
 | **Web Worker** | Thread komputasi latar belakang di browser agar antarmuka pengguna tidak membeku (*hang*) saat komputasi berlangsung. |
 | **WebAssembly (WASM)** | Format instruksi biner tingkat rendah yang memungkinkan kode Rust berjalan di browser dengan kecepatan mendekati aplikasi desktop (*near-native speed*). |
 

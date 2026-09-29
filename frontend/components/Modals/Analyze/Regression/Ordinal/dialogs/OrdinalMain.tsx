@@ -371,12 +371,27 @@ const OrdinalMain: React.FC = () => {
       if (typeof responseVariable.columnIndex !== "number") {
         throw new Error("Response variable tidak memiliki columnIndex yang valid.");
       }
+      if (responseVariable.measure !== "ordinal") {
+        throw new Error("Variabel respon wajib bertipe Ordinal.");
+      }
       if (!data || data.length === 0) {
         throw new Error("Dataset kosong atau tidak tersedia.");
       }
 
       const factors = options.factors;
       const covariates = options.covariates;
+
+      for (const factor of factors) {
+        if (factor.measure !== "nominal" && factor.measure !== "ordinal") {
+          throw new Error(`Variabel faktor '${factor.name}' harus memiliki tipe pengukuran Nominal atau Ordinal.`);
+        }
+      }
+
+      for (const covariate of covariates) {
+        if (covariate.measure !== "scale") {
+          throw new Error(`Variabel kovariat '${covariate.name}' harus memiliki tipe pengukuran Scale.`);
+        }
+      }
 
       const factorIdentities = new Set(factors.map(getVariableIdentity));
       const covariateIdentities = new Set(covariates.map(getVariableIdentity));
