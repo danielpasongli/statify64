@@ -665,6 +665,7 @@ pub fn goodness_of_fit(
             }
         }
     }
+    deviance = deviance.max(0.0);
 
     let df = (data.subpopulations.len() as f64) * (spec.category_count as f64 - 1.0)
         - (spec.parameter_count() as f64);

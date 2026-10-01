@@ -51,7 +51,7 @@ export interface OrdinalOutputParams {
     parameterEstimates: boolean;
     asymptoticCovariance: boolean;
     asymptoticCorrelation: boolean;
-    cellInformation: boolean;
+    // cellInformation: boolean;
     testOfParallelLines: boolean;
     iterationHistory: boolean;
     iterationHistoryStep: number;
