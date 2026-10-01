@@ -110,7 +110,7 @@ describe('crosstabs.worker', () => {
     expect(proportion.df).toBe(2);
   });
 
-  test('menghitung kategori teks mentah tanpa recode dan mencatat sel kosong sebagai missing', () => {
+  test('merecode kategori teks mentah sementara dan mencatat sel kosong sebagai missing', () => {
     const postSpy = jest.fn();
     global.postMessage = postSpy;
     loadWorker();

@@ -1,6 +1,5 @@
 import { DEFAULT_ALPHA, escapeHtml } from '@/components/Modals/Analyze/shared/statisticalOutput';
-import type { ExpectedCountDiagnostics } from './validation';
-import { evaluateExpectedCountAssumption } from './validation';
+import type { ChiSquareTestPurpose } from '../../types';
 
 export type ProportionContext = 'binomial' | 'multinomial';
 
@@ -12,8 +11,8 @@ export interface ChiSquareInterpretationInput {
   df: number;
   pValue: number | null;
   sampleSize?: number;
-  diagnostics?: ExpectedCountDiagnostics;
   alpha?: number;
+  purpose?: ChiSquareTestPurpose;
 }
 
 export const getProportionContext = (outcomeCategoryCount: number): ProportionContext =>
@@ -91,8 +90,8 @@ export const buildChiSquareDescription = ({
   df,
   pValue,
   sampleSize,
-  diagnostics,
   alpha = DEFAULT_ALPHA,
+  purpose = 'independence',
 }: ChiSquareInterpretationInput): string[] => {
   const safeRowName = escapeHtml(rowName);
   const safeColumnName = escapeHtml(columnName);
@@ -120,16 +119,21 @@ export const buildChiSquareDescription = ({
       ? `Nilai statistik Pearson Chi-Square pada output menunjukkan angka ${formatIndonesianDecimal(value)}. Nilai statistik tersebut lebih besar daripada nilai kritis χ²<sub>${formatIndonesianDecimal(alpha)};${df}</sub> sebesar ${formatIndonesianDecimal(criticalValue)}. Hal ini menunjukkan bahwa diperoleh keputusan menolak H₀. Dengan demikian dapat disimpulkan bahwa pada tingkat signifikansi ${alphaPercent}% dan ${sampleText}, terdapat cukup bukti untuk menyatakan bahwa proporsi ${safeColumnName} antar kelompok ${safeRowName} berbeda.`
       : `Nilai statistik Pearson Chi-Square pada output menunjukkan angka ${formatIndonesianDecimal(value)}. Nilai statistik tersebut lebih kecil daripada nilai kritis χ²<sub>${formatIndonesianDecimal(alpha)};${df}</sub> sebesar ${formatIndonesianDecimal(criticalValue)}. Hal ini menunjukkan bahwa diperoleh keputusan gagal menolak H₀. Dengan demikian dapat disimpulkan bahwa pada tingkat signifikansi ${alphaPercent}% dan ${sampleText}, belum cukup bukti untuk menyatakan bahwa proporsi ${safeColumnName} antar kelompok ${safeRowName} berbeda.`;
 
+  if (purpose === 'proportion') {
+    return [
+      `<p><strong>Hipotesis uji proporsi ${context}</strong></p>`,
+      proportionHypothesis,
+      proportionAlternative,
+      '<p><strong>Interpretasi</strong></p>',
+      `<p>${proportionDecision}</p>`,
+    ];
+  }
+
   return [
     '<p><strong>Hipotesis uji kebebasan</strong></p>',
     `<p>H₀: Pᵢⱼ = Pᵢ·P·ⱼ — ${safeRowName} dan ${safeColumnName} saling bebas.</p>`,
     `<p>H₁: ∃ i,j: Pᵢⱼ ≠ Pᵢ·P·ⱼ — ${safeRowName} dan ${safeColumnName} memiliki hubungan.</p>`,
-    `<p><strong>Konteks proporsi ${context}</strong></p>`,
-    proportionHypothesis,
-    proportionAlternative,
     '<p><strong>Interpretasi</strong></p>',
     `<p>${independenceInterpretation}</p>`,
-    `<p>${proportionDecision}</p>`,
-    `<p>${evaluateExpectedCountAssumption(diagnostics).text}</p>`,
   ];
 };

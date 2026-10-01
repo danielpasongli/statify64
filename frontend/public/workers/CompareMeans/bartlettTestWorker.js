@@ -133,30 +133,43 @@ function safeLog(value) {
     return Math.log(value);
 }
 
+/** Memberi kode sementara 1, 2, 3, ... tanpa mengubah data faktor asli. */
+function recodeCategoricalValues(values) {
+    if (!Array.isArray(values)) {
+        throw new TypeError('Nilai kategori harus berupa array.');
+    }
+
+    const categories = [];
+    const codeByValue = new Map();
+    const codes = new Int32Array(values.length);
+
+    for (let i = 0; i < values.length; i++) {
+        const rawValue = values[i];
+        if (rawValue === null || rawValue === undefined) continue;
+        if (typeof rawValue === 'number' && !Number.isFinite(rawValue)) continue;
+
+        const value = String(rawValue).trim();
+        if (value === '') continue;
+
+        let code = codeByValue.get(value);
+        if (code === undefined) {
+            categories.push(value);
+            code = categories.length;
+            codeByValue.set(value, code);
+        }
+        codes[i] = code;
+    }
+
+    return { codes, categories };
+}
+
 /**
- * Mengelompokkan data berdasarkan nilai variabel pengelompokan
- *
- * Implementasi memakai perulangan langsung untuk menghindari alokasi larik tambahan.
- * dan Float64Array untuk penyimpanan data numerik.
- *
- * @param {number[]} testData - Data variabel yang diuji
- * @param {number[]|string[]} factorData - Data variabel pengelompokan
- * @returns {Object} Objek berisi data setiap kelompok dalam Float64Array
- *
- * Contoh:
- * Masukan:
- *   testData   = [10, 12, 11, 15, 17, 16, 20, 22, 21]
- *   factorData = [ 1,  1,  1,  2,  2,  2,  3,  3,  3]
- *
- * Keluaran:
- *   {
- *     '1': Float64Array([10, 12, 11]),
- *     '2': Float64Array([15, 17, 16]),
- *     '3': Float64Array([20, 22, 21])
- *   }
+ * Mengelompokkan data numerik memakai kode faktor sementara.
+ * Nama kelompok asli tetap menjadi kunci hasil agar dapat ditampilkan kembali.
  */
 function groupDataByFactor(testData, factorData, testVariable = {}, factorVariable = {}) {
     const n = testData.length;
+    const factorEncoding = recodeCategoricalValues(factorData);
     const isValidCase = (index) => {
         const value = testData[index];
         const group = factorData[index];
@@ -178,12 +191,12 @@ function groupDataByFactor(testData, factorData, testVariable = {}, factorVariab
     });
 
     // LANGKAH 1: Hitung jumlah item per grup (first pass)
-    const groupCounts = Object.create(null);
+    const groupCounts = new Int32Array(factorEncoding.categories.length + 1);
     for (let i = 0; i < n; i++) {
         // Lewati kasus dengan nilai uji atau faktor yang missing.
         if (!isValidCase(i)) continue;
 
-        const factorValue = String(factorData[i]);
+        const factorCode = factorEncoding.codes[i];
         const testValue = Number(testData[i]);
 
         // Lewati nilai yang tidak dapat dikonversi menjadi angka.
@@ -192,18 +205,16 @@ function groupDataByFactor(testData, factorData, testVariable = {}, factorVariab
             continue;
         }
 
-        if (!groupCounts[factorValue]) {
-            groupCounts[factorValue] = 0;
-        }
-        groupCounts[factorValue]++;
+        groupCounts[factorCode]++;
     }
 
     // LANGKAH 2: Buat Float64Array untuk setiap grup
     const grouped = Object.create(null);
-    const groupIndices = Object.create(null);
-    for (const key in groupCounts) {
-        grouped[key] = new Float64Array(groupCounts[key]);
-        groupIndices[key] = 0;
+    const groupIndices = new Int32Array(factorEncoding.categories.length + 1);
+    for (let code = 1; code < groupCounts.length; code++) {
+        if (groupCounts[code] === 0) continue;
+        const label = factorEncoding.categories[code - 1];
+        grouped[label] = new Float64Array(groupCounts[code]);
     }
 
     // LANGKAH 3: Isi data ke Float64Array pada iterasi kedua
@@ -211,16 +222,17 @@ function groupDataByFactor(testData, factorData, testVariable = {}, factorVariab
         // Lewati kasus dengan nilai uji atau faktor yang missing.
         if (!isValidCase(i)) continue;
 
-        const factorValue = String(factorData[i]);
+        const factorCode = factorEncoding.codes[i];
+        const factorValue = factorEncoding.categories[factorCode - 1];
         const testValue = Number(testData[i]);
 
         // Lewati nilai yang tidak dapat dikonversi menjadi angka.
         if (isNaN(testValue)) continue;
 
         // Tambahkan nilai ke Float64Array
-        const idx = groupIndices[factorValue];
+        const idx = groupIndices[factorCode];
         grouped[factorValue][idx] = testValue;
-        groupIndices[factorValue]++;
+        groupIndices[factorCode]++;
     }
 
     console.log('[DEBUG] Worker - Grouped data:', Object.keys(grouped).map(key => ({

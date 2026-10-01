@@ -71,7 +71,7 @@ export const formatChiSquareTestsTable = (
       df: proportion?.df ?? pearson.df,
       pValue: proportion?.pValue ?? pearson.pValue,
       sampleSize: result.summary?.valid,
-      diagnostics,
+      purpose: params.options.statistics?.purpose ?? 'independence',
     }),
   };
 };

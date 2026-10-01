@@ -3,11 +3,20 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ChiSquareOptions from '@/components/Modals/Analyze/Descriptive/Crosstabs/components/ChiSquareOptions';
 
-describe('ChiSquareOptions', () => {
-  it('shows usage information and reports checkbox changes', async () => {
+describe('Black-box Tampilan Uji Kategorik', () => {
+  it('C-BB-06: menampilkan informasi penggunaan dan menerima pilihan pengguna', async () => {
     const onCheckedChange = jest.fn();
+    const onPurposeChange = jest.fn();
     const user = userEvent.setup();
-    render(<ChiSquareOptions checked={false} onCheckedChange={onCheckedChange} highlighted={false} />);
+    render(
+      <ChiSquareOptions
+        checked={false}
+        onCheckedChange={onCheckedChange}
+        purpose="independence"
+        onPurposeChange={onPurposeChange}
+        highlighted={false}
+      />,
+    );
 
     await user.hover(screen.getByRole('button', { name: 'Informasi penggunaan Chi-Square' }));
     const tooltip = await screen.findByRole('tooltip');

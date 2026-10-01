@@ -5,6 +5,7 @@ import type { TourStep } from './hooks/useTourGuide';
 
 // === Shared Types ===
 export type NonintegerWeightsType = 'roundCell' | 'roundCase' | 'truncateCell' | 'truncateCase' | 'noAdjustment';
+export type ChiSquareTestPurpose = 'independence' | 'proportion';
 export type VariableHighlight = { id: string, source: 'available' | 'row' | 'column' } | null;
 
 // === Tour Props ===
@@ -51,6 +52,7 @@ export interface CrosstabsAnalysisParams {
     options: {
         statistics?: {
             chiSquare: boolean;
+            purpose?: ChiSquareTestPurpose;
         },
         cells: {
             observed: boolean;

@@ -176,6 +176,18 @@ describe('useCrosstabsAnalysis', () => {
     });
 
     expect(mockAddStatistic).toHaveBeenCalledTimes(3); // Case Processing, Crosstabs, Chi-Square Tests
+    expect(mockAddStatistic).toHaveBeenNthCalledWith(
+      3,
+      'analytic-123',
+      expect.objectContaining({
+        components: 'Chi-Square Tests',
+        description: expect.stringContaining('Hipotesis uji kebebasan'),
+      }),
+    );
+    const savedDescription = mockAddStatistic.mock.calls[2][1].description;
+    expect(savedDescription).toContain('<strong>Interpretasi</strong>');
+    expect(savedDescription).toContain('gagal menolak H');
+    expect(savedDescription).not.toContain('Hipotesis uji proporsi');
   });
 
   it('should handle worker error', async () => {

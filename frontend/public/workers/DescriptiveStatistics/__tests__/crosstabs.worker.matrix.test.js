@@ -102,6 +102,36 @@ describe('crosstabs.worker – basics and date handling', () => {
     expect(cell.expected).toBe(1 / 3);
     expect(cell.residual).toBe(1 - (1 / 3));
   });
+
+  test.each([
+    {
+      categories: ['Ya', 'Tidak'],
+      expectedType: 'binomial-proportion-homogeneity',
+    },
+    {
+      categories: ['Rendah', 'Sedang', 'Tinggi'],
+      expectedType: 'multinomial-proportion-homogeneity',
+    },
+  ])('menyertakan uji proporsi $expectedType dari mesin kategorik', ({ categories, expectedType }) => {
+    const postSpy = jest.fn();
+    global.postMessage = postSpy;
+    loadWorker();
+
+    const variable = {
+      row: { name: 'Kelompok', label: 'Kelompok' },
+      col: { name: 'Hasil', label: 'Hasil' },
+    };
+    const data = ['A', 'B'].flatMap((group) => categories.map((category) => ({
+      Kelompok: group,
+      Hasil: category,
+    })));
+
+    global.onmessage({ data: { variable, data, options: { cells: {}, residuals: {} } } });
+
+    const chiSquare = postSpy.mock.calls[0][0].results.chiSquare;
+    expect(chiSquare.pearson.testType).toBe('independence');
+    expect(chiSquare.proportion.testType).toBe(expectedType);
+  });
 });
 
 

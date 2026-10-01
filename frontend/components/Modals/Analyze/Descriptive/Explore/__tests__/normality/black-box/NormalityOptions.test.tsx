@@ -3,8 +3,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import NormalityOptions from '@/components/Modals/Analyze/Descriptive/Explore/components/NormalityOptions';
 
-describe('NormalityOptions', () => {
-  it('shows requirements and reports checkbox changes', async () => {
+describe('Black-box Tampilan Uji Normalitas', () => {
+  it('N-BB-07: menampilkan syarat penggunaan dan menerima pilihan pengguna', async () => {
     const onCheckedChange = jest.fn();
     const user = userEvent.setup();
     render(<NormalityOptions checked={false} onCheckedChange={onCheckedChange} />);

@@ -320,10 +320,10 @@
     /**
      * Menyiapkan satu nilai kategori sebelum tabel kontingensi dibentuk.
      *
-     * Data kategorik tidak harus direcode menjadi angka. Nilai teks dapat dipakai
-     * langsung; spasi di awal/akhir dibuang agar variasi pengetikan seperti
-     * "SMA" dan " SMA " tidak membentuk dua kategori. Sel kosong dan angka yang
-     * tidak berhingga dikembalikan sebagai null agar dihitung sebagai missing.
+     * Nilai teks diterima langsung lalu diberi kode numerik sementara saat tabel
+     * kontingensi dibentuk. Spasi di awal/akhir dibuang agar variasi pengetikan
+     * seperti "SMA" dan " SMA " tidak membentuk dua kategori. Sel kosong dan
+     * angka yang tidak berhingga dikembalikan sebagai null agar dihitung missing.
      * Huruf besar-kecil tidak disamakan karena dapat mewakili kategori berbeda.
      */
     function normalizeCategoryValue(value) {
@@ -335,6 +335,35 @@
             return Number.isFinite(value) ? value : null;
         }
         return value === null || value === undefined ? null : value;
+    }
+
+    /**
+     * Memberi kode sementara 1, 2, 3, ... pada kategori tanpa mengubah data asli.
+     * Kode 0 menandai nilai kosong dan hanya dipakai selama analisis berlangsung.
+     */
+    function recodeCategoricalValues(values) {
+        if (!Array.isArray(values)) {
+            throw new TypeError('Nilai kategori harus berupa array.');
+        }
+
+        const categories = [];
+        const codeByValue = new Map();
+        const codes = new Int32Array(values.length);
+
+        for (let index = 0; index < values.length; index += 1) {
+            const value = normalizeCategoryValue(values[index]);
+            if (value === null) continue;
+
+            let code = codeByValue.get(value);
+            if (code === undefined) {
+                categories.push(value);
+                code = categories.length;
+                codeByValue.set(value, code);
+            }
+            codes[index] = code;
+        }
+
+        return { codes, categories };
     }
 
     /**
@@ -387,8 +416,10 @@
             includedWeights.push(caseWeights[index]);
         }
 
-        const rowCategories = sortCategories(new Set(normalizedRows));
-        const columnCategories = sortCategories(new Set(normalizedColumns));
+        const rowEncoding = recodeCategoricalValues(normalizedRows);
+        const columnEncoding = recodeCategoricalValues(normalizedColumns);
+        const rowCategories = sortCategories(rowEncoding.categories);
+        const columnCategories = sortCategories(columnEncoding.categories);
         const rowIndexByValue = new Map(rowCategories.map((value, index) => [value, index]));
         const columnIndexByValue = new Map(columnCategories.map((value, index) => [value, index]));
         let observed = Array.from(
@@ -401,8 +432,10 @@
         );
 
         for (let index = 0; index < normalizedRows.length; index += 1) {
-            const rowIndex = rowIndexByValue.get(normalizedRows[index]);
-            const columnIndex = columnIndexByValue.get(normalizedColumns[index]);
+            const rowValue = rowEncoding.categories[rowEncoding.codes[index] - 1];
+            const columnValue = columnEncoding.categories[columnEncoding.codes[index] - 1];
+            const rowIndex = rowIndexByValue.get(rowValue);
+            const columnIndex = columnIndexByValue.get(columnValue);
             const current = observed[rowIndex][columnIndex];
             const weight = includedWeights[index];
             const next = current + weight;
@@ -443,6 +476,7 @@
     const api = {
         compensatedSum,
         normalizeCategoryValue,
+        recodeCategoricalValues,
         buildContingencyTable,
         calculateExpectedCount,
         calculatePearsonChiSquare,

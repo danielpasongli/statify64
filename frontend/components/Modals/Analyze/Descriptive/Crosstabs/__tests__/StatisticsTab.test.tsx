@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import StatisticsTab from '../StatisticsTab';
@@ -34,5 +34,28 @@ describe('StatisticsTab', () => {
 
     const tooltip = await screen.findByRole('tooltip');
     expect(within(tooltip).getByText(description)).toBeVisible();
+  });
+
+  it('menampilkan pilihan tujuan setelah Pearson Chi-Square dipilih', async () => {
+    const user = userEvent.setup();
+
+    const TestHarness = () => {
+      const [currentOptions, setCurrentOptions] = useState(options);
+      return <StatisticsTab options={currentOptions} setOptions={setCurrentOptions} />;
+    };
+
+    render(<TestHarness />);
+
+    expect(screen.queryByRole('radiogroup', { name: 'Tujuan Pengujian' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Pearson Chi-Square'));
+
+    expect(screen.getByRole('radio', { name: 'Uji Kebebasan' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Uji Kesamaan Proporsi' })).not.toBeChecked();
+
+    await user.click(screen.getByRole('radio', { name: 'Uji Kesamaan Proporsi' }));
+
+    expect(screen.getByRole('radio', { name: 'Uji Kesamaan Proporsi' })).toBeChecked();
+    expect(screen.getByText(/binomial atau multinomial ditentukan otomatis/i)).toBeVisible();
   });
 });

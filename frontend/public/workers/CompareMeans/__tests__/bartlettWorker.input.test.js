@@ -37,6 +37,19 @@ test('Bartlett accepts ordinary categorical labels that coincide with object pro
     expect(Array.from(groups.constructor)).toEqual([5, 7]);
 });
 
+test('Bartlett merecode faktor teks menjadi kode sementara berbasis satu', () => {
+    const worker = loadWorker();
+    const dataAsli = ['SMA', 'SMP', 'SMA', 'SD'];
+
+    expect(worker.recodeCategoricalValues).toEqual(expect.any(Function));
+
+    const hasil = worker.recodeCategoricalValues(dataAsli);
+
+    expect(Array.from(hasil.codes)).toEqual([1, 2, 1, 3]);
+    expect(Array.from(hasil.categories)).toEqual(['SMA', 'SMP', 'SD']);
+    expect(dataAsli).toEqual(['SMA', 'SMP', 'SMA', 'SD']);
+});
+
 test('CALCULATE passes both variable definitions to input selection', () => {
     const worker = loadWorker();
     worker.self.onmessage({ data: { type: 'CALCULATE', data: {

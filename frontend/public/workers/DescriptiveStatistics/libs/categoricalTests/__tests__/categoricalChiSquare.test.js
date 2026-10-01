@@ -156,7 +156,20 @@ describe('mesin uji Chi-Square kategorik', () => {
     });
   });
 
-  test('membersihkan spasi kategori mentah dan mengabaikan kategori kosong tanpa recode', () => {
+  test('merecode kategori menjadi kode sementara berbasis satu tanpa mengubah data asli', () => {
+    const api = loadApi();
+    const dataAsli = ['SMA', 'SMP', 'SMA', 'SD'];
+
+    expect(api.recodeCategoricalValues).toEqual(expect.any(Function));
+
+    const hasil = api.recodeCategoricalValues(dataAsli);
+
+    expect(Array.from(hasil.codes)).toEqual([1, 2, 1, 3]);
+    expect(hasil.categories).toEqual(['SMA', 'SMP', 'SD']);
+    expect(dataAsli).toEqual(['SMA', 'SMP', 'SMA', 'SD']);
+  });
+
+  test('membersihkan spasi dan mengabaikan kategori kosong saat recode sementara', () => {
     const api = loadApi();
     const result = api.buildContingencyTable(
       [' SMA ', 'SMA', 'SMP', ' SMP ', '', 'SMA'],

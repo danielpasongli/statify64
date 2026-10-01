@@ -3,8 +3,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import BartlettInfo from '../../components/BartlettInfo';
 
-describe('BartlettInfo', () => {
-  it('shows the test requirements on hover', async () => {
+describe('Black-box Tampilan Uji Bartlett', () => {
+  it('B-BB-06: menampilkan syarat penggunaan ketika ikon informasi disorot', async () => {
     render(<BartlettInfo />);
     const user = userEvent.setup();
 

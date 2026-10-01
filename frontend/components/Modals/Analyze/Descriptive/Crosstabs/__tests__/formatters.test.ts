@@ -179,6 +179,40 @@ describe('Crosstabs Formatters', () => {
     });
 
     describe('formatChiSquareTestsTable', () => {
+        it('hanya menampilkan hipotesis dan interpretasi uji kebebasan ketika tujuan uji kebebasan dipilih', () => {
+            const independenceParams = {
+                ...mockParams,
+                options: {
+                    ...mockParams.options,
+                    statistics: { chiSquare: true, purpose: 'independence' },
+                },
+            } as CrosstabsAnalysisParams;
+
+            const description = formatChiSquareTestsTable(mockResult, independenceParams)?.description?.join(' ') ?? '';
+
+            expect(description).toContain('Hipotesis uji kebebasan');
+            expect(description).toContain('terdapat hubungan antara Gender dan Job Category');
+            expect(description).not.toContain('Konteks proporsi');
+            expect(description).not.toContain('proporsi Job Category antar kelompok Gender');
+        });
+
+        it('hanya menampilkan hipotesis dan interpretasi proporsi ketika tujuan uji proporsi dipilih', () => {
+            const proportionParams = {
+                ...mockParams,
+                options: {
+                    ...mockParams.options,
+                    statistics: { chiSquare: true, purpose: 'proportion' },
+                },
+            } as CrosstabsAnalysisParams;
+
+            const description = formatChiSquareTestsTable(mockResult, proportionParams)?.description?.join(' ') ?? '';
+
+            expect(description).toContain('Hipotesis uji proporsi multinomial');
+            expect(description).toContain('proporsi Job Category antar kelompok Gender berbeda');
+            expect(description).not.toContain('Hipotesis uji kebebasan');
+            expect(description).not.toContain('terdapat hubungan antara Gender dan Job Category');
+        });
+
         it('menampilkan statistik dan p-value tanpa pembulatan desimal tetap', () => {
             const preciseResult: CrosstabsWorkerResult = {
                 ...mockResult,
@@ -211,10 +245,9 @@ describe('Crosstabs Formatters', () => {
             expect(formatted?.description).toEqual(expect.arrayContaining([
                 '<p><strong>Hipotesis uji kebebasan</strong></p>',
                 '<p>H₀: Pᵢⱼ = Pᵢ·P·ⱼ — Gender dan Job Category saling bebas.</p>',
-                '<p><strong>Konteks proporsi multinomial</strong></p>',
             ]));
             expect(formatted?.description?.join(' ')).toContain('p-value = 2,6e-10');
-            expect(formatted?.description?.join(' ')).toContain('angka 67,149');
+            expect(formatted?.description?.join(' ')).not.toContain('Konteks proporsi');
         });
 
         it('uses binomial proportion context when the outcome has two categories', () => {
@@ -227,9 +260,15 @@ describe('Crosstabs Formatters', () => {
                 },
             };
 
-            const formatted = formatChiSquareTestsTable(binomialResult, mockParams);
+            const formatted = formatChiSquareTestsTable(binomialResult, {
+                ...mockParams,
+                options: {
+                    ...mockParams.options,
+                    statistics: { chiSquare: true, purpose: 'proportion' },
+                },
+            } as CrosstabsAnalysisParams);
 
-            expect(formatted?.description?.join(' ')).toContain('Konteks proporsi binomial');
+            expect(formatted?.description?.join(' ')).toContain('Hipotesis uji proporsi binomial');
             expect(formatted?.description?.join(' ')).toContain('p₁ = p₂ = ⋯ = pₖ');
             expect(formatted?.description?.join(' ')).toContain('terdapat cukup bukti untuk menyatakan bahwa proporsi Job Category antar kelompok Gender berbeda.');
         });
