@@ -17,9 +17,10 @@ const BartlettInfo = () => (
         </button>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-xs space-y-1 text-xs">
-        <p>Gunakan variabel numerik berskala pada dua atau lebih kelompok independen.</p>
-        <p>Data dalam setiap kelompok harus berdistribusi normal.</p>
-        <p>Setiap kelompok memerlukan minimal dua observasi valid dan varians lebih dari nol.</p>
+        <p>Uji Bartlett digunakan untuk memeriksa apakah varians beberapa kelompok sama atau homogen.</p>
+        <p>Variabel yang diuji harus numerik.</p>
+        <p>Variabel kelompok harus kategorik dan mempunyai minimal dua kelompok.</p>
+        <p>Data pada setiap kelompok sebaiknya berdistribusi normal.</p>
       </TooltipContent>
     </Tooltip>
   </TooltipProvider>

@@ -11,7 +11,9 @@ describe('Black-box Tampilan Uji Bartlett', () => {
     await user.hover(screen.getByRole('button', { name: 'Syarat penggunaan uji Bartlett' }));
     const tooltip = await screen.findByRole('tooltip');
 
-    expect(within(tooltip).getByText(/dua atau lebih kelompok independen/i)).toBeVisible();
-    expect(within(tooltip).getByText(/berdistribusi normal/i)).toBeVisible();
+    expect(within(tooltip).getByText(/memeriksa apakah varians beberapa kelompok sama atau homogen/i)).toBeVisible();
+    expect(within(tooltip).getByText(/variabel yang diuji harus numerik/i)).toBeVisible();
+    expect(within(tooltip).getByText(/variabel kelompok harus kategorik dan mempunyai minimal dua kelompok/i)).toBeVisible();
+    expect(within(tooltip).getByText(/setiap kelompok sebaiknya berdistribusi normal/i)).toBeVisible();
   });
 });

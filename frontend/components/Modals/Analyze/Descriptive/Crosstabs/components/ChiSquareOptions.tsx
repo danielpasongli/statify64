@@ -36,8 +36,12 @@ const ChiSquareOptions = ({ checked, onCheckedChange, purpose, onPurposeChange, 
               <InfoIcon className="h-4 w-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right" className="max-w-xs text-xs">
-            Untuk uji proporsi binomial/multinomial dan uji kebebasan Chi-Square dibutuhkan minimal 2 variabel bertipe kategorik.
+          <TooltipContent side="right" className="max-w-sm space-y-1 text-xs">
+            <p>Uji Kebebasan memeriksa hubungan antara dua variabel kategorik.</p>
+            <p>Uji Kesamaan Proporsi membandingkan proporsi hasil pada beberapa kelompok.</p>
+            <p>Variabel kelompok dan variabel hasil harus kategorik.</p>
+            <p>Dua kategori hasil menggunakan binomial.</p>
+            <p>Tiga atau lebih kategori hasil menggunakan multinomial.</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

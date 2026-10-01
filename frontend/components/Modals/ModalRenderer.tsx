@@ -3,10 +3,11 @@
 import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { X } from "lucide-react";
-import type { ModalType, BaseModalProps} from "@/types/modalTypes";
-import { getModalTitle } from "@/types/modalTypes";
+import type { BaseModalProps } from "@/types/modalTypes";
+import { getModalTitle, ModalType } from "@/types/modalTypes";
 import { getModalComponent, getModalContainerType } from "./ModalRegistry";
 import { useMobile } from "@/hooks/useMobile";
+import BartlettInfo from "./Analyze/CompareMeans/BartlettTest/components/BartlettInfo";
 
 interface ModalRendererProps extends BaseModalProps {
   modalType: ModalType;
@@ -94,7 +95,10 @@ const ModalRenderer: React.FC<ModalRendererProps> = ({
     return (
       <div className="h-full flex flex-col bg-background overflow-hidden w-full">
         <div className="flex justify-between items-center border-b p-4 shrink-0">
-          <h2 className="text-xl font-semibold truncate mr-2" data-testid="modal-title">{title}</h2>
+          <div className="flex min-w-0 items-center gap-1 mr-2">
+            <h2 className="text-xl font-semibold truncate" data-testid="modal-title">{title}</h2>
+            {modalType === ModalType.BartlettTest && <BartlettInfo />}
+          </div>
           <button 
             onClick={onClose}
             className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0"
@@ -140,4 +144,4 @@ const ModalRenderer: React.FC<ModalRendererProps> = ({
   );
 };
 
-export default ModalRenderer; 
+export default ModalRenderer;
