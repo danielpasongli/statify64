@@ -117,7 +117,6 @@ const OrdinalMain: React.FC = () => {
       parameterEstimates: true,
       asymptoticCovariance: false,
       asymptoticCorrelation: false,
-      cellInformation: false,
       testOfParallelLines: false,
       iterationHistory: false,
       iterationHistoryStep: 1,
@@ -379,11 +378,11 @@ const OrdinalMain: React.FC = () => {
       }
 
       // Validasi parameter options (tidak boleh minus / negatif)
-      if (optParams.maxIterations < 0) {
-        throw new Error("Maximum iterations tidak boleh minus.");
+      if (optParams.maxIterations <= 0) {
+        throw new Error("Maximum iterations tidak boleh minus atau nol.");
       }
-      if (optParams.maxStepHalving < 0) {
-        throw new Error("Maximum step-halving tidak boleh minus.");
+      if (optParams.maxStepHalving <= 0) {
+        throw new Error("Maximum step-halving tidak boleh minus atau nol.");
       }
       if (optParams.logLikelihoodConvergence < 0) {
         throw new Error("Log-likelihood convergence tidak boleh minus.");
@@ -869,7 +868,6 @@ const OrdinalMain: React.FC = () => {
           parameterEstimates: outputParams.display.parameterEstimates,
           asymptoticCovariance: outputParams.display.asymptoticCovariance,
           asymptoticCorrelation: outputParams.display.asymptoticCorrelation,
-          cellInformation: outputParams.display.cellInformation,
           testOfParallelLines: outputParams.display.testOfParallelLines,
           iterationHistory: printIterationHistory,
           iterationHistoryStep: iterationHistoryEvery,
