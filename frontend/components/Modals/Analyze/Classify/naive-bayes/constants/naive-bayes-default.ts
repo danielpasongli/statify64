@@ -8,6 +8,12 @@ import type {
 
 export const NaiveBayesMainDefault: NaiveBayesMainType = {
     TargetVar: null,
+    // AGENTS.md §3.3 poin 1: kondisi awal (panel baru dibuka, belum ada
+    // interaksi) adalah mode "exclude" dengan ExcludedVariables kosong.
+    // Diperbaiki Fase 18 (Temuan 2): sebelumnya tidak ada field
+    // diskriminator ini sama sekali -- mode hanya diturunkan secara
+    // heuristik dari isi array (lihat riwayat `getEffectivePredictors`).
+    SpecificationMode: "exclude",
     ExcludedVar: null,
     CandidateFactors: null,
     CandidateCovariates: null,

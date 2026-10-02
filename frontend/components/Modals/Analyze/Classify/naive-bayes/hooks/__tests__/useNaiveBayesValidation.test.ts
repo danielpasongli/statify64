@@ -39,6 +39,7 @@ describe("getEffectivePredictors", () => {
     it("mode exclude: predictor efektif = semua eligible dikurangi target & excluded", () => {
         const main: NaiveBayesType["main"] = {
             TargetVar: "target_cat",
+            SpecificationMode: "exclude",
             ExcludedVar: ["factor_a"],
             CandidateFactors: null,
             CandidateCovariates: null,
@@ -54,6 +55,7 @@ describe("getEffectivePredictors", () => {
     it("mode candidates: predictor efektif = gabungan CandidateFactors + CandidateCovariates", () => {
         const main: NaiveBayesType["main"] = {
             TargetVar: "target_cat",
+            SpecificationMode: "candidates",
             ExcludedVar: [],
             CandidateFactors: ["factor_a"],
             CandidateCovariates: ["covariate_a"],
@@ -67,6 +69,7 @@ describe("getEffectivePredictors", () => {
     it("mode exclude kosong tanpa exclude apapun -> semua eligible selain target", () => {
         const main: NaiveBayesType["main"] = {
             TargetVar: "target_cat",
+            SpecificationMode: "exclude",
             ExcludedVar: [],
             CandidateFactors: null,
             CandidateCovariates: null,
@@ -75,6 +78,41 @@ describe("getEffectivePredictors", () => {
         const result = getEffectivePredictors(main, baseVariables);
 
         expect(result).toEqual(["factor_a", "covariate_a", "covariate_b"]);
+    });
+
+    it("Temuan 2 (Fase 18): SpecificationMode adalah SATU-SATUNYA sumber kebenaran mode, bukan isi array -- heuristik lama keliru menganggap CandidateFactors terisi berarti mode candidates aktif", () => {
+        const main: NaiveBayesType["main"] = {
+            TargetVar: "target_cat",
+            SpecificationMode: "exclude",
+            ExcludedVar: ["factor_a"],
+            // Sisa data mode "candidates" yang seharusnya sudah kosong
+            // (AGENTS.md §3.3 poin 3) tapi disimulasikan di sini masih
+            // terisi, untuk membuktikan fungsi tidak lagi membaca array
+            // ini untuk MENENTUKAN mode -- hanya SpecificationMode yang
+            // menentukan.
+            CandidateFactors: ["factor_a"],
+            CandidateCovariates: null,
+        };
+
+        const result = getEffectivePredictors(main, baseVariables);
+
+        // Harus mengikuti mode "exclude" (semua eligible dikurangi target
+        // & ExcludedVar) -- BUKAN ["factor_a"] seperti yang akan
+        // dihasilkan heuristik lama.
+        expect(result).toEqual(["covariate_a", "covariate_b"]);
+    });
+
+    it("fallback: SpecificationMode belum ada di data lama (kompatibilitas mundur) -> diperlakukan sebagai mode exclude", () => {
+        const main = {
+            TargetVar: "target_cat",
+            ExcludedVar: ["factor_a"],
+            CandidateFactors: null,
+            CandidateCovariates: null,
+        } as unknown as NaiveBayesType["main"];
+
+        const result = getEffectivePredictors(main, baseVariables);
+
+        expect(result).toEqual(["covariate_a", "covariate_b"]);
     });
 });
 

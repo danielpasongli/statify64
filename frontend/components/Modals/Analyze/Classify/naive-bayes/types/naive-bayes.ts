@@ -2,8 +2,16 @@
    MAIN TAB
 ========================= */
 
+// AGENTS.md §3.3: dua mode Variable Specification Method, saling
+// eksklusif, dibedakan oleh SATU field diskriminator ini (Temuan 2
+// laporan regresi Fase 18 -- sebelumnya field ini tidak ada sama sekali,
+// mode hanya diturunkan secara heuristik dari isi array, lihat riwayat
+// versi lama `getEffectivePredictors` di `useNaiveBayesValidation.ts`).
+export type NaiveBayesSpecificationMode = "exclude" | "candidates";
+
 export type NaiveBayesMainType = {
     TargetVar: string | null;
+    SpecificationMode: NaiveBayesSpecificationMode;
     ExcludedVar: string[] | null;
     CandidateFactors: string[] | null;
     CandidateCovariates: string[] | null;

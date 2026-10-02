@@ -14,38 +14,43 @@ const MAX_SEED = 4294967295;
 /**
  * Predictor efektif menurut kontrak AGENTS.md §3.3.
  *
- * CATATAN PENYIMPANGAN (lihat laporan Fase 5): AGENTS.md §3.3 mewajibkan satu
- * field diskriminator `SpecificationMode: "exclude" | "candidates"` yang
- * saling eksklusif. Implementasi Fase 1 (`types/naive-bayes.ts`,
- * `variables-tab.tsx`) TIDAK memiliki field tersebut — hanya tiga array
- * independen (`ExcludedVar`, `CandidateFactors`, `CandidateCovariates`) yang
- * secara teknis bisa terisi bersamaan. Fungsi ini menurunkan (derive) mode
- * secara heuristik dari isi state saat ini, bukan membaca satu sumber
- * kebenaran diskriminator:
- *   - Jika `CandidateFactors` atau `CandidateCovariates` terisi -> mode
- *     "candidates" dianggap aktif, predictor efektif = gabungan keduanya.
- *   - Selain itu -> mode "exclude" dianggap aktif, predictor efektif =
- *     semua variabel eligible (measure !== "unknown", bukan target)
- *     dikurangi `ExcludedVar`.
- * Ini TIDAK mengimplementasikan aturan exclusivity/auto-clear/greying-out
- * penuh dari §3.3 (itu tanggung jawab Fase 1 yang perlu direvisi terpisah).
- * Heuristik ini hanya dipakai untuk keperluan validasi tombol OK di Fase 5.
+ * Diperbaiki di Fase 18 (Temuan 2 -- sebelumnya bagian ini berjudul
+ * "CATATAN PENYIMPANGAN"): mode kini dibaca LANGSUNG dari satu field
+ * diskriminator `main.SpecificationMode` ("exclude" | "candidates"),
+ * bukan lagi diturunkan secara heuristik dari isi array
+ * (`CandidateFactors`/`CandidateCovariates` terisi atau tidak). Heuristik
+ * lama salah kalau mode aktif sebenarnya "exclude" tapi array mode
+ * "candidates" masih menyimpan sisa data lama yang belum sempat
+ * dikosongkan -- lihat regression test untuk kasus ini di
+ * `hooks/__tests__/useNaiveBayesValidation.test.ts`.
+ *
+ * Exclusivity penuh (auto-activate saat drop pertama ke blok tidak
+ * aktif, auto-clear isi mode sebelumnya kembali ke pool "available",
+ * graying-out blok tidak aktif) diimplementasikan di
+ * `components/variables-tab.tsx`, yang menjamin isi mode yang tidak
+ * aktif SELALU kosong begitu mode berpindah. Fungsi ini tetap membaca
+ * `SpecificationMode` secara eksplisit (bukan bergantung pada jaminan
+ * itu) supaya tetap benar untuk state yang mungkin belum melalui
+ * `variables-tab.tsx` (data lama di IndexedDB, pemanggilan langsung dari
+ * test, dll).
  */
 export function getEffectivePredictors(
     main: NaiveBayesType["main"],
     variables: Variable[]
 ): string[] {
-    const candidateFactors = main.CandidateFactors ?? [];
-    const candidateCovariates = main.CandidateCovariates ?? [];
-    const isCandidatesMode =
-        candidateFactors.length > 0 || candidateCovariates.length > 0;
+    const target = main.TargetVar;
+    // Fallback "exclude" untuk kompatibilitas mundur dengan data
+    // tersimpan dari sebelum field ini ada -- lihat fallback identik di
+    // `variables-tab.tsx`.
+    const mode = main.SpecificationMode ?? "exclude";
 
-    if (isCandidatesMode) {
+    if (mode === "candidates") {
+        const candidateFactors = main.CandidateFactors ?? [];
+        const candidateCovariates = main.CandidateCovariates ?? [];
         return [...candidateFactors, ...candidateCovariates];
     }
 
     const excluded = new Set(main.ExcludedVar ?? []);
-    const target = main.TargetVar;
 
     return variables
         .filter((v) => v.measure !== "unknown")
