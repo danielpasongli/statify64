@@ -107,6 +107,10 @@ pub struct ExportTarget {
     /// `NaiveBayesTrainedModelRaw::target::class_priors: number[]` di sisi
     /// TS.
     pub class_priors: Vec<f64>,
+    /// AGENTS.md NB §5.10 schema 1.1 — dipakai Apply Model untuk kategori tak
+    /// dikenal (§5.9). Jumlah baris training per kelas, sejajar index dengan
+    /// `classes` (0 bila kelas tidak ada di `model.class_priors.class_counts`).
+    pub class_counts: Vec<u64>,
 }
 
 /// Satu entri `features` (AGENTS.md §5.10: "daftar atribut dengan `name`,
@@ -126,6 +130,10 @@ pub enum ExportFeature {
         /// `categories`), sudah termasuk hasil smoothing (AGENTS.md
         /// §5.10: "termasuk hasil smoothing").
         distribution: HashMap<String, Vec<f64>>,
+        /// AGENTS.md NB §5.10 schema 1.1 — dipakai Apply Model untuk kategori
+        /// tak dikenal (§5.9). class -> Σ `raw_count` kelas itu pada fitur ini
+        /// (0 bila fitur/kelas tidak ada di model).
+        class_totals: HashMap<String, u64>,
     },
     Numerical {
         name: String,
@@ -190,6 +198,18 @@ pub fn build_exported_model(
         .map(|class| *model.class_priors.priors.get(class).unwrap_or(&0.0))
         .collect();
 
+    let class_counts: Vec<u64> = classes
+        .iter()
+        .map(|class| {
+            model
+                .class_priors
+                .class_counts
+                .get(class)
+                .copied()
+                .unwrap_or(0) as u64
+        })
+        .collect();
+
     let features: Vec<ExportFeature> = preprocessed
         .predictor_order
         .iter()
@@ -209,13 +229,14 @@ pub fn build_exported_model(
         .collect();
 
     ExportedModel {
-        schema_version: "1.0".to_string(),
+        schema_version: "1.1".to_string(),
         model_type: "naive_bayes".to_string(),
         trained_at: now_iso8601(),
         target: ExportTarget {
             name: preprocessed.target_variable.clone(),
             classes: classes.clone(),
             class_priors,
+            class_counts,
         },
         features,
         smoothing_alpha: config.options.smoothing_alpha,
@@ -258,11 +279,23 @@ fn build_export_feature(
                 })
                 .collect();
 
+            let class_totals: HashMap<String, u64> = classes
+                .iter()
+                .map(|class| {
+                    let total: usize = distribution_source
+                        .and_then(|dist| dist.per_class.get(class))
+                        .map(|per_class| per_class.values().map(|stat| stat.raw_count).sum())
+                        .unwrap_or(0);
+                    (class.clone(), total as u64)
+                })
+                .collect();
+
             ExportFeature::Categorical {
                 name: name.to_string(),
                 role: "categorical",
                 categories,
                 distribution,
+                class_totals,
             }
         }
         PredictorRole::Covariate => {
@@ -485,11 +518,13 @@ mod tests {
 
         let exported = build_exported_model(&preprocessed, &model, &config);
 
-        assert_eq!(exported.schema_version, "1.0");
+        assert_eq!(exported.schema_version, "1.1");
         assert_eq!(exported.model_type, "naive_bayes");
         assert_eq!(exported.target.name, "Play");
         assert_eq!(exported.target.classes, vec!["No".to_string(), "Yes".to_string()]);
         assert_eq!(exported.target.class_priors.len(), 2);
+        // Fixture 2 baris: No=1, Yes=1 (schema 1.1).
+        assert_eq!(exported.target.class_counts, vec![1u64, 1u64]);
         assert_eq!(exported.feature_order, vec!["Outlook".to_string(), "Temp".to_string()]);
         assert_eq!(exported.features.len(), 2);
         assert_eq!(exported.smoothing_alpha, 1.0);
@@ -509,8 +544,12 @@ mod tests {
                 role,
                 categories,
                 distribution,
+                class_totals,
             } => {
                 assert_eq!(name, "Outlook");
+                assert_eq!(class_totals.len(), 2);
+                assert_eq!(class_totals.get("No"), Some(&1u64));
+                assert_eq!(class_totals.get("Yes"), Some(&1u64));
                 assert_eq!(*role, "categorical");
                 assert_eq!(categories.len(), 2); // "Rain", "Sunny"
                 assert_eq!(distribution.len(), 2); // satu entri per kelas
@@ -617,12 +656,102 @@ mod tests {
         let exported = build_exported_model(&preprocessed, &model, &config);
         assert_eq!(exported.features.len(), 3);
         match &exported.features[2] {
-            ExportFeature::Categorical { categories, distribution, .. } => {
+            ExportFeature::Categorical { categories, distribution, class_totals, .. } => {
                 assert!(categories.is_empty());
+                assert_eq!(class_totals.len(), 2);
+                assert_eq!(class_totals.get("No"), Some(&0u64));
+                assert_eq!(class_totals.get("Yes"), Some(&0u64));
                 assert_eq!(distribution.len(), 2);
                 for probs in distribution.values() {
                     assert!(probs.is_empty());
                 }
+            }
+            other => panic!("expected categorical feature, got {:?}", other),
+        }
+    }
+
+    /// Apply Model PLAN.md Fase 0 langkah 5: dataset 6-baris yang sama dengan
+    /// `prediction.rs` tests (No=3, Yes=3) -> `class_counts == [3,3]` dan
+    /// `class_totals == {No:3, Yes:3}` (Σ raw_count per kelas).
+    #[test]
+    fn class_counts_and_class_totals_match_training_counts() {
+        fn case(target_class: &str, outlook: &str, temp: f64) -> PreprocessedCase {
+            let mut factors = StdHashMap::new();
+            factors.insert("Outlook".to_string(), outlook.to_string());
+            let mut covariates = StdHashMap::new();
+            covariates.insert("Temp".to_string(), Some(temp));
+            PreprocessedCase {
+                target_class: target_class.to_string(),
+                factors,
+                covariates,
+            }
+        }
+
+        let cases = vec![
+            case("Yes", "Sunny", 70.0),
+            case("Yes", "Sunny", 72.0),
+            case("Yes", "Rain", 74.0),
+            case("No", "Sunny", 80.0),
+            case("No", "Overcast", 82.0),
+            case("No", "Overcast", 90.0),
+        ];
+        let classes = vec!["No".to_string(), "Yes".to_string()];
+        let factor_names = vec!["Outlook".to_string()];
+        let covariate_names = vec!["Temp".to_string()];
+
+        let preprocessed = PreprocessedData {
+            total_instances: 6,
+            excluded_target_missing: 0,
+            target_variable: "Play".to_string(),
+            predictor_order: vec![
+                ("Outlook".to_string(), PredictorRole::Factor),
+                ("Temp".to_string(), PredictorRole::Covariate),
+            ],
+            factor_names: factor_names.clone(),
+            covariate_names: covariate_names.clone(),
+            classes: classes.clone(),
+            cases: cases.clone(),
+        };
+        let model =
+            train_naive_bayes_model(&cases, &classes, &factor_names, &covariate_names, 1.0, 1e-9);
+
+        let config = NaiveBayesConfig {
+            main: crate::models::config::MainConfig {
+                target_var: Some("Play".to_string()),
+                excluded_var: None,
+                candidate_factors: None,
+                candidate_covariates: None,
+            },
+            options: crate::models::config::OptionsConfig {
+                missing_value_policy: "exclude".to_string(),
+                unseen_category_policy: "smoothing".to_string(),
+                smoothing_alpha: 1.0,
+                variance_floor: 1e-9,
+            },
+            validation: ValidationConfig {
+                validation_method: "holdout".to_string(),
+                training_percentage: 70.0,
+                k_folds: 10,
+                random_seed: Some(42),
+            },
+            output: crate::models::config::OutputConfig {
+                case_processing_summary: true,
+                attribute_distribution_table: true,
+                model_evaluation_metrics: true,
+                confusion_matrix: true,
+            },
+        };
+
+        let exported = build_exported_model(&preprocessed, &model, &config);
+
+        assert_eq!(exported.schema_version, "1.1");
+        assert_eq!(exported.target.class_counts, vec![3u64, 3u64]);
+        match &exported.features[0] {
+            ExportFeature::Categorical { class_totals, .. } => {
+                let mut expected: HashMap<String, u64> = HashMap::new();
+                expected.insert("No".to_string(), 3);
+                expected.insert("Yes".to_string(), 3);
+                assert_eq!(class_totals, &expected);
             }
             other => panic!("expected categorical feature, got {:?}", other),
         }
