@@ -46,22 +46,22 @@ const OptionsTab: FC<OptionsTabProps> = ({
             </div>
 
             <div id="confidence-level-section" className="p-4 bg-muted/30 rounded-md border relative">
-                <h4 className="text-sm font-semibold mb-2">About Bartlett&apos;s Test of Homogeneity</h4>
+                <h4 className="text-sm font-semibold mb-2">Tentang Uji Homogenitas Bartlett</h4>
                 <p className="text-xs text-muted-foreground">
-                    Bartlett&apos;s Test of Homogeneity of Variances evaluates the equality of variances across groups using a chi-square distribution.
-                    It is commonly used as a prerequisite check before performing ANOVA or other parametric tests that assume equal variances.
+                    Uji Homogenitas Varians Bartlett mengevaluasi kesamaan varians antar kelompok menggunakan distribusi chi-square.
+                    Uji ini umum digunakan sebagai pemeriksaan prasyarat sebelum melakukan ANOVA atau uji parametrik lain yang mengasumsikan kesamaan varians.
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
-                    <strong>Null Hypothesis (H₀):</strong> All group variances are equal (homogeneous).
+                    <strong>Hipotesis Nol (H₀):</strong> Semua varians kelompok sama (homogen).
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                    <strong>Alternative (H₁):</strong> At least two group variances are different.
+                    <strong>Hipotesis Alternatif (H₁):</strong> Setidaknya terdapat dua kelompok yang memiliki varians berbeda.
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
-                    A significant result (p &lt; 0.05) suggests the assumption of equal variances is violated.
+                    Hasil yang signifikan (p &lt; 0,05) menunjukkan bahwa asumsi kesamaan varians tidak terpenuhi.
                 </p>
                 <p className="text-xs text-muted-foreground mt-2 italic">
-                    <strong>Note:</strong> This test is sensitive to departures from normality. For non-normal data, consider using Levene&apos;s Test instead.
+                    <strong>Catatan:</strong> Uji ini sensitif terhadap penyimpangan dari normalitas. Untuk data yang tidak berdistribusi normal, pertimbangkan menggunakan Uji Levene.
                 </p>
                 <ActiveElementHighlight active={tourActive && currentStep === tourSteps.findIndex(step => step.targetId === 'confidence-level-section')} />
             </div>

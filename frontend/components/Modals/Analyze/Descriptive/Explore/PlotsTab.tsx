@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { PlotsTabProps } from "./types";
+import NormalityOptions from "./components/NormalityOptions";
 
 const PlotsTab: FC<PlotsTabProps> = ({
     boxplotType,
@@ -89,20 +90,7 @@ const PlotsTab: FC<PlotsTabProps> = ({
                     <Label htmlFor="histogram" className="font-normal">Histogram</Label>
                 </div>
             </div>
-            <div data-testid="explore-normality-section" className="p-4 border rounded-md space-y-3">
-                <Label className="text-base font-medium">Normality</Label>
-                <div className="flex items-center space-x-2">
-                    <Checkbox
-                        id="normality-plots-tests"
-                        data-testid="explore-normality-plots-tests-checkbox"
-                        checked={showNormalityPlots}
-                        onCheckedChange={(checked) => {
-                            setShowNormalityPlots(checked as boolean);
-                        }}
-                    />
-                    <Label htmlFor="normality-plots-tests" className="font-normal">Normality plots with tests</Label>
-                </div>
-            </div>
+            <NormalityOptions checked={showNormalityPlots} onCheckedChange={setShowNormalityPlots} />
         </div>
     );
 };

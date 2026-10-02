@@ -4,7 +4,7 @@ use crate::types::{
     response_categories_to_vec, AggregatedData, Category, PlumError, PlumWorkerPayload, ScaleType,
     Subpopulation,
 };
-use crate::utils::{is_finite_non_negative, EPS};
+use crate::utils::is_finite_non_negative;
 
 pub fn aggregate_data(input: &PlumWorkerPayload) -> Result<AggregatedData, PlumError> {
     let ordered_categories = response_categories_to_vec(&input.response.response_categories)?;
@@ -73,7 +73,7 @@ pub fn aggregate_data(input: &PlumWorkerPayload) -> Result<AggregatedData, PlumE
     for mut subpop in map.into_values() {
         if zero_cell_correction > 0.0 && subpop.marginal_count > 0.0 {
             for count in &mut subpop.counts {
-                if *count <= EPS {
+                if *count == 0.0 {
                     *count += zero_cell_correction;
                     subpop.marginal_count += zero_cell_correction;
                 }
@@ -88,6 +88,14 @@ pub fn aggregate_data(input: &PlumWorkerPayload) -> Result<AggregatedData, PlumE
     if subpopulations.is_empty() {
         return Err(PlumError::DataError("Tidak ada data valid".to_string()));
     }
+
+    println!(
+        "[ORDINAL][DATA][AGGREGATION] raw_cases={}, unique_subpopulations={}, total_marginal_count={:.2}, categories={}",
+        response_vector.len(),
+        subpopulations.len(),
+        total_count,
+        category_count
+    );
 
     Ok(AggregatedData {
         subpopulations,

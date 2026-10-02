@@ -192,5 +192,6 @@ export interface BartlettTestTable {
     columnHeaders: TableColumnHeader[];
     rows: TableRow[];
     footer?: string | string[];  // Compatible with DataTableRenderer
-    note?: string;  // Deprecated, use footer instead
+    description?: string[];
+    note?: string;  // Sudah tidak dianjurkan, gunakan footer
 }

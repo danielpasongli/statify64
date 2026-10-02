@@ -2,11 +2,67 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use crate::models::{config::KnnConfig, data::DataValue};
 
+/// Breaks ties in the neighbor majority vote the way SPSS KNN does: among the
+/// categories with the highest vote, choose the one with the most cases in the
+/// training set; if that is still tied, choose the smallest data value
+/// (ascending numeric order for numbers, lexical order otherwise).
+#[derive(Clone, Debug, Default)]
+pub struct CategoryTieBreaker {
+    training_counts: HashMap<String, usize>,
+}
+
+impl CategoryTieBreaker {
+    pub fn from_training(target_values: &[DataValue], training_indices: &[usize]) -> Self {
+        let mut training_counts = HashMap::new();
+        for &idx in training_indices {
+            if let Some(key) = category_key(target_values.get(idx)) {
+                *training_counts.entry(key).or_insert(0) += 1;
+            }
+        }
+        Self { training_counts }
+    }
+
+    fn training_count(&self, key: &str) -> usize {
+        self.training_counts.get(key).copied().unwrap_or(0)
+    }
+
+    /// Returns `Ordering::Greater` when `left` should win over `right`.
+    fn compare(&self, left: (&str, f64), right: (&str, f64)) -> Ordering {
+        left.1
+            .partial_cmp(&right.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| self.training_count(left.0).cmp(&self.training_count(right.0)))
+            .then_with(|| compare_category_values(right.0, left.0))
+    }
+
+    pub fn pick<I>(&self, probabilities: I) -> Option<String>
+    where
+        I: IntoIterator<Item = (String, f64)>,
+    {
+        probabilities
+            .into_iter()
+            .max_by(|left, right| self.compare((&left.0, left.1), (&right.0, right.1)))
+            .map(|(key, _)| key)
+    }
+}
+
+/// Orders category keys by their data value: numerically when both keys are
+/// numbers, lexically otherwise.
+fn compare_category_values(left: &str, right: &str) -> Ordering {
+    match (left.parse::<f64>(), right.parse::<f64>()) {
+        (Ok(left_number), Ok(right_number)) => left_number
+            .partial_cmp(&right_number)
+            .unwrap_or(Ordering::Equal),
+        _ => left.cmp(right),
+    }
+}
+
 pub fn calculate_predictions(
     neighbors: &[(usize, f64)],
     target_values: &[DataValue],
     config: &KnnConfig,
     target_is_categorical: bool,
+    tie_breaker: &CategoryTieBreaker,
 ) -> DataValue {
     let first_value = neighbors
         .first()
@@ -18,7 +74,7 @@ pub fn calculate_predictions(
             Some(DataValue::Text(_) | DataValue::Boolean(_))
         )
     {
-        return calculate_categorical_prediction(neighbors, target_values);
+        return calculate_categorical_prediction(neighbors, target_values, tie_breaker);
     }
 
     if matches!(first_value, Some(DataValue::Number(_))) {
@@ -35,18 +91,13 @@ pub fn calculate_predictions(
 pub fn calculate_categorical_prediction(
     neighbors: &[(usize, f64)],
     target_values: &[DataValue],
+    tie_breaker: &CategoryTieBreaker,
 ) -> DataValue {
     let probabilities = calculate_categorical_vote_probabilities(neighbors, target_values);
 
-    probabilities
-        .into_iter()
-        .max_by(|(left_key, left_prob), (right_key, right_prob)| {
-            left_prob
-                .partial_cmp(right_prob)
-                .unwrap_or(Ordering::Equal)
-                .then_with(|| right_key.cmp(left_key))
-        })
-        .map(|(key, _)| data_value_from_category_key(&key, target_values))
+    tie_breaker
+        .pick(probabilities)
+        .map(|key| data_value_from_category_key(&key, target_values))
         .unwrap_or(DataValue::Null)
 }
 
@@ -254,7 +305,13 @@ mod tests {
         calculate_categorical_prediction, calculate_categorical_probabilities,
         calculate_categorical_vote_probabilities, calculate_mean_prediction,
         calculate_median_prediction, calculate_predictions, sorted_target_categories_for_indices,
+        CategoryTieBreaker,
     };
+
+    fn all_training(targets: &[DataValue]) -> CategoryTieBreaker {
+        let indices = (0..targets.len()).collect::<Vec<_>>();
+        CategoryTieBreaker::from_training(targets, &indices)
+    }
 
     #[test]
     fn categorical_prediction_uses_majority_vote() {
@@ -266,13 +323,13 @@ mod tests {
         let neighbors = vec![(0, 0.1), (1, 10.0), (2, 11.0)];
 
         assert!(matches!(
-            calculate_categorical_prediction(&neighbors, &targets),
+            calculate_categorical_prediction(&neighbors, &targets, &all_training(&targets)),
             DataValue::Text(value) if value == "B"
         ));
     }
 
     #[test]
-    fn tie_breaking_uses_lexicographic_class_order() {
+    fn tie_breaking_uses_smallest_value_when_training_counts_are_equal() {
         let targets = vec![
             DataValue::Text("B".to_string()),
             DataValue::Text("A".to_string()),
@@ -280,8 +337,54 @@ mod tests {
         let neighbors = vec![(0, 1.0), (1, 1.0)];
 
         assert!(matches!(
-            calculate_categorical_prediction(&neighbors, &targets),
+            calculate_categorical_prediction(&neighbors, &targets, &all_training(&targets)),
             DataValue::Text(value) if value == "A"
+        ));
+    }
+
+    #[test]
+    fn tie_breaking_prefers_category_with_most_training_cases() {
+        // "B" has more training cases than "A", so it wins a 1–1 vote tie
+        // even though "A" is lexically smaller.
+        let targets = vec![
+            DataValue::Text("A".to_string()),
+            DataValue::Text("B".to_string()),
+            DataValue::Text("B".to_string()),
+            DataValue::Text("B".to_string()),
+        ];
+        let neighbors = vec![(0, 1.0), (1, 1.0)];
+
+        assert!(matches!(
+            calculate_categorical_prediction(&neighbors, &targets, &all_training(&targets)),
+            DataValue::Text(value) if value == "B"
+        ));
+    }
+
+    #[test]
+    fn tie_breaking_counts_only_training_cases() {
+        // Case 2 ("B") is a holdout case and must not count toward the prior.
+        let targets = vec![
+            DataValue::Text("A".to_string()),
+            DataValue::Text("B".to_string()),
+            DataValue::Text("B".to_string()),
+        ];
+        let tie_breaker = CategoryTieBreaker::from_training(&targets, &[0, 1]);
+
+        assert!(matches!(
+            calculate_categorical_prediction(&[(0, 1.0), (1, 1.0)], &targets, &tie_breaker),
+            DataValue::Text(value) if value == "A"
+        ));
+    }
+
+    #[test]
+    fn tie_breaking_orders_numeric_categories_numerically() {
+        // Lexically "10" < "2", but SPSS uses ascending numeric order.
+        let targets = vec![DataValue::Number(10.0), DataValue::Number(2.0)];
+        let neighbors = vec![(0, 1.0), (1, 1.0)];
+
+        assert!(matches!(
+            calculate_categorical_prediction(&neighbors, &targets, &all_training(&targets)),
+            DataValue::Number(value) if (value - 2.0).abs() < f64::EPSILON
         ));
     }
 
@@ -427,6 +530,7 @@ mod tests {
                 partition_name: None,
                 fold_name: None,
             },
+            run: Default::default(),
             output: crate::models::config::OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,
@@ -447,7 +551,7 @@ mod tests {
         };
 
         assert!(matches!(
-            calculate_predictions(&neighbors, &targets, &config, true),
+            calculate_predictions(&neighbors, &targets, &config, true, &all_training(&targets)),
             DataValue::Number(value) if (value - 2.0).abs() < f64::EPSILON
         ));
     }

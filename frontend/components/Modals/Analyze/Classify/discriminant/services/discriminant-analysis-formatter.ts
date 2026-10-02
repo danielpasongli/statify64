@@ -1,6 +1,8 @@
 // discriminant-analysis-formatter.ts
-import { formatDisplayNumber } from "@/hooks/useFormatter";
 import {
+  compareGroupLabels,
+  formatAssumptionSig as assumptionSig,
+  formatAssumptionStat as assumptionStat,
   formatCount,
   formatPercent,
   formatSig,
@@ -8,6 +10,12 @@ import {
 } from "@/components/Modals/Analyze/Classify/discriminant/services/discriminant-number-format";
 import type { ResultJson, Table } from "@/types/Table";
 import type { Chart } from "@/types/Chart";
+
+// Actual group the engine gives a case with a missing or out-of-range group code
+// (UNGROUPED_LABEL in common.rs), as SPSS prints it in the Casewise Statistics, and
+// the name of those cases in the plot legend.
+const UNGROUPED_GROUP = "ungrouped";
+const UNGROUPED_CASES = "Ungrouped Cases";
 
 export function transformDiscriminantResult(data: any): ResultJson {
   const resultJson: ResultJson = {
@@ -69,6 +77,17 @@ export function transformDiscriminantResult(data: any): ResultJson {
       });
     }
 
+    // Cases left out by the selection variable: only selected cases enter the
+    // analysis, so they are excluded rather than counted as valid. Shown only when
+    // a selection variable actually left cases out.
+    if ((data.processing_summary.unselected ?? 0) > 0) {
+      table.rows.push({
+        rowHeader: ["", "Unselected"],
+        n: formatCount(data.processing_summary.unselected),
+        percent: formatPercent(data.processing_summary.unselected_percent),
+      });
+    }
+
     // Total excluded
     table.rows.push({
       rowHeader: ["", "Total"],
@@ -101,18 +120,22 @@ export function transformDiscriminantResult(data: any): ResultJson {
       rows: [],
     };
 
-    // Processed = every case; Used in Output = Processed − Excluded. With "Replace
-    // missing values with mean", cases missing only a predictor are still classified,
-    // so Rust reports 0 for that exclusion (classification_missing_disc_vars).
+    // Processed = every case: the selected ones and, with a selection variable, the
+    // unselected ones, which are classified as testing cases. Used in Output =
+    // Processed − Excluded. With "Replace missing values with mean", cases missing
+    // only a predictor are still classified, so Rust reports 0 for that exclusion
+    // (classification_missing_disc_vars).
     const ps = data.processing_summary;
+    const processed: number = ps.classification_processed ?? ps.total_count;
     const missingGroupExcluded =
+      ps.classification_missing_group_codes ??
       (ps.missing_group_codes ?? 0) + (ps.both_missing ?? 0);
     const missingDiscExcluded =
       ps.classification_missing_disc_vars ?? ps.missing_disc_vars ?? 0;
 
     table.rows.push({
       rowHeader: ["Processed"],
-      value: formatCount(ps.total_count),
+      value: formatCount(processed),
     });
 
     table.rows.push({
@@ -129,7 +152,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
       rowHeader: ["Used in Output"],
       value: formatCount(
         ps.classification_used_count ??
-          ps.total_count - missingGroupExcluded - missingDiscExcluded,
+          processed - missingGroupExcluded - missingDiscExcluded,
       ),
     });
 
@@ -138,14 +161,26 @@ export function transformDiscriminantResult(data: any): ResultJson {
 
   // 3. Group Statistics
   if (data.group_statistics) {
+    const gs = data.group_statistics;
+    // Mean and Std. Deviation come only with Statistics → Means (SPSS /STATISTICS=
+    // MEAN STDDEV). Without it the engine sends no values, and the table keeps just
+    // the Valid N counts instead of printing zeros.
+    const hasMeans = Array.isArray(gs.means) && gs.means.length > 0;
+    const entryOf = (list: any[] | undefined, variable: string) =>
+      list?.find((entry: any) => entry.variable === variable);
+
     const table: Table = {
       key: "group_statistics",
       title: "Group Statistics",
       columnHeaders: [
         { header: "category", key: "category" },
         { header: "", key: "var" },
-        { header: "Mean", key: "mean" },
-        { header: "Std. Deviation", key: "std_deviation" },
+        ...(hasMeans
+          ? [
+              { header: "Mean", key: "mean" },
+              { header: "Std. Deviation", key: "std_deviation" },
+            ]
+          : []),
         {
           header: "Valid N (listwise)",
           key: "valid_n",
@@ -158,46 +193,31 @@ export function transformDiscriminantResult(data: any): ResultJson {
       rows: [],
     };
 
-    // Process each group
-    data.group_statistics.groups.forEach(
-      (group: string, groupIndex: number) => {
-        // Process each variable's mean for this group
-        data.group_statistics.means.forEach((meanEntry: any) => {
-          const variableName = meanEntry.variable;
+    // One row per group (Total first) and variable.
+    gs.groups.forEach((group: string, groupIndex: number) => {
+      gs.variables.forEach((variableName: string) => {
+        const unweightedNEntry = entryOf(gs.unweighted_n, variableName);
+        const weightedNEntry = entryOf(gs.weighted_n, variableName);
 
-          // Find the corresponding std deviation entry
-          const stdDevEntry = data.group_statistics.std_deviations.find(
-            (entry: any) => entry.variable === variableName,
-          );
-
-          // Find the corresponding unweighted_n entry
-          const unweightedNEntry = data.group_statistics.unweighted_n?.find(
-            (entry: any) => entry.variable === variableName,
-          );
-
-          // Find the corresponding weighted_n entry
-          const weightedNEntry = data.group_statistics.weighted_n?.find(
-            (entry: any) => entry.variable === variableName,
-          );
-
-          if (stdDevEntry) {
-            table.rows.push({
-              rowHeader: [group, variableName],
-              mean: formatStat(meanEntry.values[groupIndex]),
-              std_deviation: formatStat(
-                stdDevEntry.values[groupIndex],
-              ),
-              unweighted: unweightedNEntry
-                ? formatCount(unweightedNEntry.values[groupIndex])
-                : "Invalid",
-              weighted: weightedNEntry
-                ? formatStat(weightedNEntry.values[groupIndex])
-                : "Invalid",
-            });
-          }
+        table.rows.push({
+          rowHeader: [group, variableName],
+          ...(hasMeans
+            ? {
+                mean: formatStat(entryOf(gs.means, variableName)?.values[groupIndex]),
+                std_deviation: formatStat(
+                  entryOf(gs.std_deviations, variableName)?.values[groupIndex],
+                ),
+              }
+            : {}),
+          unweighted: unweightedNEntry
+            ? formatCount(unweightedNEntry.values[groupIndex])
+            : "Invalid",
+          weighted: weightedNEntry
+            ? formatStat(weightedNEntry.values[groupIndex])
+            : "Invalid",
         });
-      },
-    );
+      });
+    });
 
     resultJson.tables.push(table);
   }
@@ -431,14 +451,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
       ],
     };
 
-    // Interpretation (homogeneity-of-covariance assumption), surfaced as the
-    // section Description by store.ts.
-    const boxMp = data.box_m_test.p_value;
-    (table as Table & { footer?: string }).footer =
-      typeof boxMp === "number" && boxMp < 0.05
-        ? "Not met: Box's M is significant (p < 0.05), so the group covariance matrices are not equal. Consider separate-covariance (quadratic) classification."
-        : "Met: Box's M is not significant (p ≥ 0.05), so equal group covariance matrices can be assumed.";
-
     resultJson.tables.push(table);
   }
 
@@ -585,7 +597,12 @@ export function transformDiscriminantResult(data: any): ResultJson {
   }
 
   // 11. Canonical Discriminant Function Coefficients
-  if (data.canonical_functions?.coefficients) {
+  // Shown only for Statistics → Function Coefficients → Unstandardized, as in SPSS.
+  // The coefficients themselves stay in the payload: Save and the XML export use them.
+  if (
+    data.unstandardized_coefficients === true &&
+    data.canonical_functions?.coefficients
+  ) {
     // Get the number of functions from the first coefficient's values length
     const numFunctions =
       data.canonical_functions.coefficients.length > 0
@@ -836,19 +853,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
   // ==========================================
   // ROBUST METHOD DETECTION
   // ==========================================
-  console.log(
-    "[DEBUG] Full stepwise_statistics keys:",
-    data.stepwise_statistics
-      ? Object.keys(data.stepwise_statistics)
-      : "TIDAK ADA",
-  );
-  console.log("[DEBUG] change_in_v:", data.stepwise_statistics?.change_in_v);
-  console.log("[DEBUG] method field:", data.stepwise_statistics?.method);
-  console.log(
-    "[DEBUG] isRaosVMethod akan jadi:",
-    Array.isArray(data.stepwise_statistics?.change_in_v) &&
-      data.stepwise_statistics?.change_in_v.length > 0,
-  );
   let isMahalanobis = false;
   let isRaosVMethod = false;
   // Detected via the explicit method field emitted by Rust.
@@ -859,7 +863,8 @@ export function transformDiscriminantResult(data: any): ResultJson {
     // 1. Rao's V — detected via the explicit method field from Rust
     isRaosVMethod = data.stepwise_statistics.method === "raos_v";
 
-    // 2. Mahalanobis — ada min_d_squared > 0, dan bukan Rao's V / F-ratio / Unexplained
+    // 2. Mahalanobis — some step has min_d_squared > 0, and the method is not Rao's V /
+    //    F-ratio / Unexplained
     if (!isRaosVMethod && !isFRatio && !isUnexplained) {
       const notInAnalysis = data.stepwise_statistics.variables_not_in_analysis;
       if (Array.isArray(notInAnalysis) && notInAnalysis.length > 0) {
@@ -874,14 +879,45 @@ export function transformDiscriminantResult(data: any): ResultJson {
     }
   }
 
-  // Helper: back-calculate actual Rao's V from the proxy Wilks' lambda stored in VariableInAnalysis
-  // proxy = 1 / (1 + v/n)  =>  v = n * (1/proxy - 1)
+  // Rao's V recovered from the proxy stored in the wilks_lambda field by Rust:
+  // proxy = 1 / (1 + V/n)  ⇒  V = n · (1/proxy − 1)
   const _raosN = data.processing_summary?.valid_count ?? 1;
   const raosVFromProxy = (proxy: number) =>
     proxy > 0 && proxy < 1 ? _raosN * (1 / proxy - 1) : 0;
 
   // 15. Stepwise Statistics
   if (data.stepwise_statistics?.variables_entered) {
+    // Rao's F (the F of Wilks' Lambda) is exact only while min(variables, groups − 1)
+    // ≤ 2. An approximate step goes under its own "Approximate F" block, with a
+    // fractional df2, so that block is added once any step needs it.
+    const wilksFExact: boolean[] = Array.isArray(
+      data.stepwise_statistics.wilks_f_exact,
+    )
+      ? data.stepwise_statistics.wilks_f_exact
+      : [];
+    const hasApproxF = wilksFExact.some((exact) => exact === false);
+
+    // Rao's F cells of step i, filled under the exact or the approximate keys.
+    const raoFCells = (
+      i: number,
+      exactKeys: string[],
+      approxKeys: string[],
+    ): Record<string, string> => {
+      const values = [
+        formatStat(data.stepwise_statistics.wilks_exact_f?.[i] ?? 0),
+        formatCount(data.stepwise_statistics.wilks_exact_df1?.[i] ?? 0),
+        formatCount(data.stepwise_statistics.wilks_exact_df2?.[i] ?? 0),
+        formatSig(data.stepwise_statistics.wilks_exact_sig?.[i] ?? 1),
+      ];
+      const isExact = wilksFExact[i] !== false;
+      const cells: Record<string, string> = {};
+      exactKeys.forEach((key, k) => (cells[key] = isExact ? values[k] : ""));
+      if (hasApproxF) {
+        approxKeys.forEach((key, k) => (cells[key] = isExact ? "" : values[k]));
+      }
+      return cells;
+    };
+
     const columnHeaders = isRaosVMethod
       ? [
           { header: "", key: "step_header" },
@@ -981,6 +1017,20 @@ export function transformDiscriminantResult(data: any): ResultJson {
                 { header: "Sig.", key: "exact_f_sig" },
               ],
             },
+            ...(hasApproxF
+              ? [
+                  {
+                    header: "Approximate F",
+                    key: "approx_f",
+                    children: [
+                      { header: "Statistic", key: "approx_f_statistic" },
+                      { header: "df1", key: "approx_f_df1" },
+                      { header: "df2", key: "approx_f_df2" },
+                      { header: "Sig.", key: "approx_f_sig" },
+                    ],
+                  },
+                ]
+              : []),
           ];
 
     const table: Table = {
@@ -1008,7 +1058,11 @@ export function transformDiscriminantResult(data: any): ResultJson {
           raos_v_statistic: formatStat(
             data.stepwise_statistics.raos_v?.[i] ?? 0,
           ),
-          raos_v_df: formatCount(raosVdf * stepNum),
+          // df = variables in the model × (k − 1), from Rust (differs from
+          // step × (k − 1) after a removal step).
+          raos_v_df: formatCount(
+            data.stepwise_statistics.raos_v_df?.[i] ?? raosVdf * stepNum,
+          ),
           raos_v_sig: formatSig(
             data.stepwise_statistics.raos_v_sig?.[i] ?? 1,
           ),
@@ -1094,17 +1148,10 @@ export function transformDiscriminantResult(data: any): ResultJson {
           lambda_df1: formatCount(wilksNumVars),
           lambda_df2: formatCount(numGroups - 1),
           lambda_df3: formatCount(wilksN - numGroups),
-          exact_f_statistic: formatStat(
-            data.stepwise_statistics.wilks_exact_f?.[i] ?? 0,
-          ),
-          exact_f_df1: formatCount(
-            data.stepwise_statistics.wilks_exact_df1?.[i] ?? 0,
-          ),
-          exact_f_df2: formatCount(
-            data.stepwise_statistics.wilks_exact_df2?.[i] ?? 0,
-          ),
-          exact_f_sig: formatSig(
-            data.stepwise_statistics.wilks_exact_sig?.[i] ?? 1,
+          ...raoFCells(
+            i,
+            ["exact_f_statistic", "exact_f_df1", "exact_f_df2", "exact_f_sig"],
+            ["approx_f_statistic", "approx_f_df1", "approx_f_df2", "approx_f_sig"],
           ),
         });
       }
@@ -1168,6 +1215,20 @@ export function transformDiscriminantResult(data: any): ResultJson {
               { header: "Sig.", key: "f_sig" },
             ],
           },
+          ...(hasApproxF
+            ? [
+                {
+                  header: "Approximate F",
+                  key: "approx_f_group",
+                  children: [
+                    { header: "Statistic", key: "approx_f_stat" },
+                    { header: "df1", key: "approx_f_df1" },
+                    { header: "df2", key: "approx_f_df2" },
+                    { header: "Sig.", key: "approx_f_sig" },
+                  ],
+                },
+              ]
+            : []),
         ],
         rows: [],
       };
@@ -1192,25 +1253,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
       )
         ? data.stepwise_statistics.wilks_lambda
         : [];
-      // Use the model's exact Wilks F (Rao approx), which is correct for every
-      // method — NOT f_to_enter, which holds the method-specific statistic
-      // (Min F / closest-pair F) for Smallest-F and Mahalanobis.
-      const swF: number[] = Array.isArray(data.stepwise_statistics.wilks_exact_f)
-        ? data.stepwise_statistics.wilks_exact_f
-        : [];
-      const swFdf1: number[] = Array.isArray(
-        data.stepwise_statistics.wilks_exact_df1,
-      )
-        ? data.stepwise_statistics.wilks_exact_df1
-        : [];
-      const swFdf2: number[] = Array.isArray(
-        data.stepwise_statistics.wilks_exact_df2,
-      )
-        ? data.stepwise_statistics.wilks_exact_df2
-        : [];
-      const swSig: number[] = Array.isArray(data.stepwise_statistics.wilks_exact_sig)
-        ? data.stepwise_statistics.wilks_exact_sig
-        : [];
       const swRemoved: any[] = Array.isArray(
         data.stepwise_statistics.variables_removed,
       )
@@ -1230,10 +1272,14 @@ export function transformDiscriminantResult(data: any): ResultJson {
           lambda_df1: formatCount(numVarsInModel),
           lambda_df2: formatCount(lambdaDf2),
           lambda_df3: formatCount(lambdaDf3),
-          f_stat: formatStat(swF[i] ?? 0),
-          f_df1: formatCount(swFdf1[i] ?? 0),
-          f_df2: formatCount(swFdf2[i] ?? 0),
-          f_sig: formatSig(swSig[i] ?? 1),
+          // The model's Wilks F (Rao's F), correct for every method — NOT
+          // f_to_enter, which holds the method-specific statistic (Min F /
+          // closest-pair F) for Smallest-F and Mahalanobis.
+          ...raoFCells(
+            i,
+            ["f_stat", "f_df1", "f_df2", "f_sig"],
+            ["approx_f_stat", "approx_f_df1", "approx_f_df2", "approx_f_sig"],
+          ),
         });
       }
 
@@ -1269,7 +1315,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
             ...e.comparisons.map((c) => c.group_name),
           ]),
         ),
-      ].sort();
+      ].sort(compareGroupLabels);
       const pairSteps = [...new Set(pairwiseEntries.map((e) => e.step))];
       const stepMarks = "ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ";
 
@@ -1674,10 +1720,10 @@ export function transformDiscriminantResult(data: any): ResultJson {
       });
     }
 
-    // Add footnote
+    // Footnote: the number of functions actually used (it was hard-coded to 1).
     table.rows.push({
       rowHeader: [
-        "a. First 1 canonical discriminant functions were used in the analysis.",
+        `a. First ${data.eigen_description.functions.length} canonical discriminant functions were used in the analysis.`,
       ],
     });
 
@@ -1686,26 +1732,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
 
   // 20. Casewise Statistics
   if (data.casewise_statistics) {
-    // Debug: Log what we're receiving from WASM
-    console.log("[Casewise] Raw data from WASM:", {
-      case_number: data.casewise_statistics.case_number,
-      case_number_length: data.casewise_statistics.case_number?.length,
-      actual_group: data.casewise_statistics.actual_group,
-      predicted_group: data.casewise_statistics.predicted_group,
-      discriminant_scores: data.casewise_statistics.discriminant_scores,
-      discriminant_scores_type:
-        typeof data.casewise_statistics.discriminant_scores,
-      discriminant_scores_keys: data.casewise_statistics.discriminant_scores
-        ? Array.isArray(data.casewise_statistics.discriminant_scores)
-          ? "Array with " +
-            data.casewise_statistics.discriminant_scores.length +
-            " items"
-          : "Object with keys: " +
-            Object.keys(data.casewise_statistics.discriminant_scores).join(", ")
-        : "null/undefined",
-      highest_group: data.casewise_statistics.highest_group,
-    });
-
     // Check if discriminant_scores exists and has entries
     // discriminant_scores from WASM is a Vec<ScoreValue> array with {function, values} entries
     const discriminantScoreEntries = Array.isArray(
@@ -1713,11 +1739,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
     )
       ? data.casewise_statistics.discriminant_scores
       : [];
-
-    console.log(
-      "[Casewise] Discriminant score entries:",
-      discriminantScoreEntries,
-    );
 
     const numFunctions = discriminantScoreEntries.length;
 
@@ -1737,32 +1758,38 @@ export function transformDiscriminantResult(data: any): ResultJson {
         { header: "", key: "type" },
         { header: "Case Number", key: "case_number" },
         { header: "Actual Group", key: "actual_group" },
-        { header: "Predicted Group", key: "predicted_group" },
+        // As in SPSS: the predicted group is the Highest Group itself, and only the
+        // Second Highest Group block names its group.
         {
           header: "Highest Group",
           key: "highest_group",
           children: [
-            // p & df are SPSS's "P(D>d | G=g)".
-            { header: "p", key: "p" },
-            { header: "df", key: "df" },
+            { header: "Predicted Group", key: "predicted_group" },
+            {
+              header: "P(D>d | G=g)",
+              key: "p_d_given_g",
+              children: [
+                { header: "p", key: "p" },
+                { header: "df", key: "df" },
+              ],
+            },
             { header: "P(G=g | D=d)", key: "p_d_g" },
             {
               header: "Squared Mahalanobis Distance to Centroid",
               key: "mahalanobis",
             },
-            { header: "Group", key: "group" },
           ],
         },
         {
           header: "Second Highest Group",
           key: "second_highest_group",
           children: [
+            { header: "Group", key: "second_group" },
             { header: "P(G=g | D=d)", key: "p_g_d" },
             {
               header: "Squared Mahalanobis Distance to Centroid",
               key: "second_mahalanobis",
             },
-            { header: "Group", key: "second_group" },
           ],
         },
         ...(numFunctions > 0
@@ -1783,7 +1810,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
       // Check if this is a misclassified case (add asterisk)
       const predictedGroup = data.casewise_statistics.predicted_group[i];
       const actualGroup = data.casewise_statistics.actual_group[i];
-      const isMisclassified = predictedGroup !== actualGroup;
+      const isMisclassified = actualGroup !== UNGROUPED_GROUP && predictedGroup !== actualGroup;
 
       // Discriminant scores: discriminant_scores is a Vec<ScoreValue> array of
       // { function, values }, so read the per-case value from each entry's
@@ -1816,9 +1843,9 @@ export function transformDiscriminantResult(data: any): ResultJson {
             i
           ],
         ),
-        group: data.casewise_statistics.highest_group.group[i],
+        // Second Highest Group shows the posterior P(G=g | D=d), not P(D>d | G=g).
         p_g_d: formatStat(
-          data.casewise_statistics.second_highest_group.p_value[i],
+          data.casewise_statistics.second_highest_group.p_g_equals_d[i],
         ),
         second_mahalanobis: formatStat(
           data.casewise_statistics.second_highest_group
@@ -1833,7 +1860,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
     if (data.casewise_statistics.cross_validated) {
       const cvData = data.casewise_statistics.cross_validated;
 
-      // Process each cross-validated case (each row now shows "Cross-validated" in the row header)
+      // One row per cross-validated case, labelled "Cross-validated" in the row header.
       for (let i = 0; i < cvData.case_number.length; i++) {
         const cvPredictedGroup = cvData.predicted_group[i];
         const cvActualGroup = cvData.actual_group[i];
@@ -1846,7 +1873,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
         }
 
         table.rows.push({
-          rowHeader: ["Cross-validated"],
+          rowHeader: ["Cross-validatedᵃ"],
           case_number: formatCount(cvData.case_number[i]),
           actual_group: cvData.actual_group[i],
           predicted_group:
@@ -1857,8 +1884,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
           mahalanobis: formatStat(
             cvData.highest_group.squared_mahalanobis_distance[i],
           ),
-          group: cvData.highest_group.group[i],
-          p_g_d: formatStat(cvData.second_highest_group.p_value[i]),
+          p_g_d: formatStat(cvData.second_highest_group.p_g_equals_d[i]),
           second_mahalanobis: formatStat(
             cvData.second_highest_group.squared_mahalanobis_distance[i],
           ),
@@ -1868,6 +1894,27 @@ export function transformDiscriminantResult(data: any): ResultJson {
       }
     }
 
+    // Footnotes, as SPSS prints them under the table.
+    const hasCrossValidated = Boolean(data.casewise_statistics.cross_validated);
+    const anyMisclassified = table.rows.some((row) =>
+      String(row.predicted_group ?? "").endsWith("**"),
+    );
+    const footnotes = [
+      ...(hasCrossValidated
+        ? [
+            "For the original data, squared Mahalanobis distance is based on canonical functions.",
+            "For the cross-validated data, squared Mahalanobis distance is based on observations.",
+          ]
+        : []),
+      ...(anyMisclassified ? ["**. Misclassified case"] : []),
+      ...(hasCrossValidated
+        ? [
+            "a. Cross validation is done only for those cases in the analysis. In cross validation, each case is classified by the functions derived from all cases other than that case.",
+          ]
+        : []),
+    ];
+    for (const note of footnotes) table.rows.push({ rowHeader: [note] });
+
     resultJson.tables.push(table);
   }
 
@@ -1876,23 +1923,53 @@ export function transformDiscriminantResult(data: any): ResultJson {
     data.classification_results?.original_classification &&
     data.classification_results.original_classification.length > 0
   ) {
-    // Get the groups from original classification and sort them to ensure consistent ordering
-    const groups = data.classification_results.original_classification
-      .map((item: { group: string; counts: number[] }) => item.group)
-      .sort((a: string, b: string) => {
-        const numA = parseFloat(a);
-        const numB = parseFloat(b);
-        if (!isNaN(numA) && !isNaN(numB)) {
-          return numA - numB;
-        }
-        return a.localeCompare(b);
-      });
+    type GroupCounts = { group: string; counts: number[] };
+    type GroupPercentages = { group: string; percentages: number[] };
+    const cr = data.classification_results;
+
+    // Columns and rows in group-code order; counts[j] follows the same order.
+    const groups: string[] = cr.original_classification
+      .map((item: GroupCounts) => item.group)
+      .sort(compareGroupLabels);
+
+    // With a selection variable (e.g. a training/testing split), SPSS splits the
+    // table into "Cases Selected" (the analysis/training cases) and "Cases Not
+    // Selected" (the testing cases, classified with the training functions), each
+    // with its own hit ratio. Cross-validation covers the selected cases only.
+    const unselectedCounts: GroupCounts[] = Array.isArray(cr.unselected_classification)
+      ? cr.unselected_classification
+      : [];
+    const unselectedPercentages: GroupPercentages[] = Array.isArray(cr.unselected_percentage)
+      ? cr.unselected_percentage
+      : [];
+    const hasUnselected = unselectedCounts.length > 0;
+    const hasCrossValidated = Array.isArray(cr.cross_validated_classification);
+    // Cases with a missing or out-of-range group code, classified as SPSS does and
+    // shown as an "Ungrouped cases" row of the Original block they belong to.
+    const numbers = (value: unknown): number[] | null => (Array.isArray(value) ? value : null);
+    const ungroupedCounts = numbers(cr.ungrouped_classification);
+    const ungroupedPercentages = numbers(cr.ungrouped_percentage);
+    const unselectedUngroupedCounts = numbers(cr.unselected_ungrouped_classification);
+    const unselectedUngroupedPercentages = numbers(cr.unselected_ungrouped_percentage);
+    const groupedTotal = (counts: GroupCounts[]): number =>
+      counts.reduce((sum, row) => sum + row.counts.reduce((s, c) => s + c, 0), 0);
+
+    // Footnote letters in the order the notes are printed. The unselected hit ratio
+    // is left out when every unselected case is ungrouped (there is nothing to score).
+    const letters = "abcdefg";
+    let nextLetter = 0;
+    const originalNote = letters[nextLetter++];
+    const unselectedNote =
+      hasUnselected && groupedTotal(unselectedCounts) > 0 ? letters[nextLetter++] : "";
+    const crossValidationNote = hasCrossValidated ? letters[nextLetter++] : "";
+    const crossValidatedNote = hasCrossValidated ? letters[nextLetter++] : "";
+    const superscript: Record<string, string> = { a: "ᵃ", b: "ᵇ", c: "ᶜ", d: "ᵈ", e: "ᵉ" };
 
     const table: Table = {
       key: "classification_results",
       title: "Classification Results",
       columnHeaders: [
-        // [PERBAIKAN 1]: Kita siapkan 3 kolom kosong di kiri untuk menampung rowHeader
+        ...(hasUnselected ? [{ header: "", key: "sample" }] : []),
         { header: "", key: "category" },
         { header: "", key: "subcategory" },
         { header: "Group", key: "group_label" },
@@ -1909,186 +1986,119 @@ export function transformDiscriminantResult(data: any): ResultJson {
       rows: [],
     };
 
-    // --- 1. Original Classification Counts ---
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
-      const classification =
-        data.classification_results.original_classification.find(
-          (item: { group: string; counts: number[] }) => item.group === group,
-        );
+    // One block (Count rows, then % rows) of the table. `sampleLabel` goes in the
+    // extra leading column when the table is split by the selection variable. The
+    // optional `ungrouped` row closes each part of an Original block.
+    const pushBlock = (
+      sampleLabel: string,
+      blockLabel: string,
+      counts: GroupCounts[],
+      percentages: GroupPercentages[],
+      ungrouped?: { counts: number[] | null; percentages: number[] | null },
+    ) => {
+      const lead = (first: boolean) => (hasUnselected ? [first ? sampleLabel : ""] : []);
 
-      if (!classification) continue;
-
-      const rowData: any = {
-        // [PERBAIKAN 2]: Gabungkan 3 kolom kiri menjadi satu array.
-        // Trik i === 0 akan mencetak tulisan hanya di baris pertama.
-        rowHeader: [
-          i === 0 ? "Original" : "",
-          i === 0 ? "Count" : "",
-          classification.group,
-        ],
-        total: formatCount(
-          classification.counts.reduce(
-            (sum: number, count: number) => sum + count,
-            0,
-          ),
-        ),
-      };
-
-      for (let j = 0; j < classification.counts.length; j++) {
-        rowData[`group_${j}`] = formatCount(classification.counts[j]);
+      groups.forEach((group, i) => {
+        const row = counts.find((item) => item.group === group);
+        if (!row) return;
+        const rowData: any = {
+          rowHeader: [...lead(i === 0), i === 0 ? blockLabel : "", i === 0 ? "Count" : "", row.group],
+          total: formatCount(row.counts.reduce((sum, count) => sum + count, 0)),
+        };
+        row.counts.forEach((count, j) => (rowData[`group_${j}`] = formatCount(count)));
+        table.rows.push(rowData);
+      });
+      if (ungrouped?.counts) {
+        const rowData: any = {
+          rowHeader: [...lead(false), "", "", "Ungrouped cases"],
+          total: formatCount(ungrouped.counts.reduce((sum, count) => sum + count, 0)),
+        };
+        ungrouped.counts.forEach((count, j) => (rowData[`group_${j}`] = formatCount(count)));
+        table.rows.push(rowData);
       }
-      table.rows.push(rowData);
-    }
 
-    // --- 2. Original Classification Percentages ---
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
-      const percentage = data.classification_results.original_percentage.find(
-        (item: { group: string; percentages: number[] }) =>
-          item.group === group,
+      groups.forEach((group, i) => {
+        const row = percentages.find((item) => item.group === group);
+        if (!row) return;
+        const rowCount = counts.find((item) => item.group === group)?.counts
+          .reduce((sum, count) => sum + count, 0) ?? 0;
+        const rowData: any = {
+          rowHeader: [...lead(false), "", i === 0 ? "%" : "", row.group],
+          total: formatPercent(rowCount > 0 ? 100 : 0),
+        };
+        row.percentages.forEach((pct, j) => (rowData[`group_${j}`] = formatPercent(pct)));
+        table.rows.push(rowData);
+      });
+      if (ungrouped?.percentages) {
+        const rowData: any = {
+          rowHeader: [...lead(false), "", "", "Ungrouped cases"],
+          total: formatPercent(100),
+        };
+        ungrouped.percentages.forEach((pct, j) => (rowData[`group_${j}`] = formatPercent(pct)));
+        table.rows.push(rowData);
+      }
+    };
+
+    // Share of correctly classified cases: 100 · Σ diagonal / Σ all counts. Every
+    // classified case is in the denominator, including the rows of a group that got
+    // none of its own cases right.
+    const hitRatio = (counts: GroupCounts[]): number => {
+      let correct = 0;
+      let total = 0;
+      groups.forEach((group, i) => {
+        const row = counts.find((item) => item.group === group);
+        if (!row) return;
+        correct += row.counts[i] ?? 0;
+        total += row.counts.reduce((sum, count) => sum + count, 0);
+      });
+      return total > 0 ? (correct / total) * 100 : 0;
+    };
+
+    pushBlock(
+      "Cases Selected",
+      "Original",
+      cr.original_classification,
+      cr.original_percentage ?? [],
+      { counts: ungroupedCounts, percentages: ungroupedPercentages },
+    );
+    if (hasCrossValidated) {
+      pushBlock(
+        "",
+        `Cross-validated${superscript[crossValidationNote] ?? ""}`,
+        cr.cross_validated_classification,
+        cr.cross_validated_percentage ?? [],
       );
-
-      if (!percentage) continue;
-
-      const rowData: any = {
-        rowHeader: [
-          "", // Kosongkan karena 'Original' sudah dicetak di bagian Count atasnya
-          i === 0 ? "%" : "",
-          percentage.group,
-        ],
-        total: "100.0", // Total persentase selalu 100%
-      };
-
-      for (let j = 0; j < percentage.percentages.length; j++) {
-        rowData[`group_${j}`] = formatPercent(percentage.percentages[j]);
-      }
-      table.rows.push(rowData);
+    }
+    if (hasUnselected) {
+      pushBlock("Cases Not Selected", "Original", unselectedCounts, unselectedPercentages, {
+        counts: unselectedUngroupedCounts,
+        percentages: unselectedUngroupedPercentages,
+      });
     }
 
-    // --- 3. Cross-validated Classification (If Available) ---
-    if (data.classification_results.cross_validated_classification) {
-      // Counts
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        const classification =
-          data.classification_results.cross_validated_classification.find(
-            (item: { group: string; counts: number[] }) => item.group === group,
-          );
-
-        if (!classification) continue;
-
-        const rowData: any = {
-          rowHeader: [
-            i === 0 ? "Cross-validatedᵇ" : "", // Gunakan huruf b kecil superscript
-            i === 0 ? "Count" : "",
-            classification.group,
-          ],
-          total: formatCount(
-            classification.counts.reduce(
-              (sum: number, count: number) => sum + count,
-              0,
-            ),
-          ),
-        };
-
-        for (let j = 0; j < classification.counts.length; j++) {
-          rowData[`group_${j}`] = formatCount(classification.counts[j]);
-        }
-        table.rows.push(rowData);
-      }
-
-      // Percentages
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        const percentage =
-          data.classification_results.cross_validated_percentage.find(
-            (item: { group: string; percentages: number[] }) =>
-              item.group === group,
-          );
-
-        if (!percentage) continue;
-
-        const rowData: any = {
-          rowHeader: ["", i === 0 ? "%" : "", percentage.group],
-          total: "100.0",
-        };
-
-        for (let j = 0; j < percentage.percentages.length; j++) {
-          rowData[`group_${j}`] = formatPercent(
-            percentage.percentages[j],
-          );
-        }
-        table.rows.push(rowData);
-      }
-    }
-
-    // --- FOOTNOTES & PERCENTAGE CALCULATION ---
-    // Calculate original correct classification percentage
-    let originalCorrect = 0;
-    let classifiedCount = 0;
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
-      const classification =
-        data.classification_results.original_classification.find(
-          (item: { group: string; counts: number[] }) => item.group === group,
-        );
-
-      // Every classified case belongs in the denominator, including the rows of
-      // a group that got none of its own cases right. Gating on counts[i] > 0
-      // dropped that group's whole row and inflated the reported hit ratio.
-      if (classification) {
-        originalCorrect += classification.counts[i] ?? 0;
-        classifiedCount += classification.counts.reduce(
-          (sum: number, val: number) => sum + val,
-          0,
-        );
-      }
-    }
-
-    const originalCorrectPct =
-      classifiedCount > 0 ? (originalCorrect / classifiedCount) * 100 : 0;
-
+    // --- FOOTNOTES ---
+    const selectedWord = hasUnselected ? "selected " : "";
     table.rows.push({
       rowHeader: [
-        `a. ${formatPercent(originalCorrectPct)}% of original grouped cases correctly classified.`,
+        `${originalNote}. ${formatPercent(hitRatio(cr.original_classification))}% of ${selectedWord}original grouped cases correctly classified.`,
       ],
     });
-
-    if (data.classification_results.cross_validated_classification) {
+    if (unselectedNote) {
       table.rows.push({
         rowHeader: [
-          "b. Cross validation is done only for those cases in the analysis. In cross validation, each case is classified by the functions derived from all cases other than that case.",
+          `${unselectedNote}. ${formatPercent(hitRatio(unselectedCounts))}% of unselected original grouped cases correctly classified.`,
         ],
       });
-
-      // Calculate cross-validated correct classification percentage
-      let crossValidatedCorrect = 0;
-      let crossValidatedCount = 0;
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        const classification =
-          data.classification_results.cross_validated_classification.find(
-            (item: { group: string; counts: number[] }) => item.group === group,
-          );
-
-        if (classification) {
-          crossValidatedCorrect += classification.counts[i] ?? 0;
-          crossValidatedCount += classification.counts.reduce(
-            (sum: number, val: number) => sum + val,
-            0,
-          );
-        }
-      }
-
-      const crossValidatedCorrectPct =
-        crossValidatedCount > 0
-          ? (crossValidatedCorrect / crossValidatedCount) * 100
-          : 0;
-
+    }
+    if (hasCrossValidated) {
       table.rows.push({
         rowHeader: [
-          `c. ${formatPercent(crossValidatedCorrectPct)}% of cross-validated grouped cases correctly classified.`,
+          `${crossValidationNote}. Cross validation is done only for those cases in the analysis. In cross validation, each case is classified by the functions derived from all cases other than that case.`,
+        ],
+      });
+      table.rows.push({
+        rowHeader: [
+          `${crossValidatedNote}. ${formatPercent(hitRatio(cr.cross_validated_classification))}% of ${selectedWord}cross-validated grouped cases correctly classified.`,
         ],
       });
     }
@@ -2096,11 +2106,110 @@ export function transformDiscriminantResult(data: any): ResultJson {
     resultJson.tables.push(table);
   }
 
+  // 22. Separate-groups classification (Classify → Use Covariance Matrix →
+  // Separate-groups). SPSS then shows each group's covariance matrix of the
+  // canonical discriminant functions — the matrices that classify the cases — and
+  // Box's test of their equality.
+  const sep = data.separate_groups_classification;
+  if (sep && Array.isArray(sep.groups) && sep.groups.length > 0) {
+    const functions: string[] = sep.functions ?? [];
+
+    const covTable: Table = {
+      key: "separate_groups_covariance_matrices",
+      title: "Covariance Matrices of Canonical Discriminant Functions",
+      columnHeaders: [
+        { header: "Group", key: "category" },
+        { header: "Function", key: "func" },
+        ...functions.map((f: string, index: number) => ({
+          header: f,
+          key: `fn_${index}`,
+        })),
+      ],
+      rows: [],
+    };
+
+    for (const g of sep.groups) {
+      (g.covariance ?? []).forEach((row: number[], i: number) => {
+        const rowData: any = {
+          rowHeader: [i === 0 ? g.group : "", functions[i] ?? String(i + 1)],
+        };
+        row.forEach((value: number, j: number) => {
+          rowData[`fn_${j}`] = formatStat(value);
+        });
+        covTable.rows.push(rowData);
+      });
+    }
+
+    covTable.rows.push({
+      rowHeader: [
+        "Separate-groups covariance matrices of the canonical discriminant functions, used to classify the cases.",
+      ],
+    });
+    resultJson.tables.push(covTable);
+
+    const ld = sep.log_determinants;
+    if (ld) {
+      const ldTable: Table = {
+        key: "separate_groups_log_determinants",
+        title: "Log Determinants",
+        columnHeaders: [
+          { header: "Group", key: "category" },
+          { header: "Rank", key: "rank" },
+          { header: "Log Determinant", key: "log_determinant" },
+        ],
+        rows: [],
+      };
+
+      for (let i = 0; i < ld.groups.length; i++) {
+        ldTable.rows.push({
+          rowHeader: [ld.groups[i]],
+          rank: formatCount(ld.ranks[i]),
+          log_determinant: formatStat(ld.log_determinants[i]),
+        });
+      }
+      ldTable.rows.push({
+        rowHeader: ["Pooled within-groups"],
+        rank: formatCount(ld.rank_pooled),
+        log_determinant: formatStat(ld.pooled_log_determinant),
+      });
+      ldTable.rows.push({
+        rowHeader: [
+          "The ranks and natural logarithms of determinants printed are those of the group covariance matrices of the canonical discriminant functions.",
+        ],
+      });
+      resultJson.tables.push(ldTable);
+    }
+
+    const bm = sep.box_m_test;
+    if (bm) {
+      resultJson.tables.push({
+        key: "separate_groups_box_m_test",
+        title: "Test Results",
+        columnHeaders: [
+          { header: "", key: "test" },
+          { header: "" },
+          { header: "", key: "value" },
+        ],
+        rows: [
+          { rowHeader: ["Box's M"], value: formatStat(bm.box_m) },
+          { rowHeader: ["F", "Approx."], value: formatStat(bm.f_approx) },
+          { rowHeader: ["", "df1"], value: formatCount(bm.df1) },
+          { rowHeader: ["", "df2"], value: formatCount(bm.df2) },
+          { rowHeader: ["", "Sig."], value: formatSig(bm.p_value) },
+          {
+            rowHeader: [
+              "Tests null hypothesis of equal population covariance matrices of canonical discriminant functions.",
+            ],
+          },
+        ],
+      });
+    }
+  }
+
   // ── Scatter plots (Combined-Groups + Separate-Groups) ──────────────────────
-  // scatter_data is populated when combine||sep_grp and case==false.
-  // casewise_statistics has the same fields when case==true, so the scores are
-  // available whenever Casewise is on — each plot is therefore gated on its own
-  // Classify → Plots checkbox, not on the presence of the scores.
+  // scatter_data holds every classified case's scores whenever combine||sep_grp
+  // is on (casewise_statistics may stop at "Limit cases to first n", so it is only
+  // a fallback). Each plot is gated on its own Classify → Plots checkbox.
   const wantCombinedPlot = data?.combined_groups_plot === true;
   const wantSeparatePlots = data?.separate_groups_plot === true;
   const scatterSrc = data?.scatter_data ?? data?.casewise_statistics;
@@ -2109,16 +2218,88 @@ export function transformDiscriminantResult(data: any): ResultJson {
     scatterSrc?.discriminant_scores;
   const f1Scores: number[] | undefined = scoreArr?.find((s: any) => s.function === "Function 1")?.values;
   const f2Scores: number[] | undefined = scoreArr?.find((s: any) => s.function === "Function 2")?.values;
-  const caseGroups: string[] | undefined = scatterSrc?.actual_group;
+  // Ungrouped cases are named as in SPSS's legend; they get no Separate-groups plot.
+  const caseGroups: string[] | undefined = scatterSrc?.actual_group?.map((g: string) =>
+    g === UNGROUPED_GROUP ? UNGROUPED_CASES : g,
+  );
   // function_at_centroids is Vec<GroupCentroid> = [{group, values}], not a keyed object
   const centroidArr: Array<{ group: string; values: number[] }> | undefined =
     data?.canonical_functions?.function_at_centroids;
+  // Non-empty only under Classify → Use Covariance Matrix → Separate-groups.
+  const sepGroups: Array<{ group: string; covariance: number[][] }> =
+    data?.separate_groups_classification?.groups ?? [];
 
   const hasScatterData =
     Array.isArray(f1Scores) &&
     Array.isArray(f2Scores) &&
     Array.isArray(caseGroups) &&
     f1Scores.length > 0;
+
+  // One discriminant function (two groups, or a single predictor): as SPSS does,
+  // the Combined-groups plot becomes a histogram of the Function 1 scores stacked
+  // by group, and the Separate-groups plots become one histogram per group.
+  const hasOneFunction =
+    Array.isArray(f1Scores) &&
+    !Array.isArray(f2Scores) &&
+    Array.isArray(caseGroups) &&
+    f1Scores.length > 0;
+
+  if (hasOneFunction && (wantCombinedPlot || wantSeparatePlots)) {
+    const f1 = f1Scores as number[];
+    const grps = caseGroups as string[];
+
+    const combinedHistogram: Chart = {
+      chartType: "Stacked Histogram",
+      chartData: grps.map((g, i) => ({ category: g, value: f1[i] })),
+      chartMetadata: {
+        axisInfo: { x: "Function 1", y: "Frequency", category: "Group" },
+        description: "Combined-Groups Plot",
+        title: "Canonical Discriminant Function 1",
+        subtitle: "All groups",
+        notes: null,
+      },
+      chartConfig: {
+        width: 600,
+        height: 450,
+        useAxis: true,
+        useLegend: true,
+        axisLabels: { x: "Function 1", y: "Frequency" },
+      },
+    };
+
+    const separateHistograms: Chart[] = [...new Set(grps)].filter((g) => g !== UNGROUPED_CASES).map((group) => {
+      const values = f1.filter((_, i) => grps[i] === group);
+      const n = values.length;
+      const mean = n > 0 ? values.reduce((s, v) => s + v, 0) / n : 0;
+      const sd =
+        n > 1
+          ? Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1))
+          : 0;
+      return {
+        chartType: "Histogram",
+        chartData: values,
+        chartMetadata: {
+          axisInfo: { x: "Function 1", y: "Frequency", category: "Group" },
+          description: `Separate-Groups Plot: Group ${group}`,
+          title: "Canonical Discriminant Function 1",
+          subtitle: `Group = ${group}   Mean = ${formatStat(mean)}, Std. Dev. = ${formatStat(sd)}, N = ${n}`,
+          notes: null,
+        },
+        chartConfig: {
+          width: 600,
+          height: 450,
+          useAxis: true,
+          useLegend: false,
+          axisLabels: { x: "Function 1", y: "Frequency" },
+        },
+      };
+    });
+
+    resultJson.charts = [
+      ...(wantCombinedPlot ? [combinedHistogram] : []),
+      ...(wantSeparatePlots ? separateHistograms : []),
+    ];
+  }
 
   if (hasScatterData && (wantCombinedPlot || wantSeparatePlots)) {
     const f1 = f1Scores as number[];
@@ -2139,10 +2320,11 @@ export function transformDiscriminantResult(data: any): ResultJson {
 
     // Linear decision boundaries (perpendicular bisectors of centroid pairs, equal-prior LDA).
     // Each boundary is parameterised as a line segment extended far beyond the data range;
-    // the renderer clips it to the plot area.
+    // the renderer clips it to the plot area. Under Separate-groups classification
+    // the real boundaries are curved, so these straight lines are left out.
     const boundaryLines: Array<{ x1: number; y1: number; x2: number; y2: number; dashArray: string }> = [];
     const centroids = centroidArr ?? [];
-    if (centroids.length >= 2) {
+    if (centroids.length >= 2 && sepGroups.length === 0) {
       const allX = casePoints.map((p) => p.x);
       const allY = casePoints.map((p) => p.y);
       const xSpan = Math.max(...allX) - Math.min(...allX);
@@ -2187,7 +2369,10 @@ export function transformDiscriminantResult(data: any): ResultJson {
         description: "Combined-Groups Plot",
         title: "Combined-Groups Plot",
         subtitle: "Canonical Discriminant Functions",
-        notes: "★ = Group Centroid  — — — = Decision Boundary",
+        notes:
+          boundaryLines.length > 0
+            ? "★ = Group Centroid  — — — = Decision Boundary"
+            : "★ = Group Centroid",
       },
       chartConfig: {
         width: 600,
@@ -2200,7 +2385,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
     };
 
     // Separate-Groups Plots (one per group)
-    const uniqueGroups = [...new Set(grps)];
+    const uniqueGroups = [...new Set(grps)].filter((g) => g !== UNGROUPED_CASES);
     const separateCharts: Chart[] = uniqueGroups.map((group) => {
       const groupCases = casePoints.filter((p) => p.category === group);
       const groupCentroid = centroidPoints.find((p) => p.category === group + " ★");
@@ -2253,6 +2438,11 @@ export function transformDiscriminantResult(data: any): ResultJson {
       }
       const lnPrior = (g: string) => priorLog[String(g)] ?? 0;
 
+      // Separate-groups: each group's own covariance matrix of Functions 1–2
+      // replaces the identity, so the region boundaries are curved.
+      const sepRule = new Map<string, { inv: number[][]; logDet: number }>();
+      for (const g of sepGroups) sepRule.set(String(g.group), twoFunctionRule(g.covariance));
+
       // Plot range: cover the centroids (and case scores when available), padded.
       const xs = cents.map((c) => c.values[0]);
       const ys = cents.map((c) => c.values[1]);
@@ -2274,7 +2464,9 @@ export function transformDiscriminantResult(data: any): ResultJson {
       const NY = Math.min(90, Math.max(34, Math.round(Math.sqrt(2200 / (aspect || 1)))));
       const NX = Math.min(90, Math.max(34, Math.round((2200 / NY) || 50)));
 
-      // Classify each grid cell to the highest-scoring centroid.
+      // Classify each grid cell to the group with the largest
+      // ln πₖ − ½ ln|Σₖ| − ½ (d − d̄ₖ)ᵀ Σₖ⁻¹ (d − d̄ₖ), d = (Function 1, Function 2); with
+      // the pooled matrix Σₖ = I, so this is ln πₖ − ½ (squared Euclidean distance).
       const regionPoints: { category: string; x: number; y: number }[] = [];
       for (let i = 0; i < NX; i++) {
         const gx = xMin + ((xMax - xMin) * i) / (NX - 1);
@@ -2285,7 +2477,15 @@ export function transformDiscriminantResult(data: any): ResultJson {
           for (const c of cents) {
             const dx = gx - c.values[0];
             const dy = gy - c.values[1];
-            const score = -0.5 * (dx * dx + dy * dy) + lnPrior(c.group);
+            const rule = sepRule.get(String(c.group));
+            const score = rule
+              ? -0.5 *
+                  (dx * dx * rule.inv[0][0] +
+                    2 * dx * dy * rule.inv[0][1] +
+                    dy * dy * rule.inv[1][1]) -
+                0.5 * rule.logDet +
+                lnPrior(c.group)
+              : -0.5 * (dx * dx + dy * dy) + lnPrior(c.group);
             if (score > bestScore) {
               bestScore = score;
               bestGroup = c.group;
@@ -2311,7 +2511,9 @@ export function transformDiscriminantResult(data: any): ResultJson {
           title: "Territorial Map",
           subtitle: "Classification regions in discriminant space",
           notes:
-            "Each region is colored by the group a case there would be classified into (nearest centroid). ★ = group centroid.",
+            sepRule.size > 0
+              ? "Each region is colored by the group a case there would be classified into (separate-groups covariance matrices). ★ = group centroid."
+              : "Each region is colored by the group a case there would be classified into (nearest centroid). ★ = group centroid.",
         },
         chartConfig: {
           width: 640,
@@ -2383,6 +2585,12 @@ export function transformDiscriminantResult(data: any): ResultJson {
     if (used < requested) {
       footnote += ` ${requested - used} of the ${requested} requested samples were dropped because a group was lost in the resample.`;
     }
+    // Refits are matched to the original functions by reordering and reflection;
+    // say how often the order actually changed (functions with close eigenvalues).
+    const reordered: number = b.reordered_samples ?? 0;
+    if (reordered > 0) {
+      footnote += ` In ${reordered} samples the discriminant functions came out in a different order and were matched to the original functions.`;
+    }
 
     table.rows.push({ rowHeader: [footnote] });
 
@@ -2407,9 +2615,7 @@ export function transformDiscriminantResult(data: any): ResultJson {
         ],
         rows: [],
       };
-      let anyViolated = false;
       for (const r of assumptions.summary) {
-        if (r.violated) anyViolated = true;
         table.rows.push({
           rowHeader: [r.assumption],
           test: r.test,
@@ -2417,9 +2623,6 @@ export function transformDiscriminantResult(data: any): ResultJson {
           status: r.violated ? "⚠ Violated" : "Met",
         });
       }
-      (table as Table & { footer?: string }).footer = anyViolated
-        ? "⚠ One or more assumptions are not met — interpret the results with caution. See the detail tables below."
-        : "All checked assumptions are met.";
       resultJson.tables.push(table);
     }
 
@@ -2439,17 +2642,16 @@ export function transformDiscriminantResult(data: any): ResultJson {
       for (let i = 0; i < mc.variables.length; i++) {
         table.rows.push({
           rowHeader: [mc.variables[i]],
-          tolerance: formatDisplayNumber(mc.tolerance[i]),
-          vif: formatDisplayNumber(mc.vif[i]),
+          tolerance: assumptionStat(mc.tolerance[i]),
+          vif: assumptionStat(mc.vif[i]),
         });
       }
-      (table as Table & { footer?: string }).footer = mc.note;
       resultJson.tables.push(table);
     }
 
     // Multivariate normality (Henze–Zirkler) within each group — one row per
     // group (Group / N / HZ / p value / MVN). LDA assumes normality within groups,
-    // so the former single pooled-data row (R's MVN::mvn(data)) is no longer shown.
+    // so the test runs per group rather than on the pooled data.
     const mv = assumptions.multivariate_normality;
     if (mv && Array.isArray(mv.groups) && mv.groups.length > 0) {
       const table: Table = {
@@ -2469,12 +2671,11 @@ export function transformDiscriminantResult(data: any): ResultJson {
         table.rows.push({
           rowHeader: [mv.groups[i]],
           n: String(mv.n[i]),
-          hz: tested ? formatDisplayNumber(mv.hz[i]) : "",
-          p_value: tested ? formatDisplayNumber(mv.p_value[i]) : "",
+          hz: tested ? assumptionStat(mv.hz[i]) : "",
+          p_value: tested ? assumptionSig(mv.p_value[i]) : "",
           mvn: !tested ? "Not tested (n ≤ p)" : mv.normal[i] ? "YES" : "⚠ NO",
         });
       }
-      (table as Table & { footer?: string }).footer = mv.note;
       resultJson.tables.push(table);
     }
 
@@ -2497,15 +2698,49 @@ export function transformDiscriminantResult(data: any): ResultJson {
       for (let i = 0; i < uv.variables.length; i++) {
         table.rows.push({
           rowHeader: [uv.groups[i], uv.variables[i]],
-          statistic: formatDisplayNumber(uv.statistic[i]),
-          p_value: formatDisplayNumber(uv.p_value[i]),
+          statistic: assumptionStat(uv.statistic[i]),
+          p_value: assumptionSig(uv.p_value[i]),
           normality: uv.normal[i] ? "YES" : "⚠ NO",
         });
       }
-      (table as Table & { footer?: string }).footer = uv.note;
       resultJson.tables.push(table);
     }
   }
 
   return resultJson;
+}
+
+/**
+ * Separate-groups rule on the territorial map's axes (Functions 1–2): inverse and
+ * log determinant of a group's 2 × 2 covariance block Σ = [[a, b], [b, d]]:
+ *
+ *   Σ⁻¹ = [[d, −b], [−b, a]] / (ad − b²),   ln|Σ| = ln(ad − b²)
+ *
+ * As in SPSS (and separate_covariance.rs), a function whose variance is ~0, or that
+ * is linearly dependent on Function 1 (residual variance d − b²/a ≈ 0), is dropped
+ * from the block.
+ */
+function twoFunctionRule(cov: number[][]): { inv: number[][]; logDet: number } {
+  const EPS = 1e-10;
+  const a = cov?.[0]?.[0] ?? 0;
+  const b = cov?.[0]?.[1] ?? 0;
+  const d = cov?.[1]?.[1] ?? 0;
+
+  const keep1 = a > EPS;
+  const resid2 = keep1 ? d - (b * b) / a : d;
+  const keep2 = resid2 > EPS && resid2 > EPS * Math.abs(d);
+
+  if (keep1 && keep2) {
+    const det = a * d - b * b;
+    return {
+      inv: [
+        [d / det, -b / det],
+        [-b / det, a / det],
+      ],
+      logDet: Math.log(det),
+    };
+  }
+  if (keep1) return { inv: [[1 / a, 0], [0, 0]], logDet: Math.log(a) };
+  if (keep2) return { inv: [[0, 0], [0, 1 / d]], logDet: Math.log(d) };
+  return { inv: [[0, 0], [0, 0]], logDet: 0 };
 }

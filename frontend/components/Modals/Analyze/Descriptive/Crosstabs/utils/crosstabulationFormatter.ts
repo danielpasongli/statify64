@@ -42,12 +42,12 @@ export const formatCrosstabulationTable = (
   }> = [];
 
   // Helper functions for percentage formatting
-  const pct = (value: number): string => (isFinite(value) ? `${(value * 100).toFixed(1)  }%` : '');
+  const pct = (value: number): string => (isFinite(value) ? `${String(value * 100)}%` : '');
 
   // Helper untuk formatting desimal: satu posisi
   const dec = (value: number): string => {
     if (!isFinite(value)) return '';
-    return value.toFixed(1);
+    return String(value);
   };
 
   // Convert nullable numeric value to string | number for display
@@ -320,15 +320,6 @@ export const formatCrosstabulationTable = (
   const rows = [mainRow, ...totalRows];
 
   const title = `${rowVarLabel} * ${colVarLabel} Crosstabulation`;
-
-  // Debug ordering during tests
-  if (process.env.NODE_ENV === 'test' && params.options.cells.row) {
-    try {
-      const preview = (mainRow.children || []).slice(0, 4).map((r: any) => ({ h: r.rowHeader, total: r.total }));
-      // eslint-disable-next-line no-console
-      console.debug('[formatCrosstabulationTable] preview rows:', preview);
-    } catch {}
-  }
 
   return { title, columnHeaders, rows };
 };

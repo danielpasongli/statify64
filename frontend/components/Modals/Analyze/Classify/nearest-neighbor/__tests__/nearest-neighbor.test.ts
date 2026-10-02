@@ -475,6 +475,51 @@ describe("Nearest Neighbor Constructor Test", () => {
         analysis.free();
     });
 
+    it("T24b: Fitur forced dengan error 0 -> fixed number tetap menambah J_add fitur, minimum change berhenti", () => {
+        // Fitur "a" memisahkan kategori sempurna sehingga error training fitur forced = 0.
+        const zeroErrorInput = {
+            targetData: [["A", "A", "A", "B", "B", "B"].map((target) => ({ target }))],
+            featuresData: [
+                [1, 1, 1, 10, 10, 10].map((a) => ({ a })),
+                [3, 7, 1, 8, 2, 5].map((b) => ({ b })),
+            ],
+            caseData: null,
+            targetDefs: [[variableDefinition("target", 0, "nominal")]],
+            featuresDefs: [[variableDefinition("a", 1)], [variableDefinition("b", 2)]],
+            caseDefs: [],
+        };
+        const selectionConfig = (features: Record<string, unknown>) => ({
+            ...validConfig,
+            main: { ...validConfig.main, FeatureVar: ["a", "b"], CaseIdenVar: null },
+            features: {
+                ...validConfig.features,
+                ForwardSelection: ["a", "b"],
+                ForcedEntryVar: ["a"],
+                PerformSelection: true,
+                ...features,
+            },
+            output: { ...validConfig.output, FeatureSelectionSummary: true },
+        });
+
+        const fixed = createAnalysis({
+            ...zeroErrorInput,
+            config: selectionConfig({ MaxReached: true, BelowMin: false, MaxToSelect: 1 }),
+        });
+        const fixedSummary = fixed.get_results().feature_selection_summary;
+        expect(fixedSummary.selected_features).toEqual(["a", "b"]);
+        expect(fixedSummary.stopping_reason).toBe("max_features_reached");
+        fixed.free();
+
+        const minimumChange = createAnalysis({
+            ...zeroErrorInput,
+            config: selectionConfig({ MaxReached: false, BelowMin: true, MinChange: 0.01 }),
+        });
+        const minimumChangeSummary = minimumChange.get_results().feature_selection_summary;
+        expect(minimumChangeSummary.selected_features).toEqual(["a"]);
+        expect(minimumChangeSummary.stopping_reason).toBe("zero_error");
+        minimumChange.free();
+    });
+
     it("T25: Harus mencatat error saat mode partition variable dipilih tanpa variabel", () => {
         const analysis = createAnalysis({
             config: {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import KNNPeersChart from "./KNNPeersChart";
+import { useMountWhenNearViewport } from "../hooks/useMountWhenNearViewport";
 
 type Neighbor = {
   id: number | string;
@@ -103,17 +104,20 @@ function createNiceTicks(min: number, max: number) {
   );
 }
 
-function niceTickStep(rawStep: number) {
+// Rounds to the nearest 1/2/5 step (geometric midpoints, as d3 does) instead
+// of always rounding up, which could stretch the axis far past the data
+// (1..110 gave a step of 50 and an axis up to 150; now 20 and 120).
+export function niceTickStep(rawStep: number) {
   if (!Number.isFinite(rawStep) || rawStep <= 0) return 1;
 
   const exponent = Math.floor(Math.log10(rawStep));
   const magnitude = 10 ** exponent;
   const fraction = rawStep / magnitude;
 
-  if (fraction <= 1) return magnitude;
-  if (fraction <= 2) return 2 * magnitude;
-  if (fraction <= 5) return 5 * magnitude;
-  return 10 * magnitude;
+  if (fraction >= Math.sqrt(50)) return 10 * magnitude;
+  if (fraction >= Math.sqrt(10)) return 5 * magnitude;
+  if (fraction >= Math.sqrt(2)) return 2 * magnitude;
+  return magnitude;
 }
 
 function roundTick(value: number, step: number) {
@@ -169,7 +173,33 @@ function interpolateColor(start: string, end: string, ratio: number) {
   )}${toHex(b1 + (b2 - b1) * clamped)}`;
 }
 
-export default function KNNPredictorSpaceChart({
+/**
+ * Memoized so the output viewer re-rendering (once per added statistic) skips
+ * this chart when its data is unchanged, and deferred until the chart is near
+ * the visible area so opening the viewer does not draw every point at once.
+ */
+const KNNPredictorSpaceChart = React.memo(function KNNPredictorSpaceChart({
+  data,
+}: {
+  data: string | ChartPayload;
+}) {
+  const [placeholderRef, isNearViewport] = useMountWhenNearViewport<HTMLDivElement>();
+
+  if (isNearViewport) return <PredictorSpaceChartContent data={data} />;
+  return (
+    <div
+      ref={placeholderRef}
+      className="p-4 text-sm text-muted-foreground"
+      style={{ minHeight: 640 }}
+    >
+      Loading predictor space...
+    </div>
+  );
+});
+
+export default KNNPredictorSpaceChart;
+
+function PredictorSpaceChartContent({
   data,
 }: {
   data: string | ChartPayload;
@@ -193,7 +223,13 @@ export default function KNNPredictorSpaceChart({
 
   const [currentK, setCurrentK] = useState(maxK);
   const [selectedId, setSelectedId] = useState<number | string | null>(null);
-  const [tooltip, setTooltip] = useState<TooltipState>(null);
+  // Tooltip state lives in TooltipLayer: keeping it here re-rendered every
+  // point of the chart on each mouse move.
+  const tooltipLayerRef = useRef<TooltipLayerHandle>(null);
+  const setTooltip = useCallback(
+    (value: TooltipState) => tooltipLayerRef.current?.setTooltip(value),
+    [],
+  );
   const availableAxes = useMemo(() => {
     const configuredAxes = config?.availableAxes?.filter(Boolean) ?? [];
     if (configuredAxes.length) return configuredAxes;
@@ -217,18 +253,45 @@ export default function KNNPredictorSpaceChart({
     );
   }, [availableAxes.length]);
 
+  // Capped by the predictor axes that exist: a payload without
+  // displayedDimensions (or saved by an older version) defaulted to 2 and drew
+  // a single predictor as a diagonal running off the plot.
+  const configuredDimensions = finiteNumber(config?.displayedDimensions, 2);
+  const predictorCount = sourcePoints.reduce(
+    (count, point) => Math.max(count, point.predictorValues?.length ?? 0),
+    0,
+  );
+  const displayedDimensions = Math.max(
+    1,
+    Math.min(
+      3,
+      configuredDimensions,
+      config?.availableAxes?.length || configuredDimensions,
+      predictorCount || configuredDimensions,
+    ),
+  );
+
+  // Only displayed dimensions read predictor values. With one predictor the
+  // Y slot falls back to the X predictor, and reading it put every point at
+  // y = its X value, far outside the fixed [-1, 1] Y domain of the 1D chart.
   const points = useMemo(
     () =>
       sourcePoints
         .map((point) => ({
           ...point,
           x: pointAxisValue(point, selectedAxisIndexes[0], point.x),
-          y: pointAxisValue(point, selectedAxisIndexes[1], point.y),
-          z: pointAxisValue(point, selectedAxisIndexes[2], finiteNumber(point.z, 0)),
+          y:
+            displayedDimensions >= 2
+              ? pointAxisValue(point, selectedAxisIndexes[1], point.y)
+              : 0,
+          z:
+            displayedDimensions >= 3
+              ? pointAxisValue(point, selectedAxisIndexes[2], finiteNumber(point.z, 0))
+              : 0,
         }))
         .filter((point) => !(isNumericTarget && point.type === "Holdout"))
         .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
-    [isNumericTarget, selectedAxisIndexes, sourcePoints],
+    [displayedDimensions, isNumericTarget, selectedAxisIndexes, sourcePoints],
   );
 
   const targetCategories = useMemo(
@@ -281,10 +344,6 @@ export default function KNNPredictorSpaceChart({
   const rawYMax = Math.max(...rawYValues);
   const rawZMin = Math.min(...rawZValues);
   const rawZMax = Math.max(...rawZValues);
-  const displayedDimensions = Math.max(
-    1,
-    Math.min(3, Number(config?.displayedDimensions ?? 2)),
-  );
   const hasZAxis =
     displayedDimensions >= 3 &&
     Boolean(chart?.chartConfig?.axisLabels?.z) &&
@@ -326,14 +385,23 @@ export default function KNNPredictorSpaceChart({
   const zTicks = hasZAxis ? createNiceTicks(rawZMin, rawZMax) : [];
 
   const plot = { left: 58, right: 24, top: 28, bottom: 58 };
-  const spanX = xAxis.max - xAxis.min || 1;
-  const spanY = yAxis.max - yAxis.min || 1;
+  // Keeps points (and their markers) off the axis lines.
+  const plotInset = 12;
+  const [xDomainMin, xDomainMax] = plotDomain(xAxis, chartAxisInfo.x, rawXValues);
+  const [yDomainMin, yDomainMax] = isSinglePredictorSpace
+    ? [yAxis.min, yAxis.max]
+    : plotDomain(yAxis, chartAxisInfo.y, rawYValues);
   const scaleX = (value: number) =>
-    plot.left + ((value - xAxis.min) / spanX) * (svgWidth - plot.left - plot.right);
+    plot.left +
+    plotInset +
+    ((value - xDomainMin) / (xDomainMax - xDomainMin)) *
+      (svgWidth - plot.left - plot.right - plotInset * 2);
   const scaleY = (value: number) =>
     svgHeight -
     plot.bottom -
-    ((value - yAxis.min) / spanY) * (svgHeight - plot.top - plot.bottom);
+    plotInset -
+    ((value - yDomainMin) / (yDomainMax - yDomainMin)) *
+      (svgHeight - plot.top - plot.bottom - plotInset * 2);
   const pointById = new Map(points.map((point) => [String(point.id), point]));
   const selectedPoint =
     selectedId === null ? null : pointById.get(String(selectedId)) ?? null;
@@ -341,16 +409,20 @@ export default function KNNPredictorSpaceChart({
     ? [selectedPoint]
     : points.filter((point) => point.focal);
 
+  // Depth only applies when a Z axis is drawn. With two predictors the third
+  // axis slot falls back to one of the plotted axes, and projecting that as
+  // depth pushed every point off the X/Y axes.
+  const depthOf = (zValue: number) => (hasZAxis ? zValue : 0);
   const projectedOf = (point: Point) => {
-    const z = finiteNumber(point.z, 0);
+    const z = depthOf(finiteNumber(point.z, 0));
     return {
       x: scaleX(point.x + z * 0.45),
       y: scaleY(point.y - z * 0.35),
     };
   };
   const projectedCoord = (xValue: number, yValue: number, zValue = 0) => ({
-    x: scaleX(xValue + zValue * 0.45),
-    y: scaleY(yValue - zValue * 0.35),
+    x: scaleX(xValue + depthOf(zValue) * 0.45),
+    y: scaleY(yValue - depthOf(zValue) * 0.35),
   });
 
   const showTooltip = (event: React.MouseEvent, html: React.ReactNode) => {
@@ -403,7 +475,7 @@ export default function KNNPredictorSpaceChart({
             </div>
           </div>
 
-          <div className="mb-2 flex items-center justify-center gap-3">
+          <div data-export-ignore className="mb-2 flex items-center justify-center gap-3">
             <label htmlFor="knn-predictor-space-k-3d" className="text-xs font-semibold">
               K
             </label>
@@ -496,7 +568,7 @@ export default function KNNPredictorSpaceChart({
           </div>
         </div>
 
-        <div className="mb-2 flex items-center justify-center gap-3">
+        <div data-export-ignore className="mb-2 flex items-center justify-center gap-3">
           <label htmlFor="knn-predictor-space-k-2d" className="text-xs font-semibold">
             K
           </label>
@@ -793,14 +865,7 @@ export default function KNNPredictorSpaceChart({
           {config?.instruction ?? "Select points to use as focal records"}
         </div>
 
-        {tooltip && (
-          <div
-            className="pointer-events-none absolute z-20 rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 shadow-lg"
-            style={{ left: tooltip.x, top: tooltip.y }}
-          >
-            {tooltip.html}
-          </div>
-        )}
+        <TooltipLayer ref={tooltipLayerRef} />
         </div>
       </div>
       {peersChartNode}
@@ -861,7 +926,11 @@ function ThreePredictorSpace({
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        // Keeps the last frame readable so the chart can be exported as an image.
+        preserveDrawingBuffer: true,
+      });
     } catch {
       setWebglUnavailable(true);
       return;
@@ -1420,7 +1489,7 @@ function PredictorSpace2DFallback({
           );
         })}
       </svg>
-      <div className="absolute left-3 top-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+      <div data-export-ignore className="absolute left-3 top-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
         3D rendering unavailable. Showing a 2D projection.
       </div>
       {tooltip && (
@@ -1434,6 +1503,28 @@ function PredictorSpace2DFallback({
     </div>
   );
 }
+
+type TooltipLayerHandle = {
+  setTooltip: (value: TooltipState) => void;
+};
+
+const TooltipLayer = React.forwardRef<TooltipLayerHandle>(function TooltipLayer(
+  _props,
+  ref,
+) {
+  const [tooltip, setTooltip] = useState<TooltipState>(null);
+  React.useImperativeHandle(ref, () => ({ setTooltip }), []);
+
+  if (!tooltip) return null;
+  return (
+    <div
+      className="pointer-events-none absolute z-20 rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 shadow-lg"
+      style={{ left: tooltip.x, top: tooltip.y }}
+    >
+      {tooltip.html}
+    </div>
+  );
+});
 
 function pointTooltip(point: Point) {
   const shownLabel = point.type === "Holdout" ? "Predicted" : "Target";
@@ -1536,6 +1627,34 @@ function buildAxisTicks(
     max: range[1],
     ticks: ticks.map((value) => ({ value, label: formatTick(value) })),
   };
+}
+
+/**
+ * Value range drawn by the 2D chart. It covers every point and every tick
+ * (nice ticks can extend past the data), and gives discrete axes half a
+ * category of room so the first and last categories are not on the axis.
+ */
+export function plotDomain(
+  axis: RenderAxis,
+  info: AxisInfo | undefined,
+  values: number[],
+): [number, number] {
+  const covered = [...values, ...axis.ticks.map((tick) => tick.value)].filter(
+    (value) => Number.isFinite(value),
+  );
+  if (covered.length === 0) return [axis.min, axis.max > axis.min ? axis.max : axis.min + 1];
+
+  let min = Math.min(...covered);
+  let max = Math.max(...covered);
+  const isDiscrete =
+    info?.measure === "nominal" ||
+    info?.measure === "ordinal" ||
+    (info?.categories?.filter(Boolean).length ?? 0) > 0;
+  if (isDiscrete || max - min < Number.EPSILON) {
+    min -= 0.5;
+    max += 0.5;
+  }
+  return [min, max];
 }
 
 function drawDashedGrid(
@@ -1656,7 +1775,7 @@ function AxisPicker({
   const axisSlots = ["X", "Y", "Z"];
 
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-center gap-2 text-xs">
+    <div data-export-ignore className="mb-3 flex flex-wrap items-center justify-center gap-2 text-xs">
       {axisSlots.map((slot, slotIndex) => {
         const selectedIndex = selectedAxisIndexes[slotIndex] ?? slotIndex;
         const replacementIndexes = axes

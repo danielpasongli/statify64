@@ -5,6 +5,7 @@ import type { TourStep } from './hooks/useTourGuide';
 
 // === Shared Types ===
 export type NonintegerWeightsType = 'roundCell' | 'roundCase' | 'truncateCell' | 'truncateCase' | 'noAdjustment';
+export type ChiSquareTestPurpose = 'independence' | 'proportion';
 export type VariableHighlight = { id: string, source: 'available' | 'row' | 'column' } | null;
 
 // === Tour Props ===
@@ -51,6 +52,7 @@ export interface CrosstabsAnalysisParams {
     options: {
         statistics?: {
             chiSquare: boolean;
+            purpose?: ChiSquareTestPurpose;
         },
         cells: {
             observed: boolean;
@@ -92,16 +94,27 @@ export interface CrosstabsWorkerResult {
         totalPercent: number;
     }[][];
     chiSquare?: {
-        pearson: {
-            value: number;
-            df: number;
-            pValue: number | null;
-            expectedDiagnostics?: {
-                minExpectedCount: number | null;
-                cellsUnder5: number;
-                totalCells: number;
-                percentCellsUnder5: number;
-            };
-        };
+        pearson: ChiSquareTestResult;
+        proportion?: (ChiSquareTestResult & {
+            testType: 'binomial-proportion-homogeneity' | 'multinomial-proportion-homogeneity';
+            outcomeCategoryCount: number;
+        }) | null;
+    };
+}
+
+export interface ChiSquareTestResult {
+    value: number;
+    df: number;
+    pValue: number | null;
+    testType?: string;
+    expectedCounts?: number[][];
+    alpha?: number;
+    significant?: boolean;
+    decision?: 'reject' | 'fail-to-reject';
+    expectedDiagnostics?: {
+        minExpectedCount: number | null;
+        cellsUnder5: number;
+        totalCells: number;
+        percentCellsUnder5: number;
     };
 }

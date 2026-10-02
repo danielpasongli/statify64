@@ -1,22 +1,25 @@
-import type { ExploreAnalysisParams } from '../types';
-import type { ColumnHeader, FormattedTable, ExploreAggregatedResults } from './helpers';
-import { getFactorLabel, regroupByDepVar } from './helpers';
+import { DEFAULT_ALPHA } from '@/components/Modals/Analyze/shared/statisticalOutput';
+import type { ExploreAnalysisParams } from '../../types';
+import type { ColumnHeader, FormattedTable, ExploreAggregatedResults, TableRowData } from '../helpers';
+import { getFactorLabel, regroupByDepVar } from '../helpers';
+import { buildNormalityDescription, buildNormalityInterpretation } from './interpretation';
 
-const formatStatistic = (value: number | null | undefined): string => {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '';
-  return value.toFixed(3);
+const getDisplayName = (
+  label: string | undefined,
+  name: string | undefined,
+  fallback = '',
+): string => {
+  if (label?.trim()) return label;
+  return name ?? fallback;
 };
 
 const formatDf = (value: number | null | undefined): string => {
   if (value === null || value === undefined || !Number.isFinite(value)) return '';
-  return String(Math.round(value));
+  return String(value);
 };
 
-const formatSig = (value: number | null | undefined): string => {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '';
-  if (value < 0.001) return '<.001';
-  return value.toFixed(3);
-};
+const formatExactNumber = (value: number | null | undefined): string =>
+  Number.isFinite(value) ? String(value) : '';
 
 export const formatTestsOfNormalityTable = (
   results: ExploreAggregatedResults,
@@ -26,14 +29,15 @@ export const formatTestsOfNormalityTable = (
 
   const hasFactors = params.factorVariables.length > 0 && params.factorVariables.every(v => v !== null);
   const resultsByDepVar = regroupByDepVar(results);
-  const rows: any[] = [];
+  const rows: TableRowData[] = [];
   const footnotes: string[] = [];
+  const interpretations: string[] = [];
 
   let hasKsValue = false;
 
   for (const depVarName in resultsByDepVar) {
     const depVarResults = resultsByDepVar[depVarName];
-    const depVarLabel = depVarResults[0]?.variable?.label || depVarName;
+    const depVarLabel = getDisplayName(depVarResults[0]?.variable?.label, depVarName, depVarName);
 
     depVarResults.forEach(result => {
       const normality = result.normalityTests;
@@ -58,14 +62,26 @@ export const formatTestsOfNormalityTable = (
         ? [depVarLabel, factorLabel]
         : [depVarLabel];
 
+      const subject = factorLabel
+        ? `${depVarLabel} (kelompok ${factorLabel})`
+        : depVarLabel;
+      const alpha = Number.isFinite(normality.alpha) ? normality.alpha : DEFAULT_ALPHA;
+
+      [
+        buildNormalityInterpretation('Kolmogorov-Smirnov', subject, ks?.pValue, alpha),
+        buildNormalityInterpretation('Shapiro-Wilk', subject, sw?.pValue, alpha),
+      ].forEach((interpretation) => {
+        if (interpretation) interpretations.push(interpretation);
+      });
+
       rows.push({
         rowHeader,
-        ks_statistic: formatStatistic(ks?.statistic),
+        ks_statistic: formatExactNumber(ks?.statistic),
         ks_df: formatDf(ks?.df),
-        ks_sig: formatSig(ks?.pValue) + (ks?.isLowerBound ? '*' : ''),
-        sw_statistic: formatStatistic(sw?.statistic),
+        ks_sig: formatExactNumber(ks?.pValue) + (ks?.isLowerBound ? '*' : ''),
+        sw_statistic: formatExactNumber(sw?.statistic),
         sw_df: formatDf(sw?.df),
-        sw_sig: formatSig(sw?.pValue),
+        sw_sig: formatExactNumber(sw?.pValue),
       });
 
       if (ks?.isLowerBound) {
@@ -87,7 +103,7 @@ export const formatTestsOfNormalityTable = (
 
   if (rows.length === 0) {
     params.dependentVariables.forEach((depVar) => {
-      const depVarLabel = depVar.label || depVar.name;
+      const depVarLabel = getDisplayName(depVar.label, depVar.name);
       rows.push({
         rowHeader: hasFactors ? [depVarLabel, null] : [depVarLabel],
         ks_statistic: '',
@@ -105,7 +121,7 @@ export const formatTestsOfNormalityTable = (
   const columnHeaders: ColumnHeader[] = hasFactors
     ? [
         { header: '', key: 'rowHeader1' },
-        { header: params.factorVariables[0]?.label || params.factorVariables[0]?.name || '', key: 'rowHeader2' },
+        { header: getDisplayName(params.factorVariables[0]?.label, params.factorVariables[0]?.name), key: 'rowHeader2' },
         { header: 'Kolmogorov-Smirnov(a) Statistic', key: 'ks_statistic' },
         { header: 'df', key: 'ks_df' },
         { header: 'Sig.', key: 'ks_sig' },
@@ -124,13 +140,14 @@ export const formatTestsOfNormalityTable = (
       ];
 
   if (hasKsValue) {
-    footnotes.unshift('a. Lilliefors Significance Correction');
+    footnotes.push('a. Lilliefors Significance Correction');
   }
 
   return {
     title: 'Tests of Normality',
     columnHeaders,
     rows,
-    footnotes: footnotes.length ? footnotes : undefined,
+    footnotes: buildNormalityDescription(interpretations),
+    footer: footnotes.length ? footnotes : undefined,
   };
 };

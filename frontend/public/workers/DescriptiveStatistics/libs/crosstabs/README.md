@@ -3,11 +3,15 @@
 Library ini menghitung tabulasi silang dua variabel (baris × kolom) dengan dukungan bobot, missing, dan tanggal. Menghasilkan contingency table, expected counts, residuals, dan persentase baris/kolom/total.
 
 ## Dependensi & Sumber Perhitungan
-- Utils internal: `checkIsMissing`, `isNumeric`, `isDateString`, `dateStringToSpssSeconds`, `spssSecondsToDateString`, `toSPSSFixed` (di `../utils/utils.js`).
-- Semua rumus kontingensi dihitung di sini (internal). Tidak menggunakan library statistik eksternal.
+- Utils internal: `checkIsMissing`, `isNumeric`, `isDateString`, `dateStringToSpssSeconds`, dan `spssSecondsToDateString` (di `../utils/utils.js`).
+- Mesin statistik kategorik: `../categoricalTests/categoricalChiSquare.js`.
+- Tidak menggunakan library statistik eksternal.
 
 ## Penanganan Tipe Data
 - numeric/string/date didukung sebagai kategori baris/kolom.
+- Kategori teks dapat digunakan langsung tanpa recode menjadi angka.
+- Spasi pada awal dan akhir kategori dibuang; kategori kosong dicatat sebagai missing.
+- Penulisan huruf besar dan kecil tetap dibedakan agar isi data tidak diubah diam-diam.
 - String tanggal `dd-mm-yyyy` dikonversi ke SPSS seconds untuk konsistensi pengurutan/kunci, lalu dikembalikan ke format tanggal untuk tampilan.
 
 ## Inisialisasi Tabel
@@ -30,13 +34,36 @@ Diberikan `f_ij` = bobot pada sel (i,j), `rowTotals[i]`, `colTotals[j]`, dan \( 
 Ringkasan yang dikembalikan berisi:
 - `rows`, `cols`, `totalCases (= W)`, `valid`, `missing`, `rowCategories`, `colCategories`, `rowTotals`, `colTotals`.
 
-## Uji Chi-Square (tersedia sebagai metode tambahan)
-- Pearson Chi-Square: \( \chi^2 = \sum_{i,j} \dfrac{(f_{ij} - E_{ij})^2}{E_{ij}} \) dengan \( df = (R-1)(C-1) \).
+## Uji Chi-Square dan Proporsi
+
+`categoricalChiSquare.js` membentuk tabel kontingensi dan menghitung:
+
+- Uji Kebebasan Pearson Chi-Square;
+- Uji Kesamaan Proporsi Binomial untuk tepat dua kategori hasil;
+- Uji Kesamaan Proporsi Multinomial untuk minimal tiga kategori hasil.
+
+Ketiga konteks memakai statistik Pearson yang sama:
+
+\[ \chi^2 = \sum_{i,j} \dfrac{(f_{ij} - E_{ij})^2}{E_{ij}}, \qquad df = (R-1)(C-1). \]
+
+Perbedaannya terletak pada hipotesis dan konteks penarikan kesimpulan. Modul juga menghitung p-value, expected count eksak, keputusan pada alpha, dan diagnostik aturan expected count.
 
 ## Ringkasan Sumber Perhitungan
-- Semua metrik crosstab dihitung di file ini (internal).
-- Utilitas tanggal/missing/pembulatan: dari `../utils/utils.js`.
+- Tabel kontingensi dan pengujian kategorik: `../categoricalTests/categoricalChiSquare.js`.
+- Statistik sel untuk tampilan: `crosstabs.js`.
+- Utilitas tanggal, missing, dan pembulatan tampilan: `../utils/utils.js`.
+- Chi-Square goodness-of-fit satu sampel pada menu Nonparametric Tests merupakan modul terpisah.
+
+Urutan fungsi utama pada mesin kategorik adalah:
+
+1. `normalizeCategoryValue()` membersihkan nilai kategori mentah.
+2. `buildContingencyTable()` membentuk matriks observed dan total marginal.
+3. `calculatePearsonChiSquare()` menghitung expected count, statistik, df, dan p-value.
+4. `chiSquareIndependenceTest()`, `binomialProportionTest()`, atau
+   `multinomialProportionTest()` menambahkan hipotesis sesuai tujuan pengujian.
 
 ## Batasan & Catatan
-- Expected untuk tampilan dibulatkan ke 1 desimal dengan kebijakan "bankers rounding" (`toSPSSFixed`); perhitungan residual memakai nilai eksak yang tidak dibulatkan.
+- Expected count, residual, statistik uji, dan p-value dikembalikan tanpa pembulatan desimal tetap.
+- JavaScript/TypeScript memakai IEEE-754 double precision. Modul mengurangi galat akumulasi dengan compensated summation, tetapi presisinya tetap dibatasi representasi `number`.
+- Opsi pembulatan atau truncation bobot hanya dijalankan bila pengguna memilihnya secara eksplisit; nilai default adalah `noAdjustment`.
 - Kategori dapat campuran numerik/teks; algoritme pengurutan mencoba numerik terlebih dulu, lalu fallback ke urutan string natural.

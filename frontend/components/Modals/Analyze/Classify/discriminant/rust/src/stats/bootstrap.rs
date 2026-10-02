@@ -10,12 +10,15 @@
 //! - The model (selected variable set) is held fixed at the main analysis's
 //!   selection; resampling perturbs the coefficient estimates, not the variable
 //!   selection. This matches the common "bootstrap the fitted model" approach.
-//! - Discriminant function signs are arbitrary per fit, so every resample is
-//!   sign-aligned to the original solution before its coefficients are pooled —
-//!   without this the bootstrap distribution would be meaningless (bimodal ±).
+//! - Discriminant function signs are arbitrary per fit, and functions whose
+//!   eigenvalues are close can come out in a different order, so every refit is
+//!   matched to the original functions (reordered and reflected) before its
+//!   coefficients are pooled — without this the bootstrap distribution would be
+//!   meaningless (bimodal ±, or a mix of two functions).
 
 use std::collections::HashMap;
 
+use nalgebra::DMatrix;
 use rand_mt::Mt;
 use statrs::distribution::{ContinuousCDF, Normal};
 
@@ -28,18 +31,18 @@ use crate::models::{
 use super::core::{
     calculate_between_groups_sscp, calculate_group_means, calculate_overall_means,
     calculate_pooled_within_matrix, extract_analyzed_dataset, get_stepwise_selected_variables,
-    process_discriminant_coefficients, push_analysis_warning, solve_eigenvalue_problem,
-    AnalyzedDataset,
+    group_row_indices, process_discriminant_coefficients, push_analysis_warning,
+    solve_eigenvalue_problem, AnalyzedDataset,
 };
 
 /// One resampled/observed case: its group label, the stratum it is drawn from
 /// under stratified sampling, and predictor values (in the same order as the
 /// variable list of the model).
 #[derive(Clone)]
-struct Case {
-    group: String,
-    stratum: String,
-    values: Vec<f64>,
+pub struct Case {
+    pub group: String,
+    pub stratum: String,
+    pub values: Vec<f64>,
 }
 
 /// Top-level bootstrap entry point. Returns `Err` when bootstrap is not
@@ -68,9 +71,13 @@ pub fn calculate_bootstrap(
         return Err("No discriminant functions available for bootstrap".to_string());
     }
 
-    // Original solution — reference for sign alignment, bias and BCa.
+    // Original solution — reference for function matching, bias and BCa.
     let (orig_unstd, orig_std) = canonical_coeffs_from_dataset(&dataset, &variables, num_functions)
         .ok_or_else(|| "Failed to compute original canonical coefficients".to_string())?;
+    let reference = MatchReference {
+        functions: function_vectors(&orig_unstd, &variables, num_functions),
+        pooled: calculate_pooled_within_matrix(&dataset, &variables),
+    };
 
     let mut cases = extract_cases(&dataset, &variables);
 
@@ -130,6 +137,7 @@ pub fn calculate_bootstrap(
 
     let mut valid_samples: i32 = 0;
     let mut skipped_samples: i32 = 0;
+    let mut reordered_samples: i32 = 0;
 
     for _ in 0..n_samples {
         let resampled = if stratified {
@@ -150,11 +158,18 @@ pub fn calculate_bootstrap(
 
         if let Some((unstd, std)) = canonical_coeffs_from_dataset(&ds, &variables, num_functions) {
             valid_samples += 1;
-            let signs = alignment_signs(&orig_unstd, &unstd, &variables, num_functions);
+            let matching = match_to_original(
+                &reference,
+                &function_vectors(&unstd, &variables, num_functions),
+            );
+            if matching.order.iter().enumerate().any(|(f, &k)| f != k) {
+                reordered_samples += 1;
+            }
             for (vi, var) in variables.iter().enumerate() {
                 if let Some(coefs) = std.get(var) {
                     for f in 0..num_functions {
-                        let val = coefs.get(f).copied().unwrap_or(0.0) * signs[f];
+                        let val =
+                            coefs.get(matching.order[f]).copied().unwrap_or(0.0) * matching.signs[f];
                         samples[vi][f].push(val);
                     }
                 }
@@ -191,7 +206,7 @@ pub fn calculate_bootstrap(
             &variables,
             &dataset.group_labels,
             num_functions,
-            &orig_unstd,
+            &reference,
         ))
     } else {
         None
@@ -214,6 +229,8 @@ pub fn calculate_bootstrap(
                 continue;
             }
 
+            // Bias = mean of the B estimates − original estimate; Std. Error = their
+            // standard deviation.
             let mean = est.iter().sum::<f64>() / est.len() as f64;
             bias[f] = mean - orig;
             std_error[f] = std_dev(est, mean);
@@ -245,6 +262,7 @@ pub fn calculate_bootstrap(
     Ok(BootstrapResults {
         num_samples: n_samples,
         valid_samples,
+        reordered_samples,
         level,
         ci_method: if use_bca { "BCa".to_string() } else { "Percentile".to_string() },
         sampling: if stratified { "Stratified".to_string() } else { "Simple".to_string() },
@@ -353,33 +371,13 @@ fn strata_keys_for_cases(
         return None;
     }
 
-    let grouping_variable = &config.main.grouping_variable;
-    let min_range = config.define_range.min_range;
-    let max_range = config.define_range.max_range;
-
     // Same labelling and range rules as extract_grouped_data.
-    let mut group_mappings: HashMap<String, Vec<usize>> = HashMap::new();
-    for (i, record) in data.group_data.iter().flatten().enumerate() {
-        if let Some(value) = record.values.get(grouping_variable) {
-            let group_label = match value {
-                DataValue::Number(num) => {
-                    if
-                        min_range.map_or(true, |min| *num >= min) &&
-                        max_range.map_or(true, |max| *num <= max)
-                    {
-                        num.to_string()
-                    } else {
-                        continue;
-                    }
-                }
-                DataValue::Text(text) => text.clone(),
-                _ => {
-                    continue;
-                }
-            };
-            group_mappings.entry(group_label).or_default().push(i);
-        }
-    }
+    let group_mappings = group_row_indices(
+        data,
+        &config.main.grouping_variable,
+        config.define_range.min_range,
+        config.define_range.max_range,
+    );
 
     // Rows of each strata variable, located by name like extract_grouped_data
     // does, with the positional fallback for data organised by variable slot.
@@ -482,7 +480,7 @@ fn resample_simple(cases: &[Case], rng: &mut Mt) -> Vec<Case> {
 /// user picked Strata Variables, in which case it is their crossed cells.
 /// Strata are visited in first-appearance order, so a given seed always produces
 /// the same draws.
-fn resample_stratified(cases: &[Case], rng: &mut Mt) -> Vec<Case> {
+pub fn resample_stratified(cases: &[Case], rng: &mut Mt) -> Vec<Case> {
     let mut order: Vec<&String> = Vec::new();
     let mut by_stratum: HashMap<&String, Vec<&Case>> = HashMap::new();
     for c in cases {
@@ -504,32 +502,166 @@ fn resample_stratified(cases: &[Case], rng: &mut Mt) -> Vec<Case> {
     out
 }
 
-/// Per-function sign to apply to a resampled solution so it is oriented like the
-/// original (dot product of unstandardized coefficient vectors ≥ 0).
-fn alignment_signs(
-    orig_unstd: &HashMap<String, Vec<f64>>,
+/// The original solution that every refit is matched to: its unstandardized
+/// coefficient vectors and the pooled within-groups covariance that measures them.
+struct MatchReference {
+    /// [function][variable], in `variables` order.
+    functions: Vec<Vec<f64>>,
+    pooled: DMatrix<f64>,
+}
+
+/// How a refit maps onto the original functions: original function `f` is the
+/// refit's function `order[f]`, multiplied by `signs[f]`.
+struct FunctionMatching {
+    order: Vec<usize>,
+    signs: Vec<f64>,
+}
+
+/// Unstandardized coefficient vectors, [function][variable] in `variables` order.
+fn function_vectors(
     unstd: &HashMap<String, Vec<f64>>,
     variables: &[String],
     num_functions: usize,
-) -> Vec<f64> {
+) -> Vec<Vec<f64>> {
     (0..num_functions)
         .map(|f| {
-            let mut dot = 0.0;
-            for var in variables {
-                let a = orig_unstd.get(var).and_then(|c| c.get(f)).copied().unwrap_or(0.0);
-                let b = unstd.get(var).and_then(|c| c.get(f)).copied().unwrap_or(0.0);
-                dot += a * b;
-            }
-            if dot < 0.0 {
-                -1.0
-            } else {
-                1.0
-            }
+            variables
+                .iter()
+                .map(|var| unstd.get(var).and_then(|c| c.get(f)).copied().unwrap_or(0.0))
+                .collect()
         })
         .collect()
 }
 
-/// Sample standard deviation (n-1 denominator).
+/// Match a refit's functions to the original ones.
+///
+/// Similarity is the pooled within-groups correlation of the two functions'
+/// scores, r = aᵀSb / √(aᵀSa · bᵀSb), with S the original pooled covariance.
+/// Unlike a raw dot product of the coefficients it does not depend on the scale
+/// of the predictors (a dot product weights each predictor by 1/variance, so the
+/// one with the smallest SD decides the sign). The order is the assignment that
+/// maximizes Σ|r|, which undoes swaps between functions with close eigenvalues;
+/// each matched function is then reflected so that r ≥ 0.
+fn match_to_original(reference: &MatchReference, refit: &[Vec<f64>]) -> FunctionMatching {
+    let s = &reference.pooled;
+    let quad = |a: &[f64], b: &[f64]| -> f64 {
+        let mut sum = 0.0;
+        for i in 0..a.len() {
+            for j in 0..b.len() {
+                sum += a[i] * s[(i, j)] * b[j];
+            }
+        }
+        sum
+    };
+
+    let orig_norms: Vec<f64> = reference.functions.iter().map(|a| quad(a, a).sqrt()).collect();
+    let refit_norms: Vec<f64> = refit.iter().map(|b| quad(b, b).sqrt()).collect();
+
+    let corr: Vec<Vec<f64>> = reference
+        .functions
+        .iter()
+        .zip(&orig_norms)
+        .map(|(a, &na)| {
+            refit
+                .iter()
+                .zip(&refit_norms)
+                .map(|(b, &nb)| {
+                    let r = quad(a, b) / (na * nb);
+                    if r.is_finite() { r } else { 0.0 }
+                })
+                .collect()
+        })
+        .collect();
+
+    let weights: Vec<Vec<f64>> =
+        corr.iter().map(|row| row.iter().map(|r| r.abs()).collect()).collect();
+    let order = best_assignment(&weights);
+    let signs = order
+        .iter()
+        .enumerate()
+        .map(|(f, &k)| if corr[f][k] < 0.0 { -1.0 } else { 1.0 })
+        .collect();
+
+    FunctionMatching { order, signs }
+}
+
+/// Assignment of rows to columns that maximizes Σ w[row][order[row]], for a
+/// square matrix (Hungarian algorithm, O(m³)).
+fn best_assignment(w: &[Vec<f64>]) -> Vec<usize> {
+    let n = w.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    // Minimize cost = -w with the 1-based potentials of the standard formulation:
+    // p[j] is the row assigned to column j, way[j] the previous column on the
+    // augmenting path.
+    let cost = |i: usize, j: usize| -> f64 {
+        let v = w[i - 1][j - 1];
+        if v.is_finite() { -v } else { 0.0 }
+    };
+    let mut u = vec![0.0_f64; n + 1];
+    let mut v = vec![0.0_f64; n + 1];
+    let mut p = vec![0_usize; n + 1];
+    let mut way = vec![0_usize; n + 1];
+
+    for i in 1..=n {
+        p[0] = i;
+        let mut j0 = 0_usize;
+        let mut minv = vec![f64::INFINITY; n + 1];
+        let mut used = vec![false; n + 1];
+        loop {
+            used[j0] = true;
+            let i0 = p[j0];
+            let mut delta = f64::INFINITY;
+            let mut j1 = 0_usize;
+            for j in 1..=n {
+                if !used[j] {
+                    let cur = cost(i0, j) - u[i0] - v[j];
+                    if cur < minv[j] {
+                        minv[j] = cur;
+                        way[j] = j0;
+                    }
+                    if minv[j] < delta {
+                        delta = minv[j];
+                        j1 = j;
+                    }
+                }
+            }
+            for j in 0..=n {
+                if used[j] {
+                    u[p[j]] += delta;
+                    v[j] -= delta;
+                } else {
+                    minv[j] -= delta;
+                }
+            }
+            j0 = j1;
+            if p[j0] == 0 {
+                break;
+            }
+        }
+        loop {
+            let j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+            if j0 == 0 {
+                break;
+            }
+        }
+    }
+
+    let mut order = vec![0_usize; n];
+    for j in 1..=n {
+        if p[j] > 0 {
+            order[p[j] - 1] = j - 1;
+        }
+    }
+    order
+}
+
+/// Standard deviation of the bootstrap estimates, s = √[Σ(θ*ᵦ − θ̄*)² / (B − 1)];
+/// 0 when B < 2.
 fn std_dev(values: &[f64], mean: f64) -> f64 {
     let n = values.len();
     if n < 2 {
@@ -539,7 +671,9 @@ fn std_dev(values: &[f64], mean: f64) -> f64 {
     (ss / (n as f64 - 1.0)).sqrt()
 }
 
-/// Type-7 (linear interpolation) quantile of an already-sorted slice.
+/// Type-7 (linear interpolation) quantile of an already-sorted slice x₀ ≤ … ≤ xₙ₋₁:
+///
+/// h = (n − 1) · q,   Q(q) = x₍⌊h⌋₎ + (h − ⌊h⌋) · (x₍⌈h⌉₎ − x₍⌊h⌋₎)
 fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
     let n = sorted.len();
     if n == 0 {
@@ -559,7 +693,8 @@ fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
     }
 }
 
-/// Percentile confidence interval at the two-sided level implied by `alpha`.
+/// Percentile confidence interval [Q(α/2), Q(1 − α/2)] of the bootstrap estimates,
+/// α = 1 − level / 100.
 fn percentile_interval(estimates: &[f64], alpha: f64) -> (f64, f64) {
     let mut sorted = estimates.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -568,8 +703,17 @@ fn percentile_interval(estimates: &[f64], alpha: f64) -> (f64, f64) {
     (lo, hi)
 }
 
-/// Bias-corrected and accelerated (BCa) confidence interval.
-fn bca_interval(estimates: &[f64], original: f64, accel: f64, alpha: f64) -> (f64, f64) {
+/// Bias-corrected and accelerated (BCa) confidence interval (Efron, 1987):
+///
+/// z₀ = Φ⁻¹(#{θ*ᵦ < θ̂} / B)
+/// α₁ = Φ(z₀ + (z₀ + z_{α/2})   / (1 − a · (z₀ + z_{α/2})))
+/// α₂ = Φ(z₀ + (z₀ + z_{1−α/2}) / (1 − a · (z₀ + z_{1−α/2})))
+/// CI = [Q(α₁), Q(α₂)]
+///
+/// θ̂ = original estimate, a = jackknife acceleration (`jackknife_acceleration`),
+/// Q = Type-7 quantile. The proportion is kept within [10⁻⁶, 1 − 10⁻⁶] so that z₀
+/// stays finite.
+pub fn bca_interval(estimates: &[f64], original: f64, accel: f64, alpha: f64) -> (f64, f64) {
     let n = estimates.len();
     if n < 2 {
         return (original, original);
@@ -604,14 +748,19 @@ fn bca_interval(estimates: &[f64], original: f64, accel: f64, alpha: f64) -> (f6
 }
 
 /// Jackknife acceleration `a` for every (variable, function), needed by BCa.
-/// Leaves out one case at a time, re-fits, sign-aligns to the original, and
-/// applies the standard skewness-of-jackknife formula.
+/// Leaves out one case at a time, re-fits, matches the functions to the original
+/// (same rule as the resamples), and applies the standard skewness-of-jackknife
+/// formula
+///
+/// a = Σᵢ (θ̄ − θ₍ᵢ₎)³ / (6 · [Σᵢ (θ̄ − θ₍ᵢ₎)²]^(3/2))
+///
+/// θ₍ᵢ₎ = estimate without case i, θ̄ = mean of the θ₍ᵢ₎.
 fn jackknife_acceleration(
     cases: &[Case],
     variables: &[String],
     group_order: &[String],
     num_functions: usize,
-    orig_unstd: &HashMap<String, Vec<f64>>,
+    reference: &MatchReference,
 ) -> Vec<Vec<f64>> {
     let p = variables.len();
     let n = cases.len();
@@ -635,11 +784,15 @@ fn jackknife_acceleration(
         }
 
         if let Some((unstd, std)) = canonical_coeffs_from_dataset(&ds, variables, num_functions) {
-            let signs = alignment_signs(orig_unstd, &unstd, variables, num_functions);
+            let matching =
+                match_to_original(reference, &function_vectors(&unstd, variables, num_functions));
             for (vi, var) in variables.iter().enumerate() {
                 if let Some(coefs) = std.get(var) {
                     for f in 0..num_functions {
-                        theta[vi][f].push(coefs.get(f).copied().unwrap_or(0.0) * signs[f]);
+                        theta[vi][f].push(
+                            coefs.get(matching.order[f]).copied().unwrap_or(0.0)
+                                * matching.signs[f],
+                        );
                     }
                 }
             }
@@ -654,7 +807,8 @@ fn jackknife_acceleration(
                 continue;
             }
             let mean = vals.iter().sum::<f64>() / vals.len() as f64;
-            // The jackknife uses (mean - θ_i); sign cancels in the ratio.
+            // Efron's a = Σ(θ̄ − θᵢ)³ / (6·[Σ(θ̄ − θᵢ)²]^{3/2}). The cube keeps the
+            // sign, so the difference must be (mean − θᵢ), not (θᵢ − mean).
             let mut num = 0.0;
             let mut den = 0.0;
             for &v in vals {
@@ -668,4 +822,60 @@ fn jackknife_acceleration(
     }
 
     accel
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn brute_force_best(w: &[Vec<f64>]) -> f64 {
+        fn go(w: &[Vec<f64>], row: usize, used: &mut Vec<bool>) -> f64 {
+            if row == w.len() {
+                return 0.0;
+            }
+            let mut best = f64::NEG_INFINITY;
+            for j in 0..w.len() {
+                if !used[j] {
+                    used[j] = true;
+                    best = best.max(w[row][j] + go(w, row + 1, used));
+                    used[j] = false;
+                }
+            }
+            best
+        }
+        go(w, 0, &mut vec![false; w.len()])
+    }
+
+    #[test]
+    fn best_assignment_matches_brute_force() {
+        let mut state: u32 = 12345;
+        let mut next = || {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            state as f64 / u32::MAX as f64
+        };
+        for m in 1..=6 {
+            for _ in 0..50 {
+                let w: Vec<Vec<f64>> = (0..m).map(|_| (0..m).map(|_| next()).collect()).collect();
+                let order = best_assignment(&w);
+                let mut seen = order.clone();
+                seen.sort();
+                assert_eq!(seen, (0..m).collect::<Vec<_>>(), "not a permutation");
+                let total: f64 = order.iter().enumerate().map(|(i, &j)| w[i][j]).sum();
+                assert!((total - brute_force_best(&w)).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn match_undoes_swap_and_reflection() {
+        let reference = MatchReference {
+            functions: vec![vec![1.0, 0.0, 0.2], vec![0.0, 1.0, -0.3]],
+            pooled: DMatrix::from_row_slice(3, 3, &[4.0, 1.0, 0.5, 1.0, 900.0, 3.0, 0.5, 3.0, 0.08]),
+        };
+        // Refit = original functions swapped, the second one reflected, rescaled.
+        let refit = vec![vec![0.0, -2.0, 0.6], vec![1.1, 0.0, 0.22]];
+        let m = match_to_original(&reference, &refit);
+        assert_eq!(m.order, vec![1, 0]);
+        assert_eq!(m.signs, vec![1.0, -1.0]);
+    }
 }

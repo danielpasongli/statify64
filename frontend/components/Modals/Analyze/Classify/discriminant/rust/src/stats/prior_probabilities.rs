@@ -6,8 +6,10 @@ use super::core::extract_analyzed_dataset;
 
 /// Calculate prior probabilities for discriminant analysis
 ///
-/// This function calculates prior probabilities for groups,
-/// either based on equal probabilities or group sizes.
+/// Prior probability of each group k:
+///
+/// πₖ = 1 / g          (All groups equal)
+/// πₖ = nₖ / n         (Compute from group sizes; equal priors when n = 0)
 ///
 /// # Parameters
 /// * `data` - The analysis data
@@ -19,7 +21,7 @@ pub fn calculate_prior_probabilities(
     data: &AnalysisData,
     config: &DiscriminantConfig
 ) -> Result<PriorProbabilities, String> {
-    web_sys::console::log_1(&"Executing calculate_prior_probabilities".into());
+    crate::debug_log!("Executing calculate_prior_probabilities");
 
     // Extract analyzed dataset
     let dataset = extract_analyzed_dataset(data, config)?;

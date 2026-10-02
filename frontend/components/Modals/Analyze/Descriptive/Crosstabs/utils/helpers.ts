@@ -15,4 +15,6 @@ export interface FormattedTable {
   columnHeaders: ColumnHeader[];
   rows: TableRowData[];
   footnotes?: string[];
-} 
+  footer?: string[];
+  description?: string[];
+}

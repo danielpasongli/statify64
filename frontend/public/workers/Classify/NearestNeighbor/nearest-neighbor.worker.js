@@ -1,7 +1,7 @@
-import init, { KNNAnalysis } from "/workers/Classify/NearestNeighbor/pkg/wasm.js?v=knn-focal-positive-20260925";
+import init, { KNNAnalysis } from "/workers/Classify/NearestNeighbor/pkg/wasm.js?v=knn-float-tolerance-20260926";
 
 const WASM_URL =
-  "/workers/Classify/NearestNeighbor/pkg/wasm_bg.wasm?v=knn-focal-positive-20260925";
+  "/workers/Classify/NearestNeighbor/pkg/wasm_bg.wasm?v=knn-float-tolerance-20260926";
 
 self.onmessage = async (e) => {
   const {
@@ -17,8 +17,11 @@ self.onmessage = async (e) => {
   } = e.data;
 
   try {
+    const workerStart = performance.now();
+
     // init WASM (WAJIB kasih path biar ga error)
     await init(WASM_URL);
+    const wasmReady = performance.now();
 
     const knn = new KNNAnalysis(
       target,
@@ -31,14 +34,22 @@ self.onmessage = async (e) => {
       caseDefs,
       config
     );
+    const analysisDone = performance.now();
 
     const result = knn.get_formatted_results();
     const errors = knn.get_all_errors();
+    const formatDone = performance.now();
 
     self.postMessage({
       success: true,
       data: result,
-      errors
+      errors,
+      timing: {
+        wasmInitMs: wasmReady - workerStart,
+        analysisMs: analysisDone - wasmReady,
+        formatMs: formatDone - analysisDone,
+        totalMs: formatDone - workerStart
+      }
     });
 
   } catch (err) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   TooltipProvider,
@@ -53,10 +53,25 @@ import {
   LocationInteraction,
   LocationModelTerm,
 } from "../types/ordinal";
+import {
+  useOrdinalFormStore,
+  hydrateOrdinalSelections,
+} from "../stores/useOrdinalFormStore";
 
 const OrdinalMain: React.FC = () => {
   const { closeModal } = useModalStore();
   const variablesFromStore = useVariableStore((state) => state.variables);
+
+  const savedOrdinalState = useOrdinalFormStore((state) => state.savedState);
+  const saveOrdinalSelections = useOrdinalFormStore((state) => state.saveOrdinalSelections);
+  const resetOrdinalSelections = useOrdinalFormStore((state) => state.resetOrdinalSelections);
+
+  // Initialize state hydrated from persistent store
+  const hydrated = useMemo(
+    () => hydrateOrdinalSelections(savedOrdinalState, variablesFromStore),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   // --- STATE ---
   const [activeTab, setActiveTab] = useState("variables");
@@ -74,15 +89,16 @@ const OrdinalMain: React.FC = () => {
   const { tourActive, currentStep, tourSteps, currentTargetElement, startTour, nextStep, prevStep, endTour } =
     useTourGuide(baseTourSteps, "dialog", tabControl);
 
-  // State untuk variabel yang dipilih
-  const [options, setOptions] = useState<OrdinalOptions>({
-    dependent: null,
-    factors: [],
-    covariates: [],
-  });
+  // State untuk variabel yang dipilih (terhidrasi dari persistent storage saat mount)
+  const [options, setOptions] = useState<OrdinalOptions>(() => hydrated.options);
 
   // State untuk setiap tab
-  const [locationParams, setLocationParams] = useState<OrdinalLocationParams>({ locationModel: [] });
+  const [locationParams, setLocationParams] = useState<OrdinalLocationParams>(() => hydrated.locationParams);
+
+  // Sync to persistent store on changes
+  useEffect(() => {
+    saveOrdinalSelections(options, locationParams);
+  }, [options, locationParams, saveOrdinalSelections]);
   const [scaleParams, setScaleParams] = useState<OrdinalScaleParams>({ scaleModel: [] });
   const [optParams, setOptParams] = useState<OrdinalOptionsParams>({
     maxIterations: 100,
@@ -101,7 +117,6 @@ const OrdinalMain: React.FC = () => {
       parameterEstimates: true,
       asymptoticCovariance: false,
       asymptoticCorrelation: false,
-      cellInformation: false,
       testOfParallelLines: false,
       iterationHistory: false,
       iterationHistoryStep: 1,
@@ -119,12 +134,20 @@ const OrdinalMain: React.FC = () => {
 
   // Menghitung variabel yang tersedia (belum dipilih)
   const availableVariables = useMemo(() => {
+    const selectedNames = new Set([
+      options.dependent?.name,
+      ...options.factors.map((v) => v.name),
+      ...options.covariates.map((v) => v.name),
+    ].filter(Boolean));
     const selectedIds = new Set([
       options.dependent?.id,
       ...options.factors.map((v) => v.id),
       ...options.covariates.map((v) => v.id),
-    ]);
-    return variablesFromStore.filter((v) => !selectedIds.has(v.id));
+    ].filter((id) => id !== undefined));
+
+    return variablesFromStore.filter(
+      (v) => !selectedNames.has(v.name) && (v.id === undefined || !selectedIds.has(v.id))
+    );
   }, [variablesFromStore, options]);
 
   const { data, weights } = useAnalysisData();
@@ -196,7 +219,7 @@ const OrdinalMain: React.FC = () => {
   const toNumberOrThrow = (value: unknown, label: string) => {
     const numeric = Number(value);
     if (Number.isNaN(numeric) || !Number.isFinite(numeric)) {
-      throw new Error(`Covariate '${label}' Variabel kovariat wajib bertipe numerik.`);
+      throw new Error(`Variabel '${label}' kontinu/rasio, kovariat wajib bertipe numerik.`);
     }
     return numeric;
   };
@@ -233,26 +256,26 @@ const OrdinalMain: React.FC = () => {
     for (const term of predictors) {
       if (isInteraction(term)) {
         if (!Array.isArray(term.variables) || term.variables.length < 2) {
-          throw new Error("Interaction term harus memiliki minimal 2 variabel.");
+          throw new Error("Suku interaksi harus memiliki minimal 2 variabel.");
         }
         for (const variable of term.variables) {
           if (responseVariable?.id === variable?.id || responseVariable?.columnIndex === variable?.columnIndex) {
-            throw new Error("Predictor cannot be the same as response variable.");
+            throw new Error("Prediktor tidak boleh sama dengan variabel dependen (respon).");
           }
         }
         const interactionKey = buildInteractionKey(term.variables);
         if (seenInteractions.has(interactionKey)) {
-          throw new Error("Interaction tidak boleh duplicate.");
+          throw new Error("Suku interaksi tidak boleh duplikat.");
         }
         seenInteractions.add(interactionKey);
         interactionTerms.push(term);
       } else {
         const key = getVariableKey(term);
         if (responseVariable?.id === term?.id || responseVariable?.columnIndex === term?.columnIndex) {
-          throw new Error("Predictor cannot be the same as response variable.");
+          throw new Error("Prediktor tidak boleh sama dengan variabel dependen (respon).");
         }
         if (seenVariables.has(key)) {
-          throw new Error("Predictor tidak boleh duplicate.");
+          throw new Error("Prediktor tidak boleh duplikat.");
         }
         seenVariables.add(key);
         variableTerms.push(term);
@@ -264,22 +287,22 @@ const OrdinalMain: React.FC = () => {
 
   const validateWorkerResult = (payload: any) => {
     if (!payload || typeof payload !== "object") {
-      throw new Error("Worker result is empty or invalid.");
+      throw new Error("Hasil proses worker kosong atau tidak valid.");
     }
     if (typeof payload.converged !== "boolean") {
-      throw new Error("Worker result missing converged status.");
+      throw new Error("Hasil worker tidak memiliki status konvergensi.");
     }
     if (payload.iterations !== null && typeof payload.iterations !== "number") {
-      throw new Error("Worker result missing iterations.");
+      throw new Error("Hasil worker tidak memiliki jumlah iterasi yang valid.");
     }
     if (payload.logLikelihood !== null && typeof payload.logLikelihood !== "number") {
-      throw new Error("Worker result missing logLikelihood.");
+      throw new Error("Hasil worker tidak memiliki logLikelihood yang valid.");
     }
     if (payload.minus2LogLikelihood !== null && typeof payload.minus2LogLikelihood !== "number") {
-      throw new Error("Worker result missing minus2LogLikelihood.");
+      throw new Error("Hasil worker tidak memiliki -2 Log-Likelihood yang valid.");
     }
     if (!Array.isArray(payload.parameterEstimates)) {
-      throw new Error("Worker result missing parameter estimates.");
+      throw new Error("Hasil worker tidak memiliki estimasi parameter.");
     }
     const invalidEstimate = payload.parameterEstimates.find((v: any) => {
       if (typeof v === "number") {
@@ -296,7 +319,7 @@ const OrdinalMain: React.FC = () => {
       return true;
     });
     if (invalidEstimate !== undefined) {
-      throw new Error("Worker result contains invalid parameter estimates.");
+      throw new Error("Hasil worker mengandung estimasi parameter yang tidak valid.");
     }
   };
 
@@ -313,10 +336,10 @@ const OrdinalMain: React.FC = () => {
       try {
         return JSON.stringify(errorObj);
       } catch {
-        return "Terjadi error tidak dikenal.";
+        return "Terjadi kesalahan tidak dikenal.";
       }
     }
-    return "Terjadi error tidak dikenal.";
+    return "Terjadi kesalahan tidak dikenal.";
   };
 
   // ==================================================
@@ -347,12 +370,50 @@ const OrdinalMain: React.FC = () => {
       if (typeof responseVariable.columnIndex !== "number") {
         throw new Error("Response variable tidak memiliki columnIndex yang valid.");
       }
+      if (responseVariable.measure !== "ordinal") {
+        throw new Error("Variabel respon wajib bertipe Ordinal.");
+      }
       if (!data || data.length === 0) {
         throw new Error("Dataset kosong atau tidak tersedia.");
       }
 
+      // Validasi parameter options (tidak boleh minus / negatif)
+      if (optParams.maxIterations <= 0) {
+        throw new Error("Maximum iterations tidak boleh minus atau nol.");
+      }
+      if (optParams.maxStepHalving <= 0) {
+        throw new Error("Maximum step-halving tidak boleh minus atau nol.");
+      }
+      if (optParams.logLikelihoodConvergence < 0) {
+        throw new Error("Log-likelihood convergence tidak boleh minus.");
+      }
+      if (optParams.parameterConvergence < 0) {
+        throw new Error("Parameter convergence tidak boleh minus.");
+      }
+      if (optParams.confidenceInterval < 0) {
+        throw new Error("Confidence interval tidak boleh minus.");
+      }
+      if (optParams.delta < 0) {
+        throw new Error("Delta tidak boleh minus.");
+      }
+      if (optParams.singularityTolerance < 0) {
+        throw new Error("Singularity tolerance tidak boleh minus.");
+      }
+
       const factors = options.factors;
       const covariates = options.covariates;
+
+      for (const factor of factors) {
+        if (factor.measure !== "nominal" && factor.measure !== "ordinal") {
+          throw new Error(`Variabel faktor '${factor.name}' harus memiliki tipe pengukuran Nominal atau Ordinal.`);
+        }
+      }
+
+      for (const covariate of covariates) {
+        if (covariate.measure !== "scale") {
+          throw new Error(`Variabel kovariat '${covariate.name}' harus memiliki tipe pengukuran Scale.`);
+        }
+      }
 
       const factorIdentities = new Set(factors.map(getVariableIdentity));
       const covariateIdentities = new Set(covariates.map(getVariableIdentity));
@@ -379,7 +440,16 @@ const OrdinalMain: React.FC = () => {
       for (const predictor of locationPredictors) {
         const identity = getVariableIdentity(predictor);
         if (!factorIdentities.has(identity) && !covariateIdentities.has(identity)) {
-          throw new Error(`Predictor '${predictor.name}' harus berada di Factors atau Covariates.`);
+          throw new Error(`Prediktor '${predictor.name}' harus berada di Faktor atau Kovariat.`);
+        }
+      }
+
+      for (const interaction of interactionTerms) {
+        for (const variable of interaction.variables) {
+          const identity = getVariableIdentity(variable);
+          if (!factorIdentities.has(identity) && !covariateIdentities.has(identity)) {
+            throw new Error(`Variabel interaksi '${variable.name}' harus berada di Faktor atau Kovariat.`);
+          }
         }
       }
 
@@ -424,7 +494,7 @@ const OrdinalMain: React.FC = () => {
         for (const predictor of locationPredictors) {
           const predictorIndex = predictor?.columnIndex;
           if (typeof predictorIndex !== "number") {
-            throw new Error(`Predictor "${predictor?.name ?? ""}" does not have a valid columnIndex.`);
+            throw new Error(`Prediktor "${predictor?.name ?? ""}" tidak memiliki columnIndex yang valid.`);
           }
           const predictorValue = getRowValue(row, predictorIndex);
           if (isMissingValue(predictorValue)) {
@@ -437,7 +507,7 @@ const OrdinalMain: React.FC = () => {
           for (const predictor of scalePredictors) {
             const predictorIndex = predictor?.columnIndex;
             if (typeof predictorIndex !== "number") {
-              throw new Error(`Scale predictor "${predictor?.name ?? ""}" does not have a valid columnIndex.`);
+              throw new Error(`Prediktor skala "${predictor?.name ?? ""}" tidak memiliki columnIndex yang valid.`);
             }
             const predictorValue = getRowValue(row, predictorIndex);
             if (isMissingValue(predictorValue)) {
@@ -452,7 +522,7 @@ const OrdinalMain: React.FC = () => {
             for (const variable of interaction.variables) {
               const predictorIndex = variable?.columnIndex;
               if (typeof predictorIndex !== "number") {
-                throw new Error(`Interaction variable "${variable?.name ?? ""}" does not have a valid columnIndex.`);
+                throw new Error(`Variabel interaksi "${variable?.name ?? ""}" tidak memiliki columnIndex yang valid.`);
               }
               const predictorValue = getRowValue(row, predictorIndex);
               if (isMissingValue(predictorValue)) {
@@ -480,7 +550,7 @@ const OrdinalMain: React.FC = () => {
       });
 
       if (validRows.length === 0) {
-        throw new Error("All rows were dropped after listwise deletion.");
+        throw new Error("Semua baris terhapus setelah penghapusan data hilang (listwise deletion).");
       }
 
       const responseValues = validRows.map((row) => getRowValue(row, responseVariable.columnIndex));
@@ -492,7 +562,7 @@ const OrdinalMain: React.FC = () => {
       });
 
       if (responseCategories.length < 3) {
-        throw new Error("Response variable harus memiliki minimal 3 kategori untuk ordinal regression.");
+        throw new Error("Variabel dependen (respon) harus memiliki minimal 3 kategori untuk regresi ordinal.");
       }
 
       const responseCategoriesNumeric = responseCategories.every((value) => typeof value === "number");
@@ -507,11 +577,11 @@ const OrdinalMain: React.FC = () => {
         return responseCategoryMap.get(key);
       });
       if (responseVector.some((value) => value === undefined)) {
-        throw new Error("Response vector encoding failed due to invalid categories.");
+        throw new Error("Pengkodean vektor respon gagal karena kategori tidak valid.");
       }
       responseVector.forEach((value, index) => {
         if (typeof value !== "number" || Number.isNaN(value) || !Number.isFinite(value)) {
-          throw new Error(`Response vector contains invalid value at index ${index}.`);
+          throw new Error(`Vektor respon mengandung nilai yang tidak valid pada indeks ${index}.`);
         }
       });
 
@@ -540,9 +610,28 @@ const OrdinalMain: React.FC = () => {
         covariateIdentities.has(getVariableIdentity(predictor))
       );
 
+      const interactionFactorIdentities = new Set<string>();
+      interactionTerms.forEach((interaction) => {
+        interaction.variables.forEach((variable) => {
+          const identity = getVariableIdentity(variable);
+          if (factorIdentities.has(identity)) {
+            interactionFactorIdentities.add(identity);
+          }
+        });
+      });
+
+      const allModelFactors = factors.filter((factor) => {
+        const identity = getVariableIdentity(factor);
+        return (
+          factorPredictors.some((p) => getVariableIdentity(p) === identity) ||
+          interactionFactorIdentities.has(identity)
+        );
+      });
+
       const designMatrixResult = buildOrdinalPlumDesignMatrix({
         rows: validRows,
         factors: factorPredictors,
+        allFactors: allModelFactors,
         covariates: covariatePredictors,
         interactions: interactionTerms,
         getRowValue,
@@ -568,26 +657,26 @@ const OrdinalMain: React.FC = () => {
       }
 
       if (locationDesignMatrix.length === 0 || locationDesignMatrix[0]?.length === 0) {
-        throw new Error("Location design matrix is empty.");
+        throw new Error("Matriks desain lokasi kosong.");
       }
 
       const expectedColumns = locationDesignMatrix[0].length;
       locationDesignMatrix.forEach((row, index) => {
         if (row.length !== expectedColumns) {
-          throw new Error(`Location design matrix row length mismatch at row ${index}.`);
+          throw new Error(`Panjang baris matriks desain lokasi tidak sesuai pada baris ${index}.`);
         }
         row.forEach((value) => {
           if (value === undefined || value === null) {
-            throw new Error(`Location design matrix contains undefined at row ${index}.`);
+            throw new Error(`Matriks desain lokasi mengandung nilai undefined pada baris ${index}.`);
           }
           if (Number.isNaN(value) || !Number.isFinite(value)) {
-            throw new Error(`Location design matrix contains NaN at row ${index}.`);
+            throw new Error(`Matriks desain lokasi mengandung nilai NaN pada baris ${index}.`);
           }
         });
       });
 
       if (locationDesignMatrix.length !== responseVector.length) {
-        throw new Error("Location design matrix row count does not match response vector length.");
+        throw new Error("Jumlah baris matriks desain lokasi tidak sesuai dengan panjang vektor respon.");
       }
 
       console.log("[ORDINAL][MAIN][LOCATION_MATRIX]", {
@@ -639,6 +728,29 @@ const OrdinalMain: React.FC = () => {
         return rowValues;
       });
       const scaleTermNames = scalePredictors.map((predictor) => predictor.name);
+
+      console.log("[ORDINAL][INPUT][XYZ_SUMMARY]", {
+        matrixX: {
+          shape: [locationDesignMatrix.length, locationDesignMatrix[0]?.length ?? 0],
+          columnNames: locationTermNames,
+          sampleRows: locationDesignMatrix.slice(0, 3),
+        },
+        vectorY: {
+          length: responseVector.length,
+          categories: responseCategories,
+          categoryDistribution: categoryCounts,
+          sampleValues: responseVector.slice(0, 5),
+        },
+        matrixZ: {
+          enabled: scaleTermNames.length > 0,
+          shape: [scaleDesignMatrix.length, scaleDesignMatrix[0]?.length ?? 0],
+          columnNames: scaleTermNames,
+        },
+        weights: {
+          totalWeight: validWeightTotal,
+          sampleWeights: validWeights.slice(0, 5),
+        },
+      });
 
       // ==================================================
       // BUILD WORKER PAYLOAD
@@ -756,7 +868,6 @@ const OrdinalMain: React.FC = () => {
           parameterEstimates: outputParams.display.parameterEstimates,
           asymptoticCovariance: outputParams.display.asymptoticCovariance,
           asymptoticCorrelation: outputParams.display.asymptoticCorrelation,
-          cellInformation: outputParams.display.cellInformation,
           testOfParallelLines: outputParams.display.testOfParallelLines,
           iterationHistory: printIterationHistory,
           iterationHistoryStep: iterationHistoryEvery,
@@ -803,20 +914,20 @@ const OrdinalMain: React.FC = () => {
       };
 
       if (workerPayload.response.responseVector.length !== workerPayload.locationModel.locationDesignMatrix.length) {
-        throw new Error("Response vector length does not match location design matrix rows.");
+        throw new Error("Panjang vektor respon tidak sesuai dengan baris matriks desain lokasi.");
       }
       if (workerPayload.weights.length !== workerPayload.response.responseVector.length) {
-        throw new Error("Weights length does not match response vector length.");
+        throw new Error("Panjang bobot (weights) tidak sesuai dengan panjang vektor respon.");
       }
       if (workerPayload.locationModel.locationTermNames.length !== workerPayload.locationModel.locationDesignMatrix[0].length) {
-        throw new Error("Location term names length does not match design matrix columns.");
+        throw new Error("Jumlah nama suku lokasi tidak sesuai dengan kolom matriks desain.");
       }
       if (workerPayload.scaleModel.enabled) {
         if (workerPayload.scaleModel.scaleDesignMatrix.length !== workerPayload.response.responseVector.length) {
-          throw new Error("Scale design matrix row count does not match response vector length.");
+          throw new Error("Jumlah baris matriks desain skala tidak sesuai dengan panjang vektor respon.");
         }
         if (workerPayload.scaleModel.scaleTermNames.length !== workerPayload.scaleModel.scaleDesignMatrix[0]?.length) {
-          throw new Error("Scale term names length does not match scale design matrix columns.");
+          throw new Error("Jumlah nama suku skala tidak sesuai dengan kolom matriks desain skala.");
         }
       }
 
@@ -864,7 +975,7 @@ const OrdinalMain: React.FC = () => {
 
             const formattedResult = formatOrdinalResult(payload);
             if (!formattedResult || !Array.isArray(formattedResult.sections)) {
-              throw new Error("Formatter result is invalid or missing sections.");
+              throw new Error("Hasil pemformatan tidak valid atau bagian data tidak ditemukan.");
             }
 
             console.log("[ORDINAL][MAIN][FORMATTED_SECTIONS]", formattedResult.sections);
@@ -908,7 +1019,7 @@ const OrdinalMain: React.FC = () => {
 
       worker.onerror = (err) => {
         console.error(err);
-        setErrorMsg("Worker error");
+        setErrorMsg("Terjadi kesalahan pada worker.");
         setIsLoading(false);
         worker.terminate();
       };
@@ -919,6 +1030,18 @@ const OrdinalMain: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const isOptionsInvalid = useMemo(() => {
+    return (
+      optParams.maxIterations < 0 ||
+      optParams.maxStepHalving < 0 ||
+      optParams.logLikelihoodConvergence < 0 ||
+      optParams.parameterConvergence < 0 ||
+      optParams.confidenceInterval < 0 ||
+      optParams.delta < 0 ||
+      optParams.singularityTolerance < 0
+    );
+  }, [optParams]);
 
   // --- RENDER ---
   return (
@@ -941,10 +1064,10 @@ const OrdinalMain: React.FC = () => {
       <Separator />
       <div className="flex-grow px-6 py-3 overflow-y-auto min-h-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
-          <TabsList className="grid w-full grid-cols-5 flex-shrink-0">
+          <TabsList className="grid w-full grid-cols-4 flex-shrink-0">
             <TabsTrigger value="variables" id="ordinal-regression-variables-tab-trigger">Variables</TabsTrigger>
             <TabsTrigger value="location" id="ordinal-regression-location-tab-trigger">Location</TabsTrigger>
-            <TabsTrigger value="scale" id="ordinal-regression-scale-tab-trigger">Scale</TabsTrigger>
+            {/*<TabsTrigger value="scale" id="ordinal-regression-scale-tab-trigger">Scale</TabsTrigger>*/}
             <TabsTrigger value="options" id="ordinal-regression-options-tab-trigger">Options</TabsTrigger>
             <TabsTrigger value="output" id="ordinal-regression-output-tab-trigger">Output</TabsTrigger>
           </TabsList>
@@ -968,14 +1091,14 @@ const OrdinalMain: React.FC = () => {
                 onChange={setLocationParams}
               />
             </TabsContent>
-            <TabsContent value="scale" className="h-full mt-0">
+            {/* <TabsContent value="scale" className="h-full mt-0">
               <ScaleTab
                 factors={options.factors}
                 covariates={options.covariates}
                 params={scaleParams}
                 onChange={setScaleParams}
               />
-            </TabsContent>
+            </TabsContent> */}
             <TabsContent value="options" className="h-full mt-0">
               <OptionsTab params={optParams} onChange={(p) => setOptParams(prev => ({ ...prev, ...p }))} />
             </TabsContent>
@@ -1016,10 +1139,18 @@ const OrdinalMain: React.FC = () => {
           </TooltipProvider>
         </div>
         <div className="flex items-center space-x-4">
-          <Button onClick={handleAnalyze} disabled={isLoading || !options.dependent}>
+          <Button onClick={handleAnalyze} disabled={isLoading || !options.dependent || isOptionsInvalid}>
             {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> OK</> : "OK"}
           </Button>
-          <Button variant="outline" onClick={() => setOptions({ dependent: null, factors: [], covariates: [] })} disabled={isLoading}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setOptions({ dependent: null, factors: [], covariates: [] });
+              setLocationParams({ locationModel: [] });
+              resetOrdinalSelections();
+            }}
+            disabled={isLoading}
+          >
             Reset
           </Button>
           <Button variant="outline" onClick={() => closeModal()} disabled={isLoading}>

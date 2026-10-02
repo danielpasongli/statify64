@@ -13,6 +13,7 @@ use super::core::{
 };
 use super::prediction::{
     calculate_categorical_vote_probabilities, category_key, sorted_target_categories,
+    CategoryTieBreaker,
 };
 
 pub fn calculate_classification_table(
@@ -161,6 +162,8 @@ fn calculate_confusion_matrix(
     let mut correct = 0;
     let mut total = 0;
     let mut missing = vec![0; n_categories];
+    let tie_breaker =
+        CategoryTieBreaker::from_training(&knn_data.target_values, &knn_data.training_indices);
 
     // Select indices to process based on set type
     let indices_to_process = if is_training {
@@ -193,6 +196,7 @@ fn calculate_confusion_matrix(
                         &knn_data.target_values,
                         category_map,
                         n_categories,
+                        &tie_breaker,
                     );
 
                     missing[predicted_cat] += 1;
@@ -243,6 +247,7 @@ fn calculate_confusion_matrix(
             &knn_data.target_values,
             category_map,
             n_categories,
+            &tie_breaker,
         );
 
         // Update confusion matrix
@@ -260,31 +265,26 @@ fn calculate_confusion_matrix(
     (confusion, correct, total, missing)
 }
 
-/// Predict category using majority vote from neighbors
+/// Predict category using majority vote from neighbors, breaking ties the SPSS way.
 fn predict_category(
     neighbors: &[(usize, f64)],
     target_values: &[DataValue],
     category_map: &HashMap<String, usize>,
     n_categories: usize,
+    tie_breaker: &CategoryTieBreaker,
 ) -> usize {
-    let probabilities = calculate_categorical_vote_probabilities(neighbors, target_values);
-    let mut best_idx = 0;
-    let mut best_probability = f64::NEG_INFINITY;
+    let probabilities = calculate_categorical_vote_probabilities(neighbors, target_values)
+        .into_iter()
+        .filter(|(category, _)| {
+            category_map
+                .get(category)
+                .is_some_and(|&idx| idx < n_categories)
+        });
 
-    for (category, probability) in probabilities {
-        if let Some(&idx) = category_map.get(&category) {
-            if idx >= n_categories {
-                continue;
-            }
-
-            if probability > best_probability {
-                best_probability = probability;
-                best_idx = idx;
-            }
-        }
-    }
-
-    best_idx
+    tie_breaker
+        .pick(probabilities)
+        .and_then(|category| category_map.get(&category).copied())
+        .unwrap_or(0)
 }
 
 /// Extract row and column sums from confusion matrix

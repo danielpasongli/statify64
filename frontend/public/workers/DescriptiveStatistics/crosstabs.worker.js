@@ -1,4 +1,5 @@
 importScripts('/workers/DescriptiveStatistics/libs/utils/utils.js');
+importScripts('/workers/DescriptiveStatistics/libs/categoricalTests/categoricalChiSquare.js');
 importScripts('/workers/DescriptiveStatistics/libs/crosstabs/crosstabs.js');
 
 onmessage = function (event) {

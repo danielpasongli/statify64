@@ -2,6 +2,7 @@ import { getSlicedData, getVarDefs } from "@/hooks/useVariable";
 import type { KNNAnalysisType } from "@/components/Modals/Analyze/Classify/nearest-neighbor/types/nearest-neighbor-worker";
 import { transformNearestNeighborResult } from "./nearest-neighbor-analysis-formatter";
 import { resultNearestNeighbor } from "./nearest-neighbor-analysis-output";
+import { createKnnPerformanceTracker } from "./nearest-neighbor-performance";
 import { useDataStore, type CellUpdate } from "@/stores/useDataStore";
 import { useVariableStore } from "@/stores/useVariableStore";
 import type { Variable } from "@/types/Variable";
@@ -103,6 +104,7 @@ export async function analyzeKNN({
   dataVariables,
   variables,
 }: KNNAnalysisType) {
+  const performanceTracker = createKnnPerformanceTracker();
   const uniqueVariables = (items: Array<string | null | undefined>) =>
     Array.from(new Set(items.filter((item): item is string => Boolean(item))));
 
@@ -159,7 +161,7 @@ export async function analyzeKNN({
   const workerConfigData = withInternalChartOutputs(configData);
 
   const worker = new Worker(
-    "/workers/Classify/NearestNeighbor/nearest-neighbor.worker.js?v=knn-focal-positive-20260925",
+    "/workers/Classify/NearestNeighbor/nearest-neighbor.worker.js?v=knn-float-tolerance-20260926",
     { type: "module" },
   );
 
@@ -179,8 +181,10 @@ export async function analyzeKNN({
       caseDefs: varDefsForCaseIdentifier,
       config: workerConfigData,
     });
+    performanceTracker.markWorkerPosted(slicedDataForFeatures);
 
     worker.onmessage = async (e) => {
+      performanceTracker.markWorkerResponded();
       try {
         if (!e.data.success) {
           reject(new Error(e.data.error ?? "KNN worker failed."));
@@ -221,6 +225,7 @@ export async function analyzeKNN({
           ],
         );
 
+        performanceTracker.report(e.data.timing);
         worker.terminate();
         resolve();
       } catch (error) {

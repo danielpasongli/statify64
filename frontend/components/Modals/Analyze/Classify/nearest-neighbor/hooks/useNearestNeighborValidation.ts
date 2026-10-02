@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { KNNType } from "@/components/Modals/Analyze/Classify/nearest-neighbor/types/nearest-neighbor";
+import { validateCustomSavedNames } from "@/components/Modals/Analyze/Classify/nearest-neighbor/hooks/useNearestNeighborSaveRules";
 
 export type NearestNeighborValidationResult = {
   isValid: boolean;
@@ -40,13 +41,13 @@ export function useNearestNeighborValidation(formData: KNNType) {
     ).length;
     const usesFixedNumber = f.MaxReached && !f.BelowMin;
 
+    // A blank number to select is valid: SPSS then computes it automatically.
     if (
       usesFixedNumber &&
-      (!f.MaxToSelect ||
-        f.MaxToSelect <= 0 ||
-        !Number.isInteger(f.MaxToSelect))
+      f.MaxToSelect !== null &&
+      (f.MaxToSelect <= 0 || !Number.isInteger(f.MaxToSelect))
     ) {
-      return "Enter a positive whole number for the number of features to select.";
+      return "Enter a positive whole number for the number of features to select, or leave it blank to select automatically.";
     }
 
     if (
@@ -70,7 +71,13 @@ export function useNearestNeighborValidation(formData: KNNType) {
   const validateNumericInputs = (): string | null =>
     getNumericInputError(formData);
 
-  return { validation, validateFeatureSelection, validateNumericInputs };
+  // Pemeriksaan saat tombol OK ditekan; mengembalikan pesan error pertama.
+  const validateBeforeRun = (): string | null =>
+    validateFeatureSelection() ??
+    validateNumericInputs() ??
+    validateCustomSavedNames(formData.save);
+
+  return { validation, validateFeatureSelection, validateNumericInputs, validateBeforeRun };
 }
 
 const isWholeNumber = (value: number | null | undefined): value is number =>

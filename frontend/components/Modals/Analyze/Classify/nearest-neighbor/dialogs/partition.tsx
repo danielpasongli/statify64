@@ -269,7 +269,7 @@ export const KNNPartition = ({
                         </Label>
                       </div>
                       <div
-                        className={`flex flex-row gap-1 pl-6 ${
+                        className={`grid grid-cols-3 gap-2 pl-6 ${
                           !partitionState.UseRandomly
                             ? "opacity-50 pointer-events-none"
                             : ""
@@ -283,7 +283,7 @@ export const KNNPartition = ({
                             min={1}
                             max={100}
                             step={1}
-                            className="min-w-2xl w-full"
+                            className="w-full min-w-0"
                             placeholder=""
                             value={partitionState.TrainingNumber ?? 70}
                             disabled={!partitionState.UseRandomly}
@@ -296,11 +296,11 @@ export const KNNPartition = ({
                           />
                         </div>
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="TrainingNumber">Holdout %:</Label>
+                          <Label htmlFor="HoldoutNumber">Holdout %:</Label>
                           <Input
                             id="HoldoutNumber"
                             type="number"
-                            className="min-w-2xl w-full"
+                            className="w-full min-w-0"
                             placeholder=""
                             value={100 - (partitionState.TrainingNumber ?? 0)}
                             disabled={true}
@@ -312,7 +312,7 @@ export const KNNPartition = ({
                           <Input
                             id="TotalNumber"
                             type="number"
-                            className="min-w-2xl w-full"
+                            className="w-full min-w-0"
                             placeholder=""
                             value={100}
                             disabled={true}

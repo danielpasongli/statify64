@@ -96,7 +96,9 @@ function getYDomain(values: number[], mode: "classification" | "regression") {
   return [0, max] as const;
 }
 
-export default function KNNKPredictorSelectionChart({
+// Memoized so the output viewer re-rendering (once per added statistic)
+// skips this chart when its data is unchanged.
+export default React.memo(function KNNKPredictorSelectionChart({
   data,
 }: {
   data: string | ChartPayload;
@@ -336,4 +338,4 @@ export default function KNNKPredictorSelectionChart({
       )}
     </div>
   );
-}
+});

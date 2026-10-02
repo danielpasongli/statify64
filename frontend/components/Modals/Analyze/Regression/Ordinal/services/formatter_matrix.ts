@@ -51,8 +51,11 @@ export const formatAsymptoticMatrix = (
   const title = kind === "covariance"
     ? "Asymptotic Covariances of Parameter Estimates"
     : "Asymptotic Correlations of Parameter Estimates";
+  const description = kind === "covariance"
+    ? "Nilai diagonal utama merepresentasikan varians dari masing-masing penduga parameter. Nilai varians yang relatif kecil mengindikasikan tingkat presisi (standard error yang rendah) pada estimasi parameter model."
+    : "Nilai diagonal utama bernilai 1, sedangkan nilai di luar diagonal merepresentasikan korelasi asimtotik antar penduga parameter model.";
   const note = [linkFunctionNote, rows.some((row) => Boolean(row?.isRedundant ?? row?.is_redundant ?? row?.df === 0))
     ? "a. One or both parameter estimates are redundant."
     : undefined].filter(Boolean).join("\n");
-  return createSection(`ordinal_asymptotic_${kind}`, title, { columnHeaders, rows: dataRows }, { note });
+  return createSection(`ordinal_asymptotic_${kind}`, title, { columnHeaders, rows: dataRows }, { description, note });
 };

@@ -42,6 +42,7 @@ export const useAnalyzeHook = (
             }
 
             console.log(`Running ARCH-LM Test with ${residuals.length} residuals and ${lags} lags`);
+            console.time("Statify ARCH-LM Execution Time");
 
             const client = getTimeSeriesWorker();
 
@@ -49,6 +50,7 @@ export const useAnalyzeHook = (
                 const { status, result, error } = e.data;
                 
                 if (status === "success") {
+                    console.timeEnd("Statify ARCH-LM Execution Time");
                     console.log(`ARCH-LM Results:`, result);
                     
                     toast.success(`ARCH-LM Test completed!`);

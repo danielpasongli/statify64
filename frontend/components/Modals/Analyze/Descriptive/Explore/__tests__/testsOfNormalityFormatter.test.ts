@@ -1,4 +1,4 @@
-import { formatTestsOfNormalityTable } from '../utils/testsOfNormalityFormatter';
+import { formatTestsOfNormalityTable } from '../utils/normality/formatter';
 import type { ExploreAnalysisParams } from '../types';
 
 const baseParams: ExploreAnalysisParams = {
@@ -31,7 +31,7 @@ describe('formatTestsOfNormalityTable', () => {
             variable: { name: 'x1', label: 'X1' },
             normalityTests: {
               sampleSize: 20,
-              kolmogorovSmirnov: { statistic: 0.12345, df: 20, pValue: 0.0004 },
+              kolmogorovSmirnov: { statistic: 0.12345, df: 20, pValue: 0.0004, isLowerBound: true },
               shapiroWilk: { statistic: 0.9788, df: 20, pValue: 0.321 },
             },
           },
@@ -43,10 +43,87 @@ describe('formatTestsOfNormalityTable', () => {
     expect(table).not.toBeNull();
     expect(table?.title).toBe('Tests of Normality');
     expect(table?.rows).toHaveLength(1);
-    expect(table?.rows[0].ks_statistic).toBe('0.123');
-    expect(table?.rows[0].ks_sig).toBe('<.001');
-    expect(table?.rows[0].sw_statistic).toBe('0.979');
+    expect(table?.rows[0].ks_statistic).toBe('0.12345');
+    expect(table?.rows[0].ks_sig).toBe('0.0004*');
+    expect(table?.rows[0].sw_statistic).toBe('0.9788');
     expect(table?.rows[0].sw_sig).toBe('0.321');
-    expect(table?.footnotes).toEqual(expect.arrayContaining(['a. Lilliefors Significance Correction']));
+    expect(table?.footer).toEqual([
+      '*. This is a lower bound of the true significance.',
+      'a. Lilliefors Significance Correction',
+    ]);
+  });
+
+  it('menampilkan seluruh presisi number tanpa pembulatan desimal tetap', () => {
+    const results: any = {
+      all_data: {
+        factorLevels: {},
+        results: [{
+          variable: { name: 'x1', label: 'X1' },
+          normalityTests: {
+            kolmogorovSmirnov: { statistic: 0.123456789012345, df: 20, pValue: 0.0004 },
+            shapiroWilk: { statistic: 0.9788123456789, df: 20, pValue: 0.3210123456789 },
+          },
+        }],
+      },
+    };
+
+    const table = formatTestsOfNormalityTable(results, baseParams);
+    expect(table?.rows[0].ks_statistic).toBe('0.123456789012345');
+    expect(table?.rows[0].ks_sig).toBe('0.0004');
+    expect(table?.rows[0].sw_statistic).toBe('0.9788123456789');
+    expect(table?.rows[0].sw_sig).toBe('0.3210123456789');
+  });
+
+  it('adds a separate dynamic interpretation for each normality test', () => {
+    const results: any = {
+      all_data: {
+        factorLevels: {},
+        results: [
+          {
+            variable: { name: 'x1', label: 'Pendapatan' },
+            normalityTests: {
+              alpha: 0.01,
+              kolmogorovSmirnov: { statistic: 0.12, df: 20, pValue: 0.02 },
+              shapiroWilk: { statistic: 0.91, df: 20, pValue: 0.009 },
+            },
+          },
+        ],
+      },
+    };
+
+    const table = formatTestsOfNormalityTable(results, baseParams);
+
+    expect(table?.footnotes).toEqual(expect.arrayContaining([
+      '<p><strong>Hipotesis</strong></p>',
+      '<p>H₀: X ∼ N(μ, σ²) — data berdistribusi normal.</p>',
+      '<p>H₁: X ≁ N(μ, σ²) — data tidak berdistribusi normal.</p>',
+      '<p><strong>Interpretasi</strong></p>',
+      '<p>Kolmogorov-Smirnov — Pendapatan: p-value = 0.02 ≥ α = 0.01; gagal menolak H₀, artinya tidak terdapat cukup bukti untuk membuktikan bahwa data tidak berdistribusi normal (data berdistribusi normal).</p>',
+      '<p>Shapiro-Wilk — Pendapatan: p-value = 0.009 < α = 0.01; H₀ ditolak, artinya data tidak berdistribusi normal.</p>',
+    ]));
+  });
+
+  it('does not create a conclusion for a test that was not computed', () => {
+    const results: any = {
+      all_data: {
+        factorLevels: {},
+        results: [
+          {
+            variable: { name: 'x1', label: 'Pendapatan' },
+            normalityTests: {
+              alpha: 0.05,
+              kolmogorovSmirnov: { statistic: 0.12, df: 6001, pValue: 0.2 },
+              shapiroWilk: null,
+              notes: ['Shapiro-Wilk is only reported for sample sizes up to 5000.'],
+            },
+          },
+        ],
+      },
+    };
+
+    const table = formatTestsOfNormalityTable(results, baseParams);
+
+    expect(table?.footnotes).toHaveLength(5);
+    expect(table?.footnotes?.join(' ')).not.toContain('Shapiro-Wilk —');
   });
 });

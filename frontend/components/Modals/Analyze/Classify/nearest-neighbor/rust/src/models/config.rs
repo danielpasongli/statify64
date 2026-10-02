@@ -8,6 +8,19 @@ pub struct KnnConfig {
     pub partition: PartitionConfig,
     pub save: SaveConfig,
     pub output: OutputConfig,
+    #[serde(skip)]
+    pub run: RunContext,
+}
+
+/// Values fixed once per analysis run; never sent by the frontend.
+#[derive(Debug, Clone, Default)]
+pub struct RunContext {
+    /// Seed drawn once per run when the user did not set one, so every
+    /// preprocessing pass in the run sees the same training/holdout split.
+    pub partition_seed: Option<i64>,
+    /// Features used for listwise deletion, so the valid cases (and therefore
+    /// the partition) do not change with the feature subset being evaluated.
+    pub case_filter_features: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

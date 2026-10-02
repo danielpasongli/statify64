@@ -276,15 +276,29 @@ pub fn starting_values_general(location_fit: &FitResult, spec: &PlumSpec) -> Plu
     params
 }
 
-pub fn apply_threshold_monotonicity_adjustment(params: &mut PlumParameters) -> usize {
+pub fn enforce_threshold_monotonicity(theta: &mut [f64]) -> usize {
+    if theta.len() <= 1 {
+        return 0;
+    }
     let mut adjustments = 0;
-    for j in 1..params.theta.len() {
-        if params.theta[j] <= params.theta[j - 1] {
-            params.theta[j] = params.theta[j - 1] + 1e-6;
-            adjustments += 1;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for j in 0..theta.len() - 1 {
+            if theta[j] > theta[j + 1] {
+                let avg = (theta[j] + theta[j + 1]) / 2.0;
+                theta[j] = avg;
+                theta[j + 1] = avg;
+                adjustments += 1;
+                changed = true;
+            }
         }
     }
     adjustments
+}
+
+pub fn apply_threshold_monotonicity_adjustment(params: &mut PlumParameters) -> usize {
+    enforce_threshold_monotonicity(&mut params.theta)
 }
 
 pub fn step_halving(

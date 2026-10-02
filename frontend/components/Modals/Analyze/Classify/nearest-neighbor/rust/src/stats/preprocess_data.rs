@@ -97,10 +97,21 @@ pub fn preprocess_knn_data(data: &AnalysisData, config: &KnnConfig) -> Result<Kn
     // Get case identifier variable
     let case_ident_var = &config.main.case_iden_var;
 
+    // Listwise deletion runs over every candidate feature of the analysis, not
+    // only the current subset, so feature selection evaluates every subset on
+    // the same cases and the same training/holdout split.
+    let mut case_filter_features = config.run.case_filter_features.clone().unwrap_or_default();
+    for feature in &features {
+        if !case_filter_features.contains(feature) {
+            case_filter_features.push(feature.clone());
+        }
+    }
+    let case_filter_measures = derive_feature_measures(&case_filter_features, &feature_defs);
+
     let valid_case_indices = collect_valid_case_indices(
         data,
-        &features,
-        &feature_measures,
+        &case_filter_features,
+        &case_filter_measures,
         Some(target_var.as_str()),
     );
     let analysis_case_indices: Vec<usize> = valid_case_indices
@@ -1305,6 +1316,7 @@ mod tests {
                 partition_name: None,
                 fold_name: None,
             },
+            run: Default::default(),
             output: OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,

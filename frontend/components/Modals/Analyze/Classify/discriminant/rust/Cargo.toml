@@ -10,20 +10,20 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-itertools = "0.14.0"
 js-sys = "0.3"
 rayon = "1.10.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"
-serde_json = "1.0.140"
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 web-sys = { version = "0.3", features = ["console"] }
 getrandom = { version = "0.2.15", features = ["js"] }
 rand = { version = "0.8.5" }
 rand_mt = { version = "5.0.0", features = ["rand-traits"] }
 nalgebra = { version = "0.33.2", features = ["std"] }
-ndarray = "0.16.1"
 statrs = { version = "0.18.0" }
+
+[dev-dependencies]
+serde_json = "1.0.140"
 
 [profile.dev]
 opt-level = 0

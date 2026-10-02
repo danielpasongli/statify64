@@ -119,7 +119,11 @@ fn compare_neighbors(
         Ordering::Greater
     } else if !right.1.is_finite() {
         Ordering::Less
-    } else if (left.1 - right.1).abs() <= NEIGHBOR_TIE_EPSILON {
+    } else if (left.1 - right.1).abs()
+        <= NEIGHBOR_TIE_EPSILON * left.1.abs().max(right.1.abs()).max(1.0)
+    {
+        // Relative, so equal distances on unnormalized large-valued features
+        // (e.g. 80111.98141016427 vs 80111.98141016423) still count as ties.
         Ordering::Equal
     } else {
         left.1.partial_cmp(&right.1).unwrap_or(Ordering::Equal)
@@ -209,6 +213,27 @@ mod tests {
             neighbors.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
             vec![2, 3, 1]
         );
+    }
+
+    #[test]
+    fn equal_distances_on_large_unnormalized_values_are_ties() {
+        // A and B mirror the query, so both are exactly equally far, but the
+        // computed distances differ in the last digits (…427 vs …423).
+        let query = vec![124434.84, 482001.42];
+        let a = vec![188310.68, 530352.29];
+        let b = vec![60559.0, 433650.55];
+        assert_ne!(
+            calculate_euclidean_distance(&query, &a),
+            calculate_euclidean_distance(&query, &b)
+        );
+
+        // As a tie, the case with the larger original index (A) comes first.
+        let data_matrix = vec![query.clone(), a, b];
+        let original_case_indices = vec![0, 2, 1];
+        let neighbors =
+            find_k_nearest_neighbors(&query, &data_matrix, &[1, 2], 1, true, Some(&original_case_indices));
+
+        assert_eq!(neighbors.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(), vec![1]);
     }
 
     #[test]

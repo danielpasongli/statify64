@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PlotsTab from '../PlotsTab';
 
@@ -72,6 +72,17 @@ describe('PlotsTab Component', () => {
         await user.click(checkbox);
 
         expect(mockProps.setShowNormalityPlots).toHaveBeenCalledWith(true);
+    });
+
+    it('shows normality requirements when the information icon is hovered', async () => {
+        render(<PlotsTab {...mockProps} />);
+        const user = userEvent.setup();
+
+        await user.hover(screen.getByRole('button', { name: 'Syarat penggunaan uji normalitas' }));
+
+        const tooltip = await screen.findByRole('tooltip');
+        expect(within(tooltip).getByText(/minimal 3 observasi valid/i)).toBeVisible();
+        expect(within(tooltip).getByText(/Shapiro-Wilk tersedia hingga 5\.000 observasi/i)).toBeVisible();
     });
 
 });

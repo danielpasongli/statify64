@@ -18,10 +18,14 @@ use super::core::{
     get_stepwise_selected_variables,
 };
 
-/// Calculate univariate F test for a variable
+/// Tests of Equality of Group Means for one variable (one-way ANOVA):
 ///
-/// This tests the null hypothesis that the means of a variable are equal
-/// across all groups, using the F-statistic.
+/// SSB = Σₖ nₖ (x̄ₖ − x̄)²,   SSW = Σₖ Σᵢ (xᵢₖ − x̄ₖ)²
+/// F   = [SSB / (g − 1)] / [SSW / (n − g)]
+/// Λ   = SSW / (SSB + SSW)
+///
+/// g and n count only the groups that have cases. F = 0 when SSW = 0 or there are
+/// fewer than two groups; Λ = 1 when SSB + SSW = 0.
 ///
 /// # Parameters
 /// * `variable` - The variable to test
@@ -30,7 +34,7 @@ use super::core::{
 /// # Returns
 /// A tuple of (F value, Wilks' lambda)
 pub fn calculate_univariate_f(variable: &str, dataset: &AnalyzedDataset) -> (f64, f64) {
-    // Extract variable data
+    // x̄, the overall mean
     let overall_mean = *dataset.overall_means.get(variable).unwrap_or(&0.0);
 
     // Calculate between-groups and within-groups sums of squares
@@ -161,85 +165,6 @@ fn cholesky_log_determinant(matrix: &DMatrix<f64>) -> Option<f64> {
     )
 }
 
-/// Calculate overall F statistic for a set of variables
-///
-/// This approximates the significance of Wilks' lambda using Rao's F approximation.
-///
-/// F = ((1 - Λ^(1/s)) / Λ^(1/s)) × (df2 / df1)
-///
-/// Where:
-/// - s = sqrt((p²×(g-1)² - 4) / (p² + (g-1)² - 5)), and s = 1 when p×(g-1) ≤ 2
-/// - df1 = p × (g - 1)
-/// - df2 = (n - 1 - (p+g)/2) × s - (p×(g-1) - 2) / 2, rounded to an integer
-///   (F uses the rounded df1 and df2)
-/// - p = number of variables, g = number of groups, n = total cases
-///
-/// This matches SPSS and the standard Rao approximation formula.
-///
-/// # Parameters
-/// * `wilks_lambda` - The Wilks' lambda value
-/// * `num_variables` - Number of variables in the model
-/// * `num_groups` - Number of groups
-/// * `total_cases` - Total number of cases
-///
-/// # Returns
-/// A tuple of (F value, df1, df2)
-pub fn calculate_overall_f_statistic(
-    wilks_lambda: f64,
-    num_variables: usize,
-    num_groups: usize,
-    total_cases: usize
-) -> (f64, i32, i32) {
-    let p = num_variables as f64;
-    let g = num_groups as f64;
-    let n = total_cases as f64;
-
-    // Calculate s for the approximation
-    // s = sqrt((p²·(g-1)² - 4) / (p² + (g-1)² - 5)); falls back to 1 when the ratio
-    // is undefined (p·(g-1) ≤ 2, e.g. g = 2 or p = 1). The ratio is always ≥ 1.
-    let numerator = p.powi(2) * (g - 1.0).powi(2) - 4.0;
-    let denominator = p.powi(2) + (g - 1.0).powi(2) - 5.0;
-    let s = if denominator > EPSILON && numerator > 0.0 {
-        (numerator / denominator).sqrt()
-    } else {
-        1.0
-    };
-
-    // Calculate df1 and df2
-    // df1 = p * (g - 1)
-    // df2 = (n - 1 - (p + g) / 2) * s - (p * (g - 1) - 2) / 2
-    let df1 = (p * (g - 1.0)).round() as i32;
-
-    let w = n - 1.0 - (p + g) / 2.0;
-    let p_k1 = p * (g - 1.0);
-    let df2 = if s > EPSILON {
-        (w * s - (p_k1 - 2.0) / 2.0).round() as i32
-    } else {
-        // Defensive guard only: s is always ≥ 1 above, so this branch is not reached
-        (w * 1.0 - (p_k1 - 2.0) / 2.0).round() as i32
-    };
-
-    // Calculate F statistic using Rao's approximation
-    let f_value = if wilks_lambda > EPSILON && wilks_lambda < 1.0 - EPSILON && df1 > 0 && df2 > 0 {
-        let lambda_power = wilks_lambda.powf(1.0 / s);
-        let numerator = (1.0 - lambda_power) * (df2 as f64);
-        let denominator = lambda_power * (df1 as f64);
-        if denominator > EPSILON {
-            numerator / denominator
-        } else {
-            0.0
-        }
-    } else if wilks_lambda <= EPSILON {
-        // Handle extreme case of perfect discrimination
-        f64::MAX
-    } else {
-        // Handle wilks_lambda close to 1 (no discrimination)
-        0.0
-    };
-
-    (f_value, df1, df2)
-}
-
 /// Calculate tolerance for a variable
 ///
 /// Tolerance measures the proportion of a variable's variance that is not
@@ -269,16 +194,16 @@ pub fn calculate_tolerance(
         return (1.0, 1.0);
     }
 
-    // 1. Gabungkan semua variabel yang akan dianalisis (prediktor + target)
+    // 1. The variables of the model, then the target.
     let mut all_vars = other_variables.to_vec();
     all_vars.push(variable.to_string());
     let target_idx = all_vars.len() - 1;
 
-    // 2. Dapatkan matriks Pooled Within-Groups Covariance (Gaya SPSS!)
+    // 2. Pooled within-groups covariance matrix.
     let (_, within_cov) = calculate_between_within_matrices(dataset, &all_vars);
     let p = all_vars.len();
 
-    // 3. Ubah Covariance menjadi Matriks Korelasi
+    // 3. Pooled within-groups correlation matrix R, rᵢⱼ = sᵢⱼ / (sᵢ sⱼ).
     let mut within_cor = nalgebra::DMatrix::zeros(p, p);
     for i in 0..p {
         for j in 0..p {
@@ -292,12 +217,12 @@ pub fn calculate_tolerance(
         }
     }
 
-    // Tambahkan regularisasi kecil agar matriks tidak singular saat multikolinearitas tinggi
+    // Small ridge so that R stays invertible under strong multicollinearity.
     for i in 0..p {
         within_cor[(i, i)] += EPSILON;
     }
 
-    // 4. Invers matriks untuk mendapatkan VIF, lalu hitung Tolerance = 1 / VIF
+    // 4. VIFᵢ = (R⁻¹)ᵢᵢ and tolerance = 1 / VIFᵢ.
     match within_cor.try_inverse() {
         Some(inv_cor) => {
             let mut min_tol = 1.0_f64;
@@ -306,27 +231,30 @@ pub fn calculate_tolerance(
             for i in 0..p {
                 let vif = inv_cor[(i, i)];
                 let tol = if vif > 0.0 { 1.0 / vif } else { 0.0 };
-                let clamped_tol = tol.clamp(0.0, 1.0); // Paksa aman di rentang 0 - 1
+                let clamped_tol = tol.clamp(0.0, 1.0); // kept within [0, 1]
 
                 if i == target_idx {
                     target_tol = clamped_tol;
                 }
                 
-                // Min. Tolerance adalah nilai terkecil dari SEMUA variabel di model ini
+                // Minimum tolerance over every variable of the set.
                 if clamped_tol < min_tol {
                     min_tol = clamped_tol;
                 }
             }
             (target_tol, min_tol)
         }
-        None => (0.0, 0.0), // Jika matriks gagal di-invers
+        None => (0.0, 0.0), // R could not be inverted
     }
 }
 
-/// Calculate Wilks' lambda test for discriminant functions
+/// Wilks' Lambda table of the discriminant functions. For the test of functions k
+/// through m (λ = eigenvalues, p = variables in the model, g = groups, n = cases):
 ///
-/// This function tests the significance of discriminant functions by calculating
-/// Wilks' lambda and related chi-square statistics.
+/// Λₖ   = Πᵢ₌ₖᵐ 1 / (1 + λᵢ)
+/// χ²ₖ  = −[n − 1 − (p + g) / 2] · ln Λₖ      (Bartlett's approximation)
+/// dfₖ  = (p − k + 1)(g − k)
+/// Sig. = P(χ²(dfₖ) > χ²ₖ)
 ///
 /// # Parameters
 /// * `data` - The analysis data

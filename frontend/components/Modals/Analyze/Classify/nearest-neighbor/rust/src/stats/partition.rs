@@ -66,7 +66,7 @@ pub fn split_partition_and_cross_validation_by_config(
     let effective_seed = if config.partition.set_seed {
         config.partition.seed
     } else {
-        None
+        config.run.partition_seed
     };
     let mut rng = seeded_mt19937(effective_seed);
 
@@ -792,6 +792,7 @@ mod tests {
                 partition_name: None,
                 fold_name: None,
             },
+            run: Default::default(),
             output: crate::models::config::OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,
@@ -903,6 +904,7 @@ mod tests {
                 partition_name: None,
                 fold_name: None,
             },
+            run: Default::default(),
             output: crate::models::config::OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,
@@ -1016,6 +1018,7 @@ mod tests {
                 partition_name: None,
                 fold_name: None,
             },
+            run: Default::default(),
             output: crate::models::config::OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,
@@ -1119,6 +1122,7 @@ mod tests {
                 partition_name: None,
                 fold_name: None,
             },
+            run: Default::default(),
             output: crate::models::config::OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,
@@ -1215,6 +1219,7 @@ mod tests {
                 partition_name: None,
                 fold_name: None,
             },
+            run: Default::default(),
             output: crate::models::config::OutputConfig {
                 case_summary: true,
                 feature_selection_summary: true,
