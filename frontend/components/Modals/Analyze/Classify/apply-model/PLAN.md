@@ -124,7 +124,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - `npx jest components/Modals/Analyze/Classify/apply-model` hijau; `npx tsc --noEmit -p .` tanpa error baru.
 - **Dilarang:** logika validasi, komponen React, file Rust.
 
-### Fase 2 — Adapter Naive Bayes & registry (validasi model di TS)
+### Fase 2 — Adapter Naive Bayes & registry (validasi model di TS) ✅
 
 - **Tujuan:** `validateAnyModel(raw)` berfungsi untuk NB 1.0/1.1 dengan seluruh kode `AGENTS.md` §4.2–4.3.
 - **Prasyarat:** Fase 1.
@@ -139,7 +139,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
 - **Verifikasi:** `npx jest components/Modals/Analyze/Classify/apply-model/adapters` hijau.
 - **Dilarang:** UI, loader, Rust; `if (modelType === ...)` di luar adapter/registry.
 
-### Fase 3 — Aturan mapping variabel
+### Fase 3 — Aturan mapping variabel ✅
 
 - **Tujuan:** `autoMapFeatures` dan `validateMapping` sesuai `AGENTS.md` §3.4.
 - **Prasyarat:** Fase 2.
@@ -158,7 +158,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - `Play` scale → auto-map actual menghasilkan `null`.
 - **Dilarang:** komponen React, akses store.
 
-### Fase 4 — Aturan penamaan & tipe kolom output, aturan Output
+### Fase 4 — Aturan penamaan & tipe kolom output, aturan Output ✅
 
 - **Tujuan:** fungsi murni untuk §3.5 dan normalisasi checkbox §6.5.
 - **Prasyarat:** Fase 2.
@@ -179,7 +179,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - `getEffectiveOutputFlags` tanpa actual → Evaluation & Confusion `false`.
 - **Dilarang:** memanggil `addVariables`; komponen React.
 
-### Fase 5 — Pemuat model (file, Output Viewer, bawaan)
+### Fase 5 — Pemuat model (file, Output Viewer, bawaan) ✅
 
 - **Tujuan:** `AM/services/model-loader.ts` sesuai `AGENTS.md` §4.1 & §6.6.
 - **Prasyarat:** Fase 2.
@@ -201,7 +201,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
 
 ## BAGIAN C — Engine Rust/WASM
 
-### Fase 6 — Scaffold crate, payload, worker dummy
+### Fase 6 — Scaffold crate, payload, worker dummy ✅
 
 - **Tujuan:** pipeline TS → worker → WASM → TS tersambung dengan hasil dummy, sebelum ada statistik.
 - **Prasyarat:** Fase 1.
@@ -219,7 +219,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
 - **Kriteria selesai & verifikasi:** `cargo build` dan `wasm-pack build` sukses; manual di console browser (dev server jalan): buat `new Worker("/workers/Classify/ApplyModel/apply-model.worker.js?v=...", {type:"module"})`, `postMessage` payload D1 + slice kosong → `onmessage` menerima `{success:true, data:{...dummy}}`.
 - **Dilarang:** logika scoring; import lintas crate.
 
-### Fase 7 — Normalisasi nilai & parsing/validasi model NB di Rust
+### Fase 7 — Normalisasi nilai & parsing/validasi model NB di Rust ✅
 
 - **Tujuan:** `value_label.rs` dan `NaiveBayesScorer::from_json` (validasi lapis kedua).
 - **Prasyarat:** Fase 6.
@@ -235,7 +235,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - Minimal 8 kasus error: `model_type` hilang, `"decision_tree"`, `schema_version "2.0"`, priors panjang salah, distribution sum 0.9, variance 0, `class_counts` hilang di 1.1, `class_totals` kelas hilang — setiap pesan diawali kode yang benar.
 - **Dilarang:** posterior/argmax (Fase 9).
 
-### Fase 8 — `score_row` Naive Bayes (contoh numerik)
+### Fase 8 — `score_row` Naive Bayes (contoh numerik) ✅
 
 - **Tujuan:** skor log per kelas sesuai `AGENTS.md` §5.4.
 - **Prasyarat:** Fase 7.
@@ -247,7 +247,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
 - **Kriteria selesai & verifikasi** (`cargo test`): test T1–T7 dari tabel §5.6 (skor toleransi `1e-9`, flag tepat; T5 → `NotScored`); T1 & T2 identik dengan angka di test `prediction.rs`.
 - **Dilarang:** normalisasi posterior di file ini.
 
-### Fase 9 — Posterior, prediksi, ringkasan, distribusi
+### Fase 9 — Posterior, prediksi, ringkasan, distribusi ✅
 
 - **Tujuan:** pipeline generik di atas `ClassifierScorer`.
 - **Prasyarat:** Fase 8.
@@ -265,7 +265,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - Payload mapping tidak sejajar → error `AM_E_PAYLOAD`; 0 baris → `AM_E_NO_ROWS`.
 - **Dilarang:** evaluasi (Fase 10).
 
-### Fase 10 — Evaluasi & binding WASM final
+### Fase 10 — Evaluasi & binding WASM final ✅
 
 - **Tujuan:** confusion matrix & metrik bila actual target ada; WASM produksi.
 - **Prasyarat:** Fase 9.
@@ -283,7 +283,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
 
 ## BAGIAN D — Wiring & UI
 
-### Fase 11 — Wiring menu & skeleton container
+### Fase 11 — Wiring menu & skeleton container ✅
 
 - **Tujuan:** menu "Apply Model" membuka sidebar 40% berisi skeleton 4 tab.
 - **Prasyarat:** Fase 1.
@@ -295,7 +295,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
 - **Kriteria selesai & verifikasi (manual):** Analyze → Classify → "Apply Model" (di bawah Naive Bayes, setelah separator) → sidebar kanan ±40% lebar, judul "Apply Model"; Cancel menutup tanpa error console; buka NB, KNN, Discriminant → perilaku & lebar tetap seperti sebelumnya; `npx tsc --noEmit -p .` lulus.
 - **Dilarang:** logika tab; perubahan lain di file bersama.
 
-### Fase 12 — Tab Model
+### Fase 12 — Tab Model ✅
 
 - **Tujuan:** pengguna bisa memuat model dari 3 sumber dan melihat ringkasannya.
 - **Prasyarat:** Fase 5, Fase 11.
@@ -309,7 +309,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - Manual: jalankan NB dulu, lalu Apply Model → "From Output Viewer" menampilkan model itu dan bisa dimuat.
 - **Dilarang:** mapping UI, menjalankan worker.
 
-### Fase 13 — Tab Variables (mapping)
+### Fase 13 — Tab Variables (mapping) ✅
 
 - **Tujuan:** UI pemetaan §6.4.
 - **Prasyarat:** Fase 3, Fase 12.
@@ -321,7 +321,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - Manual: dataset D3 dibuat di Data View, model D1 di-upload → mapping otomatis benar.
 - **Dilarang:** `VariableListManager`; mengubah store variabel.
 
-### Fase 14 — Tab Save & Tab Output
+### Fase 14 — Tab Save & Tab Output ✅
 
 - **Tujuan:** UI §6.5 (bagian Save & Output).
 - **Prasyarat:** Fase 4, Fase 13.
@@ -333,7 +333,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - RTL Output: tanpa actual target → dua checkbox evaluasi disabled.
 - **Dilarang:** menulis ke dataset.
 
-### Fase 15 — Validasi terpusat, OK/Reset/Help, persistensi
+### Fase 15 — Validasi terpusat, OK/Reset/Help, persistensi ✅
 
 - **Tujuan:** perilaku container lengkap §6.1 (tanpa menjalankan analisis; OK memanggil fungsi `applyModel` placeholder yang hanya `console.info` payload-nya — diganti di Fase 17).
 - **Prasyarat:** Fase 14.
@@ -351,7 +351,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
 
 ## BAGIAN E — Services & integrasi
 
-### Fase 16 — Formatter, output viewer, pesan error
+### Fase 16 — Formatter, output viewer, pesan error ✅
 
 - **Tujuan:** `ApplyModelRawResult` → tabel Output Viewer.
 - **Prasyarat:** Fase 10, Fase 4.
@@ -365,7 +365,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - Error: `"AM_E_SCHEMA_VERSION_UNSUPPORTED: 2.0"` → teks §4.5 dengan "2.0"; `"Failed to load wasm module"` → pesan `AM_E_WORKER`; teks acak → pesan generik.
 - **Dilarang:** menulis variabel ke dataset.
 
-### Fase 17 — Penulisan kolom & orkestrator
+### Fase 17 — Penulisan kolom & orkestrator ✅
 
 - **Tujuan:** OK menjalankan pipeline penuh.
 - **Prasyarat:** Fase 15, Fase 16.
@@ -380,7 +380,7 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
   - Manual end-to-end dengan D3 + upload D1 + actual Play + per-class prob ON → Data View berisi 4 kolom baru dengan nilai persis tabel §1; Output Viewer menampilkan log "Apply Model" berisi tabel sesuai §1 (evaluated 4, accuracy 0.75).
 - **Dilarang:** `updateCells` pada variabel yang sudah ada; perubahan worker/Rust.
 
-### Fase 18 — Regresi penuh, dokumentasi, checklist
+### Fase 18 — Regresi penuh, dokumentasi, checklist ✅
 
 - **Tujuan:** memastikan seluruh kontrak terpenuhi & tidak ada regresi.
 - **Prasyarat:** Fase 17.
@@ -420,12 +420,12 @@ Ringkasan yang diharapkan: total 6, scored 5, not scored 1, scored with missing 
 
 ## Checklist Akhir
 
-- [ ] Fase 0–18 bertanda ✅ dengan laporan.
-- [ ] Export NB menghasilkan schema 1.1 dengan `class_counts` & `class_totals`.
-- [ ] Ketiga sumber model berfungsi; katalog bawaan kosong menampilkan pesan yang benar.
-- [ ] Semua kode `AM_E_*`/`AM_W_*` punya pesan & minimal satu test pemicu (kecuali `AM_E_WORKER`, `AM_W_NO_RESULT_STORE_MODELS`, `AM_W_BUILTIN_EMPTY` yang diuji lewat UI/RTL).
-- [ ] Contoh numerik T1–T7 lulus di `cargo test`; hasil D3 di UI identik dengan §1.
-- [ ] Tidak ada `if (modelType === ...)` di luar adapter/scorer/registry.
-- [ ] Hanya file di `AGENTS.md` §7.2 yang berubah di luar `AM/` (cek `git status`/`git diff --stat`).
-- [ ] Jest, cargo test (AM & NB), eslint, tsc hijau.
-- [ ] Regresi S1–S8 lulus.
+- [x] Fase 0–18 bertanda ✅ dengan laporan.
+- [x] Export NB menghasilkan schema 1.1 dengan `class_counts` & `class_totals`.
+- [x] Ketiga sumber model berfungsi; katalog bawaan kosong menampilkan pesan yang benar.
+- [x] Semua kode `AM_E_*`/`AM_W_*` punya pesan & minimal satu test pemicu (kecuali `AM_E_WORKER`, `AM_W_NO_RESULT_STORE_MODELS`, `AM_W_BUILTIN_EMPTY` yang diuji lewat UI/RTL).
+- [x] Contoh numerik T1–T7 lulus di `cargo test`; hasil D3 di UI identik dengan §1.
+- [x] Tidak ada `if (modelType === ...)` di luar adapter/scorer/registry.
+- [x] Hanya file di `AGENTS.md` §7.2 yang berubah di luar `AM/` (cek `git status`/`git diff --stat`).
+- [x] Jest, cargo test (AM & NB), eslint, tsc hijau. *(Catatan Fase 18: Jest `apply-model` 19 suite/339 test hijau; `cargo test` AM 117 & NB 94 hijau; eslint & tsc bersih. Jest `naive-bayes` memiliki 2 test gagal yang sudah ada di HEAD, tidak berasal dari Apply Model dan tidak diubah: `useNaiveBayesValidation.test.ts` "form kosong" — test mengharapkan pesan target & predictor, hook hanya mengembalikan "Pilih variabel target." (`useNaiveBayesValidation.ts:77-86`); `options.test.tsx` "shows error for value > 999" — `getByText(/maksimum 999/i)` cocok dengan dua elemen (`options.tsx:23` dan `:52`). Dilaporkan sebagai temuan, perbaikan di luar Fase 18.)*
+- [x] Regresi S1–S8 lulus.
