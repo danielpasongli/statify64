@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "model_type": "naive_bayes",
+  "trained_at": "2026-10-01T00:00:00.000Z",
+  "target": { "name": "Play", "classes": ["No", "Yes"], "class_priors": [0.5, 0.5] },
+  "features": [
+    { "name": "Outlook", "role": "categorical", "categories": ["Overcast", "Rain", "Sunny"],
+      "distribution": { "No": [0.5, 0.16666666666666666, 0.3333333333333333],
+                        "Yes": [0.16666666666666666, 0.3333333333333333, 0.5] } },
+    { "name": "Temp", "role": "numerical",
+      "mean": { "No": 84.0, "Yes": 72.0 },
+      "variance": { "No": 18.666666666666668, "Yes": 2.6666666666666665 } }
+  ],
+  "smoothing_alpha": 1.0,
+  "variance_floor": 1e-9,
+  "feature_order": ["Outlook", "Temp"],
+  "label_mapping": { "No": 0, "Yes": 1 },
+  "validation_config": { "method": "holdout", "training_percentage": 70, "holdout_percentage": 30, "folds": null, "seed": 42 },
+  "missing_value_policy": "x",
+  "unseen_category_policy": "x"
+}
