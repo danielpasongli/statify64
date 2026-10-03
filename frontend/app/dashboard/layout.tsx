@@ -66,7 +66,8 @@ export default function DashboardLayout({
     // seminimal mungkin.
     const isKNNModalOpen =
         topModalType === ModalType.ModalNearestNeighbor ||
-        topModalType === ModalType.ModalNaiveBayes;
+        topModalType === ModalType.ModalNaiveBayes ||
+        topModalType === ModalType.ModalApplyModel;
     const activeSidebarWidth = isKNNModalOpen ? KNN_SIDEBAR_WIDTH : sidebarWidth;
 
     // Key untuk memaksa ResizablePanelGroup re-mount saat perubahan state

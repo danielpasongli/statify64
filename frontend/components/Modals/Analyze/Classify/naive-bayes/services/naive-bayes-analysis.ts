@@ -42,7 +42,7 @@ import type { Variable } from "@/types/Variable";
  * file ini soal `pkg/` yang masih perlu diisi ulang manual oleh pemilik
  * produk).
  */
-const NAIVE_BAYES_WASM_VERSION = "naive-bayes-real-20260928a";
+const NAIVE_BAYES_WASM_VERSION = "naive-bayes-real-20261002a";
 const NAIVE_BAYES_WORKER_URL = `/workers/Classify/NaiveBayes/naive-bayes.worker.js?v=${NAIVE_BAYES_WASM_VERSION}`;
 
 export type NaiveBayesAnalysisPayload = {

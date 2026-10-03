@@ -43,6 +43,12 @@ const ClassifyMenu: React.FC = () => {
                 </MenubarItem>
                 <MenubarSeparator />
                 <MenubarItem
+                    onClick={() => openModal(ModalType.ModalApplyModel)}
+                >
+                    Apply Model
+                </MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem
                     disabled={true}
                     onClick={() => openModal(ModalType.ModalROCCurve)}
                 >

@@ -92,7 +92,12 @@ export type NaiveBayesTrainedModelRaw = {
   schema_version: string;
   model_type: string;
   trained_at: string;
-  target: { name: string; classes: string[]; class_priors: number[] };
+  target: {
+    name: string;
+    classes: string[];
+    class_priors: number[];
+    class_counts?: number[];
+  };
   features: unknown[];
   smoothing_alpha: number;
   variance_floor: number;

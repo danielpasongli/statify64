@@ -2,7 +2,9 @@
 
 Dokumen ini adalah kontrak kerja untuk siapa pun (manusia atau agent) yang mengimplementasikan menu **Naive Bayes** di `frontend/components/Modals/Analyze/Classify/naive-bayes`. Dokumen ini mengikat: bila ada bagian kode yang menyimpang dari sini tanpa alasan yang didiskusikan ulang, anggap itu bug desain, bukan variasi yang sah.
 
-Dokumen ini murni desain & kontrak. **Tidak ada kode implementasi di sini.** Rencana implementasi langkah-demi-langkah juga sengaja tidak dituliskan di sini — itu adalah pekerjaan terpisah setelah dokumen ini disepakati.
+Dokumen ini murni desain & kontrak. **Tidak ada kode implementasi di sini.** Rencana implementasi langkah-demi-langkah ada di `PLAN.md` (folder yang sama).
+
+> **Revisi Apply Model (2026-10-02, disetujui pemilik produk, sekali saja).** Dokumen ini disinkronkan dengan kode yang sudah berjalan dan dengan desain menu baru **Apply Model** (`../apply-model/AGENTS.md`). Perubahan: §1 (cakupan prediksi dipindah ke Apply Model), §3.3 (tidak ada tampilan abu-abu — keputusan pemilik produk saat Fase 18), §3.3/§4.1/§4.2 (nama field sesuai kode), §4.6 (lokasi konfigurasi lebar sidebar), §5.10 (schema export `1.1`), §6 (titik integrasi yang sudah ada di kode), §7 (pengecualian untuk Fase 0 Apply Model). Di luar penanda "Revisi Apply Model", isi dokumen tidak diubah.
 
 ---
 
@@ -20,7 +22,7 @@ Cakupan yang **termasuk**:
 
 Cakupan yang **tidak termasuk** (di luar scope menu ini, jangan ditambahkan tanpa diskusi ulang):
 
-- Import model dan prediksi ke dataset baru/lain. Menu ini hanya melatih dan mengevaluasi.
+- Import model dan prediksi ke dataset baru/lain. Menu ini hanya melatih dan mengevaluasi. *(Revisi Apply Model: kebutuhan ini sekarang ditangani menu terpisah **Analyze → Classify → Apply Model**, `../apply-model/`, yang membaca file/hasil Export Model dari menu ini. Menu Naive Bayes sendiri tetap tidak melakukan prediksi data baru.)*
 - Tab "Save" ala Nearest Neighbor yang menulis kolom hasil (predicted value/probability) kembali ke data viewer. Tidak ada permintaan seperti itu di spesifikasi ini.
 - Varian algoritma terpisah per tipe atribut (murni Gaussian NB atau murni Categorical/Multinomial NB) — yang dibangun adalah **satu model campuran**.
 
@@ -82,6 +84,8 @@ Aturan transisi mode (gabungan dari beberapa keputusan yang sudah dikonfirmasi �
 2. **Auto-activate**: begitu pengguna memasukkan variabel pertama ke salah satu blok yang saat itu tidak aktif, mode otomatis berpindah ke blok tersebut. Tidak ada radio button eksplisit "pilih mode" — mode murni ditentukan oleh ke mana pengguna meletakkan variabel pertama.
 3. **Saat berpindah mode**: seluruh isi mode sebelumnya dikosongkan, dan variabel-variabel yang sempat dimasukkan di mode sebelumnya **dikembalikan** ke daftar variabel tersedia (panel kiri) — bukan dihapus permanen dari dataset, bukan pula dipindah otomatis ke mode baru.
 4. **Mode non-aktif tampil abu-abu** (visually disabled, tidak menerima drop, tidak menerima klik) — bukan disembunyikan.
+
+*(Revisi Apply Model — sinkron dengan keputusan pemilik produk saat Fase 18, lihat komentar kepala `components/variables-tab.tsx`):* poin 1 dan 4 **tidak berlaku lagi**. Tidak ada tampilan abu-abu: kedua blok (Exclude dan Candidate Factors/Covariates) **selalu** menerima drop. Saling eksklusif dicapai dengan aturan poin 3 — drop ke satu blok mengosongkan blok lain dan mengembalikan isinya ke daftar tersedia. Peringatan eksplisit pada poin 5 tidak muncul (drop yang tidak cocok ditolak senyap oleh `VariableListManager`, keterbatasan yang diwarisi).
 5. **Validasi tipe tetap berlaku di mode `candidates`**: menempatkan variabel `scale` ke Candidate Factors, atau variabel `nominal`/`ordinal` ke Candidate Covariates, **ditolak** (drop dibatalkan) dan memunculkan peringatan tentang ketidakcocokan measurement level. Ini menegaskan bahwa "penentuan manual" pada mode `candidates` adalah kebebasan memilih *variabel mana saja* yang dijadikan predictor dan ke kelompok mana ia terdaftar untuk keperluan tampilan/organisasi, **bukan** kebebasan mengubah cara model memperlakukan tipe statistik variabel tersebut (tipe statistik tetap murni dari `measure`).
 
 ### 3.4 Sorting & Select All (panel kiri, presentasional)
@@ -93,6 +97,8 @@ Aturan transisi mode (gabungan dari beberapa keputusan yang sudah dikonfirmasi �
 
 Payload yang dikirim ke worker/WASM minimal memuat: data & definisi variabel target, data & definisi predictor (dengan penanda per-atribut apakah ia factor atau covariate — turunan dari `measure`, bukan disimpan ulang secara manual), `SmoothingAlpha`, konfigurasi validasi (`ValidationMethod`, parameter partition/fold, seed), dan daftar output yang diminta. Pola pengambilan-slice data dan definisi variabel mengikuti `getSlicedData`/`getVarDefs` seperti pada `nearest-neighbor-analysis.ts`.
 
+*(Revisi Apply Model — sinkron dengan kode, `types/naive-bayes.ts`):* nama field yang berlaku adalah `TargetVar`, `SpecificationMode`, `ExcludedVar` (bukan `ExcludedVariables`), `CandidateFactors`, `CandidateCovariates`; ketiga daftar bertipe `string[] | null`. Predictor efektif dihitung satu-satunya oleh `getEffectivePredictors` (`hooks/useNaiveBayesValidation.ts`). Label kategori/kelas dibentuk di Rust oleh `data_value_to_label` (`rust/src/stats/preprocess_data.rs`): teks di-trim, angka bulat ditulis tanpa desimal (`1.0` → `"1"`); fungsi ini juga disalin oleh Apply Model dan **tidak boleh** diubah tanpa merevisi `../apply-model/AGENTS.md` §5.3.
+
 ---
 
 ## 4. Aturan Perilaku UI
@@ -101,6 +107,7 @@ Payload yang dikirim ke worker/WASM minimal memuat: data & definisi variabel tar
 
 - `SmoothingAlpha: number`, default **1**.
 - Validasi: harus **`> 0`** (nilai `0` ditolak karena bisa menyebabkan error/undefined behavior pada perhitungan probabilitas kategorik), boleh desimal, batas maksimum **999**. Tampilkan pesan validasi inline jika di luar rentang, mengikuti pola pesan error numerik di `useNearestNeighborValidation.ts`.
+- *(Revisi Apply Model — sinkron dengan kode):* `NaiveBayesOptionsType` juga berisi `MissingValuePolicy` (`"exclude"`), `UnseenCategoryPolicy` (`"smoothing"`), dan `VarianceFloor` (`1e-9`). Ketiganya **internal** (tidak tampil di UI, tidak dapat diubah pengguna) dan dikirim apa adanya ke Rust; `VarianceFloor` inilah nilai variance floor §5.3.
 
 ### 4.2 Tab Validation
 
@@ -108,6 +115,7 @@ Payload yang dikirim ke worker/WASM minimal memuat: data & definisi variabel tar
 - **Training/Holdout**: pengguna hanya mengisi `TrainingPercentage` (default **70**, rentang 1–99); `HoldoutPercentage` dihitung otomatis (`100 - TrainingPercentage`) dan ditampilkan sebagai field read-only (pola identik dengan input "Holdout %" & "Total %" yang disabled di `partition.tsx`). Total harus selalu tepat 100 by construction. Pembagian **wajib stratified** berdasarkan distribusi kelas target.
 - **Cross-Validation Folds**: `Folds: number`, default **10**, minimum **1**. Maksimum tidak dipatok angka tetap — dibatasi oleh `min(jumlah instance, jumlah anggota kelas terkecil)`; jika pengguna memasukkan nilai yang melebihi batas ini, tampilkan **peringatan** (bukan blokir keras jika sistem masih bisa menjalankan dengan penyesuaian, tapi tetap harus ada validasi yang menahan submit bila nilai jelas tidak mungkin dieksekusi, misalnya folds > jumlah instance).
 - **Set Seed for Mersenne Twister**: `Checkbox SetSeed` + `Input Seed` (integer). Ikuti rentang standar yang sudah dipakai KNN: `0` sampai `4294967295` (batas `u32` di sisi Rust). Field `Seed` disabled jika `SetSeed` tidak dicentang. Seed ini dipakai untuk **semua** operasi acak pada run tersebut: pembagian stratified training/holdout, maupun pengacakan/assignment k-fold.
+- *(Revisi Apply Model — sinkron dengan kode, `types/naive-bayes.ts`):* field yang berlaku adalah `ValidationMethod`, `TrainingPercentage`, `KFolds` (bukan `Folds`), dan `RandomSeed: number | null`. Tidak ada field `SetSeed`/`Seed` terpisah: checkbox "Use random seed" di UI hanya mengatur apakah `RandomSeed` bernilai angka atau `null`.
 
 ### 4.3 Tab Output
 
@@ -131,6 +139,7 @@ Payload yang dikirim ke worker/WASM minimal memuat: data & definisi variabel tar
 
 - Panel muncul di **sidebar kanan**, bukan pop-up/dialog tengah — dicapai lewat `CLASSIFY_MODAL_CONTAINER_PREFERENCES` seperti dijelaskan di bagian 2.
 - Lebar sidebar dan perilaku pada layar kecil/mobile **mengikuti konfigurasi khusus yang sama dengan Nearest Neighbor** (bukan lebar default generik), termasuk kemampuan resize. Implementer wajib menelusuri di mana `ModalNearestNeighbor` diberi ukuran sidebar khusus (di luar folder `nearest-neighbor`, kemungkinan pada layer layout/renderer sidebar global) dan menambahkan `ModalNaiveBayes` di tempat yang sama dengan nilai yang identik — jangan membuat jalur konfigurasi baru yang terpisah.
+- *(Revisi Apply Model — lokasi sudah ditemukan):* `frontend/app/dashboard/layout.tsx` (`KNN_SIDEBAR_WIDTH = 40`, kondisi `isKNNModalOpen` yang mencakup `ModalNearestNeighbor` dan `ModalNaiveBayes`). Menu Apply Model menambahkan `ModalApplyModel` ke kondisi yang sama.
 
 ---
 
@@ -201,6 +210,10 @@ Bagian ini adalah kontrak angka/istilah — implementasi Rust wajib patuh persis
   - `label_mapping` bila kelas target di-encode secara internal.
   - `validation_config`: metode (`holdout`/`kfold`), parameter (persentase atau jumlah fold), dan seed yang dipakai.
   - `missing_value_policy`, `unseen_category_policy` (deskripsi singkat kebijakan di 5.4 dan 5.9, ditulis sebagai metadata supaya file self-describing).
+- *(Revisi Apply Model — skema final & versi 1.1).* Skema yang berlaku persis struct `ExportedModel` di `rust/src/stats/save.rs`: `target.classes` terurut alfabetis (byte-wise) dan `target.class_priors` sejajar index dengannya; fitur categorical berbentuk `{name, role, categories[], distribution{class: prob[] sejajar categories}}`; fitur numerical `{name, role, mean{class}, variance{class}}` dengan variance yang **sudah** melewati variance floor. Mulai **`schema_version: "1.1"`** (dikerjakan di `../apply-model/PLAN.md` Fase 0) ditambahkan:
+  - `target.class_counts: number[]` — jumlah baris per kelas pada data training model final, sejajar `classes`;
+  - `class_totals: {class: number}` pada setiap fitur categorical — `class_total` yang dipakai rumus smoothing §5.2 (= jumlah `raw_count` kelas itu).
+  Kedua field ini wajib supaya Apply Model bisa menghitung probabilitas kategori tak dikenal persis seperti §5.9. Field lama tidak berubah nama/arti; file `1.0` tetap dianggap valid oleh Apply Model (dengan peringatan). Nama field skema ini sekarang juga dikunci oleh `../apply-model/AGENTS.md` §3.1 — perubahan apa pun wajib merevisi kedua dokumen.
 - **Nilai/label kategori asli dari dataset boleh ikut tersimpan** di dalam JSON model (by design — sudah dikonfirmasi pemilik produk). Ini dicatat di sini secara eksplisit supaya tidak ada yang "memperbaiki" ini di kemudian hari dengan menghapus label tanpa didiskusikan ulang; namun karena berarti file ekspor bisa memuat data yang berpotensi sensitif, developer disarankan tetap mendokumentasikan hal ini secara terlihat oleh pengguna (misal keterangan singkat di UI Export) — bukan berarti fungsionalitasnya dibatasi.
 
 ---
@@ -250,6 +263,12 @@ Integrasi di luar folder ini (wajib, tidak bisa dihindari — lihat bagian 7 unt
 4. Konfigurasi lebar sidebar khusus (lokasi persis harus ditelusuri, lihat 4.6) — tambahkan entri untuk `ModalNaiveBayes` identik dengan `ModalNearestNeighbor`.
 5. Worker baru di path yang setara `/workers/Classify/NearestNeighbor/...` (mis. `/workers/Classify/NaiveBayes/naive-bayes.worker.js`) yang memuat WASM engine Naive Bayes.
 
+*(Revisi Apply Model — titik integrasi yang sudah ada di kode, dicatat agar dokumen sinkron):*
+
+6. `frontend/components/Output/Statistics/index.tsx` — registry komponen output: key `"Export Model"` → `components/export-model-output.tsx` (tempat tombol Export Model tampil di Output Viewer). Key ini juga dipakai Apply Model untuk menemukan model di result store; **jangan di-rename**.
+7. `frontend/hooks/useIndexedDB.ts` — `"NaiveBayes"` di union `AnalysisType`.
+8. Lokasi poin 4 adalah `frontend/app/dashboard/layout.tsx` (lihat §4.6).
+
 ---
 
 ## 7. Larangan
@@ -259,3 +278,5 @@ Integrasi di luar folder ini (wajib, tidak bisa dihindari — lihat bagian 7 unt
 - **Perubahan di luar folder `naive-bayes/` dibatasi ketat hanya pada wiring/registrasi yang memang wajib**, yaitu lima titik integrasi yang disebut eksplisit di akhir bagian 6 (tipe modal, menu item, registry, konfigurasi lebar sidebar, path worker baru). Tidak ada perubahan lain di luar folder ini yang diizinkan tanpa persetujuan ulang.
 - Jangan menambahkan fitur di luar cakupan bagian 1 (predict-on-new-data, import model, tab Save ala KNN, dsb.) tanpa memperbarui dokumen ini terlebih dahulu.
 - Jangan mengubah definisi/rumus di bagian 5 (smoothing, variance floor, metrik, confusion matrix, kappa, dsb.) secara sepihak saat implementasi. Jika ternyata ada kebutuhan berbeda saat coding, dokumen ini yang direvisi dulu (dan didiskusikan ulang), bukan kode yang diam-diam menyimpang dari sini.
+- *(Revisi Apply Model — pengecualian terbatas):* agent yang mengerjakan `../apply-model/PLAN.md` **Fase 0** boleh mengubah folder ini **hanya** pada: `rust/src/stats/save.rs` (schema 1.1, §5.10), tipe `NaiveBayesTrainedModelRaw` di `services/naive-bayes-analysis-formatter.ts`, konstanta `NAIVE_BAYES_WASM_VERSION` di `services/naive-bayes-analysis.ts`, serta worker & `pkg/` di `frontend/public/workers/Classify/NaiveBayes/`. Rumus training/scoring tetap tidak boleh diubah.
+- *(Revisi Apply Model):* jangan mengubah `rust/src/stats/preprocess_data.rs::data_value_to_label`/`is_missing_value`, `rust/src/stats/prediction.rs`, atau `rust/src/stats/classification_table.rs` tanpa merevisi `../apply-model/AGENTS.md` — ketiganya disalin oleh Apply Model dan harus tetap identik.
