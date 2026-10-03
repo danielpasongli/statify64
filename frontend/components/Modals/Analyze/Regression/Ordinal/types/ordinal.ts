@@ -145,7 +145,7 @@ export interface PlumOutputOptions {
   iterationHistoryStep?: number;
   printIterationHistory?: boolean;
   iterationHistoryEvery?: number;
-  cellInformation?: boolean;
+  // cellInformation?: boolean;
   predictedResponseCategory?: boolean;
   estimatedResponseProbabilities?: boolean;
   predictedCategoryProbability?: boolean;
