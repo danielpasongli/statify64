@@ -132,6 +132,7 @@ export enum ModalType {
     ModalDiscriminant = "ModalDiscriminant",
     ModalNearestNeighbor = "ModalNearestNeighbor",
     ModalNaiveBayes = "ModalNaiveBayes",
+    ModalApplyModel = "ModalApplyModel",
     ModalROCCurve = "ModalROCCurve",
     ModalROCAnalysis = "ModalROCAnalysis",
 
@@ -336,6 +337,7 @@ export const MODAL_CATEGORIES: Record<ModalType, ModalCategory> = {
     [ModalType.ModalDiscriminant]: ModalCategory.Analyze,
     [ModalType.ModalNearestNeighbor]: ModalCategory.Analyze,
     [ModalType.ModalNaiveBayes]: ModalCategory.Analyze,
+    [ModalType.ModalApplyModel]: ModalCategory.Analyze,
     [ModalType.ModalROCCurve]: ModalCategory.Analyze,
     [ModalType.ModalROCAnalysis]: ModalCategory.Analyze,
 
@@ -546,6 +548,8 @@ export function getModalTitle(type: ModalType): string {
             return "Nearest Neighbor";
         case ModalType.ModalNaiveBayes:
             return "Naive Bayes";
+        case ModalType.ModalApplyModel:
+            return "Apply Model";
         case ModalType.ModalROCCurve:
             return "ROC Curve";
         case ModalType.ModalROCAnalysis:

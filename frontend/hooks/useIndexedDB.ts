@@ -23,6 +23,7 @@ type AnalysisType =
     | "Discriminant"
     | "NearestNeighbor"
     | "NaiveBayes"
+    | "ApplyModel"
     | "ROCCurve"
     | "ROCAnalysis"
     // Time Series
