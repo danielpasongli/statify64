@@ -272,9 +272,9 @@ fn compute_multicollinearity(
 
 // ── 2. Multivariate normality (Henze–Zirkler) ───────────────────────────────
 
-struct HzStat {
-    hz: f64,
-    p_value: f64,
+pub struct HzStat {
+    pub hz: f64,
+    pub p_value: f64,
 }
 
 /// Henze–Zirkler multivariate normality statistic for an n×p case matrix, with the
@@ -287,7 +287,7 @@ struct HzStat {
 /// variance σ² (Henze & Zirkler, 1990): meanlog = ln(μ² / √(σ² + μ²)),
 /// sdlog = √ln((σ² + μ²) / μ²), and p = 1 − Φ((ln HZ − meanlog) / sdlog).
 /// Returns `None` when n ≤ p or n < 3 (covariance not invertible).
-fn henze_zirkler(x: &DMatrix<f64>) -> Option<HzStat> {
+pub fn henze_zirkler(x: &DMatrix<f64>) -> Option<HzStat> {
     let n = x.nrows();
     let p = x.ncols();
     if n <= p || n < 3 {

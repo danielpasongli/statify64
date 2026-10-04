@@ -50,7 +50,7 @@ const getPrintOptions = (output: OrdinalOutputParams["display"]) => {
   if (output.testOfParallelLines) printOptions.push("TPARALLEL");
   if (output.asymptoticCovariance) printOptions.push("ASYMP_COV");
   if (output.asymptoticCorrelation) printOptions.push("ASYMP_COR");
-  if (output.cellInformation) printOptions.push("CELLINFO");
+  // if (output.cellInformation) printOptions.push("CELLINFO");
   if (output.printIterationHistory ?? output.iterationHistory) {
     printOptions.push("ITERATION");
   }

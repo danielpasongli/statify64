@@ -1,11 +1,11 @@
 /**
  * ============================================================================
- * NORMALITY TESTS CORE UTILITIES
+ * MESIN UJI NORMALITAS
  * ============================================================================
  *
- * General-Purpose Normality Tests (SPSS-Compatible)
+ * Uji normalitas umum dengan bentuk keluaran yang kompatibel dengan SPSS.
  *
- * For regression residual normality testing, see Regression/Assumption Test/normality.js
+ * Uji residual regresi berada pada Regression/Assumption Test/normality.js.
  *
  * Implementasi ini mengikuti Royston (1995) dengan:
  * - SPSS-compatible KS p-values (Dallal-Wilkinson + Lilliefors)
@@ -167,11 +167,11 @@ function cleanNumericData(values) {
             continue;
         }
 
-        // Valid finite number
+        // Masukkan hanya bilangan berhingga yang sudah lolos pemeriksaan.
         cleaned.push(num);
     }
 
-    // Log detailed breakdown if any values were filtered
+    // Catat ringkasan nilai yang dibuang untuk membantu penelusuran data.
     const totalSkipped = nullCount + undefinedCount + nanCount + infinityCount + negInfinityCount;
     if (totalSkipped > 0) {
         const parts = [];
@@ -207,12 +207,23 @@ function cleanNumericData(values) {
  * normalityMean([2, 4, 6]);
  * // => 4
  */
-function normalityMean(values) {
+/** Menjumlahkan nilai dengan koreksi Neumaier untuk mengurangi galat floating point. */
+function normalityCompensatedSum(length, valueAt) {
     let sum = 0;
-    for (let i = 0; i < values.length; i++) {
-        sum += values[i];
+    let correction = 0;
+    for (let i = 0; i < length; i++) {
+        const value = valueAt(i);
+        const next = sum + value;
+        correction += Math.abs(sum) >= Math.abs(value)
+            ? (sum - next) + value
+            : (value - next) + sum;
+        sum = next;
     }
-    return sum / values.length;
+    return sum + correction;
+}
+
+function normalityMean(values) {
+    return normalityCompensatedSum(values.length, index => values[index]) / values.length;
 }
 
 /**
@@ -240,11 +251,10 @@ function normalityMean(values) {
 function normalityStandardDeviation(values, valuesMean = undefined) {
     const m = valuesMean !== undefined ? valuesMean : normalityMean(values);
     const divisor = values.length > 1 ? values.length - 1 : values.length;
-    let sumSqDev = 0;
-    for (let i = 0; i < values.length; i++) {
+    const sumSqDev = normalityCompensatedSum(values.length, i => {
         const diff = values[i] - m;
-        sumSqDev += diff * diff;
-    }
+        return diff * diff;
+    });
     const variance = sumSqDev / divisor;
     return Math.sqrt(variance);
 }
@@ -280,17 +290,19 @@ function normalityPearsonCorrelation(x, y) {
     const xm = normalityMean(x);
     const ym = normalityMean(y);
 
-    let numerator = 0;
-    let xDenom = 0;
-    let yDenom = 0;
-
-    for (let i = 0; i < n; i++) {
+    const numerator = normalityCompensatedSum(n, i => {
         const xd = x[i] - xm;
         const yd = y[i] - ym;
-        numerator += xd * yd;
-        xDenom += xd * xd;
-        yDenom += yd * yd;
-    }
+        return xd * yd;
+    });
+    const xDenom = normalityCompensatedSum(n, i => {
+        const xd = x[i] - xm;
+        return xd * xd;
+    });
+    const yDenom = normalityCompensatedSum(n, i => {
+        const yd = y[i] - ym;
+        return yd * yd;
+    });
 
     const denom = Math.sqrt(xDenom * yDenom);
     if (!isFinite(denom) || denom === 0) return 0;
@@ -301,8 +313,7 @@ function normalityPearsonCorrelation(x, y) {
  * Aproksimasi CDF Normal Standar Φ(x).
  *
  * Menghitung probabilitas kumulatif P(Z ≤ x) untuk distribusi normal standar.
- * Menggunakan pendekatan polinomial Abramowitz & Stegun (1964), Rumus 26.2.17.
- * Akurasi: |error| < 7.5 × 10⁻⁸.
+ * Menggunakan simetri terhadap peluang ekor atas yang dihitung langsung.
  *
  * Digunakan dalam:
  * - Kolmogorov-Smirnov: menghitung F₀(xᵢ) = Φ((xᵢ - x̄)/s)
@@ -323,55 +334,66 @@ function normalityPearsonCorrelation(x, y) {
  * normalityCDF(-1.96);
  * // => ~0.025
  *
- * @see {@link https://en.wikipedia.org/wiki/Normal_distribution#Numerical_approximations_for_the_normal_CDF}
- * @see Abramowitz, M. & Stegun, I. A. (1964). Handbook of Mathematical Functions, Formula 26.2.17.
+ * @see normalitySurvival
  */
 function normalityCDF(x) {
-    if (x < -10) return 0;
-    if (x > 10) return 1;
-
-    const t = 1 / (1 + 0.2316419 * Math.abs(x));
-    const d = 0.3989423 * Math.exp(-x * x / 2);
-    let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
-
-    if (x > 0) {
-        p = 1 - p;
-    }
-
-    return p;
+    return normalitySurvival(-x);
 }
 
 /**
- * Aproksimasi inti inverse CDF normal (quantile function) untuk p mendekati 1.
- *
- * Menghitung estimasi z-score dari probabilitas menggunakan aproksimasi rasional.
- * Rumus: z ≈ y − (c₀ + c₁y + c₂y²) / (1 + d₁y + d₂y² + d₃y³)
- * di mana y = √(−2 ln(p))
- *
- * Fungsi internal yang digunakan oleh normalityQuantile(). Hanya valid untuk
- * p mendekati 0 (karena menggunakan √(-2 ln(p)) yang diverges di p → 0).
- *
- * @param {number} p - Probabilitas mendekati 0 (0 < p < 1), biasanya 1 - target probability
- * @returns {number} Aproksimasi nilai z-score (selalu positif)
- *
- * @example
- * normalityApproxQuantile(0.025);
- * // => ~1.96 (quantile untuk probabilitas 1 - 0.025 = 0.975)
- *
- * @see Abramowitz & Stegun (1964), Formula 26.2.22.
+ * Peluang ekor atas normal standar P(Z > z).
+ * Untuk z >= 0: P(Z > z) = Q(1/2, z²/2) / 2.
+ * Deret gamma dipakai dekat nol; pecahan berlanjut dipakai di ekor distribusi.
+ * Pola ini sama dengan fungsi gamma di modul kategorik, khusus bentuk 1/2,
+ * sehingga worker normalitas tetap mandiri tanpa impor atau koneksi internet.
+ * Nilai-p kecil dihitung langsung agar tidak hilang karena pengurangan 1 - CDF.
+ * Nilai yang lebih kecil dari jangkauan Number tetap dapat mengalami underflow.
  */
-function normalityApproxQuantile(p) {
-    const y = Math.sqrt(-2 * Math.log(p));
-    return y - (2.515517 + 0.802853 * y + 0.010328 * y * y) /
-        (1 + 1.432788 * y + 0.189269 * y * y + 0.001308 * y * y * y);
+function normalitySurvival(z) {
+    if (Number.isNaN(z)) return NaN;
+    const magnitude = Math.abs(z);
+    if (magnitude === 0) return 0.5;
+    if (magnitude > 40) return z > 0 ? 0 : 1;
+
+    const value = magnitude * magnitude / 2;
+    const scale = magnitude * Math.exp(-value) / Math.sqrt(2 * Math.PI);
+    let tail;
+    if (value < 1.5) {
+        let term = 2;
+        let sum = term;
+        for (let iteration = 1; iteration < 1000; iteration++) {
+            term *= value / (iteration + 0.5);
+            sum += term;
+            if (Math.abs(term) <= Math.abs(sum) * Number.EPSILON) break;
+        }
+        tail = (1 - scale * sum) / 2;
+    } else {
+        let offset = value + 0.5;
+        let previous = 1e300;
+        let current = 1 / offset;
+        let fraction = current;
+        for (let iteration = 1; iteration < 1000; iteration++) {
+            const numerator = -iteration * (iteration - 0.5);
+            offset += 2;
+            current = offset + numerator * current;
+            previous = offset + numerator / previous;
+            if (Math.abs(current) < 1e-300) current = 1e-300;
+            if (Math.abs(previous) < 1e-300) previous = 1e-300;
+            current = 1 / current;
+            const delta = current * previous;
+            fraction *= delta;
+            if (Math.abs(delta - 1) <= 2 * Number.EPSILON) break;
+        }
+        tail = scale * fraction / 2;
+    }
+    return z < 0 ? 1 - tail : tail;
 }
 
 /**
  * Menghitung quantile (inverse CDF) normal standar Φ⁻¹(p) untuk sembarang p ∈ (0, 1).
  *
- * Rumus: z = Φ⁻¹(p), sehingga P(Z ≤ z) = p
- * - Untuk p < 0.5: gunakan simetri → Φ⁻¹(p) = −Φ⁻¹(1−p)
- * - Untuk p ≥ 0.5: gunakan aproksimasi Abramowitz & Stegun
+ * Menggunakan aproksimasi rasional Peter J. Acklam pada ekor bawah, bagian
+ * tengah, dan ekor atas distribusi agar koefisien Shapiro-Wilk stabil.
  *
  * Digunakan untuk menghitung Expected Normal Order Statistics (mᵢ) pada
  * uji Shapiro-Wilk via Blom (1958) plotting position:
@@ -393,16 +415,49 @@ function normalityApproxQuantile(p) {
  * // => 0.0 (median distribusi normal)
  *
  * @see Blom, G. (1958). Statistical Estimates and Transformed Beta-Variables. Wiley.
+ * @see Peter J. Acklam, An algorithm for computing the inverse normal cumulative distribution function.
  */
 function normalityQuantile(p) {
     if (p <= 0) return -Infinity;
     if (p >= 1) return Infinity;
 
-    if (p < 0.5) return -normalityApproxQuantile(1 - p);
+    const a = [
+        -3.969683028665376e+1, 2.209460984245205e+2,
+        -2.759285104469687e+2, 1.383577518672690e+2,
+        -3.066479806614716e+1, 2.506628277459239,
+    ];
+    const b = [
+        -5.447609879822406e+1, 1.615858368580409e+2,
+        -1.556989798598866e+2, 6.680131188771972e+1,
+        -1.328068155288572e+1,
+    ];
+    const c = [
+        -7.784894002430293e-3, -3.223964580411365e-1,
+        -2.400758277161838, -2.549732539343734,
+        4.374664141464968, 2.938163982698783,
+    ];
+    const d = [
+        7.784695709041462e-3, 3.224671290700398e-1,
+        2.445134137142996, 3.754408661907416,
+    ];
+    const lowerTail = 0.02425;
 
-    const y = Math.sqrt(-2 * Math.log(1 - p));
-    return y - (2.515517 + 0.802853 * y + 0.010328 * y * y) /
-        (1 + 1.432788 * y + 0.189269 * y * y + 0.001308 * y * y * y);
+    if (p < lowerTail) {
+        const q = Math.sqrt(-2 * Math.log(p));
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    }
+
+    if (p > 1 - lowerTail) {
+        const q = Math.sqrt(-2 * Math.log(1 - p));
+        return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    }
+
+    const q = p - 0.5;
+    const r = q * q;
+    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
+        (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
 }
 
 /**
@@ -592,7 +647,7 @@ function calculateKolmogorovSmirnov(values) {
  *
  * KASUS BERDASARKAN UKURAN SAMPEL:
  *   n = 3    : Rumus eksak berbasis arcsin (analitik)
- *              p = 1 - exp(-(6/π) × arcsin(√W))
+ *              p = (6/π) × [arcsin(√W) - arcsin(√0,75)]
  *
  *   4 ≤ n ≤ 11 : Royston (1993) - koefisien polinomial kubik dalam n
  *              Transform: y₂ = -ln(γ - ln(1-W))
@@ -627,21 +682,20 @@ function calculateKolmogorovSmirnov(values) {
  *   Applied Statistics, 44(4): 547-551.
  */
 function shapiroWilkPValue(W, n) {
-    const y = Math.log(1 - W);
     let mu;
     let sigma;
-    let formulaUsed;
 
     // ========================================================================
-    //   of W for 3 observations.
+    // Kasus n=3 menggunakan rumus eksak untuk distribusi W.
     // ========================================================================
     if (n === 3) {
-        formulaUsed = 'n=3 (exact formula)';
-        console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
-        const pValue = 1 - Math.exp(-6.0 / Math.PI * Math.asin(Math.sqrt(W)));
-        console.log(`[SW-DEBUG] P-value result: ${pValue}`);
-        return pValue;
+        const pValue = (6 / Math.PI) * (
+            Math.asin(Math.sqrt(W)) - Math.asin(Math.sqrt(0.75))
+        );
+        return Math.max(0, Math.min(1, pValue));
     }
+
+    const y = Math.log(1 - W);
 
     // ========================================================================
     //
@@ -651,21 +705,15 @@ function shapiroWilkPValue(W, n) {
     //   5. p-value = 1 − Φ(z)
     // ========================================================================
     if (n <= 11) {
-        formulaUsed = 'n≤11 (Royston 1993 cubic polynomial)';
-        console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
-        // g(n): boundary polynomial — if y > g, W is too extreme
-        const g = -0.0006714 * n ** 3 + 0.025054 * n ** 2 - 0.39978 * n + 0.5440;
-        if (y > g) {
-            console.log(`[SW-DEBUG] y (${y}) > g (${g}), returning minimum p-value 1e-19`);
-            return 1e-19;
+        // gamma adalah batas transformasi untuk sampel kecil.
+        const gamma = -2.273 + 0.459 * n;
+        if (y >= gamma) {
+            return 1e-99;
         }
-        const y2 = -Math.log(g - y);
-        mu = -0.0020322 * n ** 3 + 0.062767 * n ** 2 - 0.77857 * n + 1.3822;
-        sigma = Math.exp(-0.00020322 * n ** 3 + 0.0062767 * n ** 2 - 0.067861 * n + 0.459);
-        console.log(`[SW-DEBUG] Transform: y=${y}, g=${g}, y2=${y2}`);
-        console.log(`[SW-DEBUG] Distribution params: μ=${mu}, σ=${sigma}`);
-        const pValue = 1 - normalityCDF((y2 - mu) / sigma);
-        console.log(`[SW-DEBUG] P-value result: ${pValue}`);
+        const y2 = -Math.log(gamma - y);
+        mu = 0.5440 - 0.39978 * n + 0.025054 * n ** 2 - 0.0006714 * n ** 3;
+        sigma = Math.exp(1.3822 - 0.77857 * n + 0.062767 * n ** 2 - 0.0020322 * n ** 3);
+        const pValue = normalitySurvival((y2 - mu) / sigma);
         return pValue;
     }
 
@@ -676,15 +724,10 @@ function shapiroWilkPValue(W, n) {
     //   4. p-value = 1 − Φ(z)
     //
     // ========================================================================
-    formulaUsed = 'n>11 (Royston 1995 ln-based polynomial)';
-    console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
     const lnN = Math.log(n);
     mu = -1.5861 - 0.31082 * lnN - 0.083751 * lnN ** 2 + 0.0038915 * lnN ** 3;
     sigma = Math.exp(-0.4803 - 0.082676 * lnN + 0.0030302 * lnN ** 2);
-    console.log(`[SW-DEBUG] Transform: y=${y}, ln(n)=${lnN}`);
-    console.log(`[SW-DEBUG] Distribution params: μ=${mu}, σ=${sigma}`);
-    const pValue = 1 - normalityCDF((y - mu) / sigma);
-    console.log(`[SW-DEBUG] P-value result: ${pValue}`);
+    const pValue = normalitySurvival((y - mu) / sigma);
     return pValue;
 }
 
@@ -706,16 +749,16 @@ function shapiroWilkPValue(W, n) {
  *   1. Bersihkan data dan validasi ukuran sampel (3 ≤ n ≤ 5000)
  *   2. Urutkan data ascending
  *   3. Hitung expected normal order stats mᵢ via Blom (1958) plotting position
- *   4. Hitung endpoint coefficients aₙ, aₙ₋₁ via Royston polynomials p1, p2
- *   5. Hitung normalization factor φ dan middle coefficients
- *   6. Hitung W = (Σaᵢxᵢ)² / S², lalu batasi ke rentang [0, 1]
+ *   4. Hitung koefisien ujung a₁ dan a₂ dengan koreksi polinomial Royston
+ *   5. Hitung faktor normalisasi φ dan koefisien sisanya
+ *   6. Hitung W dari korelasi data terurut dengan koefisien Shapiro-Wilk
  *   7. Hitung nilai-p dengan pendekatan Royston sesuai ukuran sampel
  *
  * NUMERICAL STABILITY:
- *   - W is clamped to max 1.0 to prevent floating-point overshoot
- *   - φ menggunakan Math.abs() untuk mencegah NaN akibat akar bilangan negatif
+ *   - 1-W dihitung sebagai (s-c)(s+c)/s² untuk menjaga presisi saat W mendekati 1
+ *   - Galat floating point sangat kecil ditoleransi; nilai yang benar-benar di luar [0,1] ditolak
  *   - S² = 0 pada data konstan akan langsung mengembalikan null
- *   - Global try-catch prevents uncaught exceptions
+ *   - Penanganan galat mencegah kegagalan worker yang tidak tertangani
  *
  * @param {number[]} values - Array berisi nilai-nilai numerik mentah (will be cleaned internally)
  * @returns {{statistic: number, df: number, pValue: number}|null}
@@ -786,10 +829,13 @@ function calculateShapiroWilk(values) {
     // Konstanta 0,375 dan 0,25 memberikan pendekatan tak bias untuk statistik
     // urutan normal harapan. Rumus yang sama digunakan oleh SPSS dan algoritma
     // AS R94 Royston untuk menghitung bobot Shapiro-Wilk.
-    const m = new Array(n).fill(0).map((_, i) => normalityQuantile((i + 1 - 0.375) / (n + 0.25)));
-    const mSumSq = m.reduce((s, v) => s + v * v, 0);
+    const halfLength = Math.floor(n / 2);
+    const m = Array.from(
+        { length: halfLength },
+        (_, i) => normalityQuantile((i + 1 - 0.375) / (n + 0.25)),
+    );
+    const mSumSq = 2 * normalityCompensatedSum(halfLength, i => m[i] * m[i]);
 
-    console.log(`[SW-DEBUG] Expected order statistics: Σmᵢ² = ${mSumSq}`);
 
     // ========================================================================
     // LANGKAH 4: Hitung koefisien bobot aᵢ (Royston AS R94)
@@ -809,93 +855,68 @@ function calculateShapiroWilk(values) {
     //
     //
     //
-    const a = new Array(n).fill(0);
+    const a = new Array(halfLength).fill(0);
     const u = 1 / Math.sqrt(n);
 
-    console.log('[SW-DEBUG] --------------------------------------------------------');
-    console.log('[SW-DEBUG] Coefficient calculation');
-    console.log('[SW-DEBUG] --------------------------------------------------------');
 
     if (n === 3) {
         // ----------------------------------------------------------------
         // Untuk sampel valid terkecil, bobotnya diketahui secara analitis:
         //   a₁ = −√(1/2) ≈ −0.7071, a₂ = 0, a₃ = +√(1/2) ≈ +0.7071
         // ----------------------------------------------------------------
-        a[n - 1] = Math.SQRT1_2;  // a_n positif
-        a[0] = -Math.SQRT1_2;     // a_1 negatif
-        console.log(`[SW-DEBUG] n=3 special case: aₙ = ${a[n-1]}, a₁ = ${a[0]}`);
+        a[0] = Math.SQRT1_2;
     } else {
         // ----------------------------------------------------------------
         //   44(4): 547-551, Table 1.
         //
-        // Polinomial p1 menghitung aₙ, yaitu bobot terbesar atau paling kanan:
-        //   aₙ = p1[0]·u⁴ + p1[1]·u³ + p1[2]·u² + p1[3]·u + p1[4]
-        //   where u = 1/√n
+        // Koefisien ujung pertama mengikuti AS R94:
+        //   a₁ = poly(c1, u) - m₁ / √Σmᵢ², dengan u = 1/√n.
         // ----------------------------------------------------------------
-        const p1 = [-2.706056, 4.434685, -2.071190, -0.147981, 0.221157];
+        const c1 = [0, 0.221157, -0.147981, -2.071190, 4.434685, -2.706056];
         // ----------------------------------------------------------------
-        //   aₙ₋₁ = p2[0]·u⁴ + p2[1]·u³ + p2[2]·u² + p2[3]·u + p2[4]
+        // Untuk n > 5, koefisien ujung kedua adalah:
+        //   a₂ = poly(c2, u) - m₂ / √Σmᵢ².
         // ----------------------------------------------------------------
-        const p2 = [-3.582633, 5.682633, -1.752461, -0.293762, 0.042981];
-        //   polyVal([c₄,c₃,c₂,c₁,c₀], u) = c₄u⁴ + c₃u³ + c₂u² + c₁u + c₀
-        const polyVal = (coeffs, z) => coeffs.reduce((acc, c) => acc * z + c, 0);
+        const c2 = [0, 0.042981, -0.293762, -1.752461, 5.682633, -3.582633];
+        const polyVal = (coeffs, z) => normalityCompensatedSum(
+            coeffs.length,
+            i => coeffs[i] * z ** i,
+        );
+        const normalizedM = Math.sqrt(mSumSq);
 
-        // a_n: bobot ujung kanan positif
-        const aN = polyVal(p1, u);
-        a[n - 1] = Math.abs(aN);    // pastikan positif
-        a[0] = -Math.abs(aN);       // ujung kiri negatif
+        a[0] = polyVal(c1, u) - m[0] / normalizedM;
 
-        console.log(`[SW-DEBUG] Calculated aₙ (end coefficient) = ${a[n-1]}`);
-
-        if (n >= 6) {
-            // a_{n-1}: bobot ke-2 dari ujung kanan, HARUS POSITIF
-            // polyVal p2 mengembalikan nilai negatif untuk n>=6 → negate untuk mendapat positif
-            const aN1 = polyVal(p2, u);
-            a[n - 2] = Math.abs(aN1);   // pastikan positif
-            a[1] = -Math.abs(aN1);       // ke-2 dari kiri negatif
-
-            console.log(`[SW-DEBUG] Calculated aₙ₋₁ (second-to-end coefficient) = ${a[n-2]}`);
+        let firstUnadjustedIndex = 1;
+        if (n > 5) {
+            a[1] = -m[1] / normalizedM + polyVal(c2, u);
+            firstUnadjustedIndex = 2;
         }
 
         // ----------------------------------------------------------------
         //
-        // For n ≥ 6:
+        // Untuk n minimal 6:
         //   φ = (Σmᵢ² − 2mₙ² − 2mₙ₋₁²) / (1 − 2aₙ² − 2aₙ₋₁²)
-        // For n = 4, 5:
+        // Untuk n = 4 atau 5:
         //   φ = (Σmᵢ² − 2mₙ²) / (1 − 2aₙ²)
         //
         // ----------------------------------------------------------------
         let phi;
-        if (n >= 6) {
-            phi = (mSumSq - 2 * m[n - 1] ** 2 - 2 * m[n - 2] ** 2) /
-                (1 - 2 * a[n - 1] ** 2 - 2 * a[n - 2] ** 2);
+        if (n > 5) {
+            phi = (mSumSq - 2 * m[0] ** 2 - 2 * m[1] ** 2) /
+                (1 - 2 * a[0] ** 2 - 2 * a[1] ** 2);
         } else {
-            phi = (mSumSq - 2 * m[n - 1] ** 2) /
-                (1 - 2 * a[n - 1] ** 2);
+            phi = (mSumSq - 2 * m[0] ** 2) /
+                (1 - 2 * a[0] ** 2);
         }
 
-        console.log(`[SW-DEBUG] Normalization factor φ = ${phi}`);
 
-        // NUMERICAL STABILITY: Math.abs(φ) prevents NaN from negative square root.
-        //
-        //
-        if (phi < 0) {
-            console.warn(`[SW] WARNING: φ = ${phi} < 0 (floating-point rounding in polynomial evaluation), using |φ| for stability`);
+        if (!(phi > 0)) {
+            throw new Error(`Faktor normalisasi koefisien Shapiro-Wilk tidak valid: ${phi}`);
         }
-        const constDen = Math.sqrt(Math.abs(phi));
+        const coefficientScale = Math.sqrt(phi);
 
-        if (n >= 6) {
-            for (let i = 2; i <= n - 3; i++) {
-                a[i] = m[i] / constDen;
-            }
-        } else if (n === 5) {
-            // For n=5: a[2]=0 (center element of odd-length array),
-            // for n < 6, a[1] remains 0 from initialization, so a[3] = 0 as well.
-            a[2] = 0;  // elemen tengah untuk n ganjil = 0
-            a[3] = -a[1];  // a[1] = 0 karena p2 tidak digunakan untuk n < 6
-        } else if (n === 4) {
-            a[1] = m[1] / constDen;
-            a[2] = -a[1];
+        for (let i = firstUnadjustedIndex; i < halfLength; i++) {
+            a[i] = -m[i] / coefficientScale;
         }
     }
 
@@ -907,54 +928,61 @@ function calculateShapiroWilk(values) {
     // W mengukur korelasi linear antara data terurut x₍ᵢ₎ dan kuantil normal
     // teoretis yang terkandung dalam koefisien aᵢ.
     // W mendekati 1 → data konsisten dengan normalitas
-    // W close to 0 → strong departure from normality
+    // W mendekati 0 → penyimpangan kuat dari normalitas
     //
     // Catatan: S² merupakan jumlah kuadrat yang belum dinormalisasi (tidak dibagi n−1).
     // Bentuk pembilang² / S² setara dengan kuadrat Pearson
-    // correlation between x and a, which always yields W ∈ [0, 1].
-    console.log('[SW-DEBUG] --------------------------------------------------------');
-    console.log('[SW-DEBUG] Statistic W calculation');
-    console.log('[SW-DEBUG] --------------------------------------------------------');
+    // korelasi Pearson antara x dan a, sehingga secara matematis W ∈ [0, 1].
 
-    //
-    //
-    const meanX = normalityMean(x);
-    let numerator = 0;
-    let S2 = 0;  // sum of squares = Σ(xᵢ - x̄)²
-
-    for (let i = 0; i < n; i++) {
-        numerator += a[i] * x[i];
-        const diff = x[i] - meanX;
-        S2 += diff * diff;
-    }
-
-    if (S2 === 0) {
-        console.warn('[SW] WARNING: S² = 0 (all data identical), test aborted');
+    const range = x[n - 1] - x[0];
+    if (range === 0) {
+        console.warn('[SW] WARNING: rentang data = 0 (semua data identik), pengujian dibatalkan');
         return null;
     }
 
-    // NUMERICAL STABILITY: W clamping to [0, 1] range.
-    //
-    //
-    // (e.g., W = 1.0000000000000002) due to:
-    //
-    // data is perfectly normal).
-    const W = Math.min(1, (numerator * numerator) / S2);
+    const coefficients = Array.from({ length: n }, (_, i) => {
+        const pairedIndex = n - 1 - i;
+        if (i === pairedIndex) return 0;
+        return i < pairedIndex ? -a[i] : a[pairedIndex];
+    });
+    const coefficientMean = normalityMean(coefficients);
+    const scaledMean = normalityCompensatedSum(n, i => x[i] / range) / n;
+    const coefficientSquares = normalityCompensatedSum(n, i => {
+        const difference = coefficients[i] - coefficientMean;
+        return difference * difference;
+    });
+    const dataSquares = normalityCompensatedSum(n, i => {
+        const difference = x[i] / range - scaledMean;
+        return difference * difference;
+    });
+    const crossProducts = normalityCompensatedSum(n, i => (
+        (coefficients[i] - coefficientMean) * (x[i] / range - scaledMean)
+    ));
+    const productOfSquares = coefficientSquares * dataSquares;
 
-    console.log(`[SW-DEBUG] n = ${n}`);
-    console.log(`[SW-DEBUG] Σmᵢ² = ${mSumSq}`);
-    console.log(`[SW-DEBUG] numerator (Σaᵢxᵢ) = ${numerator}`);
-    console.log(`[SW-DEBUG] S² (Σ(xᵢ-x̄)²) = ${S2}`);
-    console.log(`[SW-DEBUG] W = (numerator)² / S² = ${numerator * numerator} / ${S2} = ${W}`);
+    if (!(productOfSquares > 0)) {
+        console.warn('[SW] WARNING: variasi data atau koefisien bernilai nol, pengujian dibatalkan');
+        return null;
+    }
+
+    const correlationScale = Math.sqrt(productOfSquares);
+    let oneMinusW = ((correlationScale - crossProducts) *
+        (correlationScale + crossProducts)) / productOfSquares;
+
+    const floatingPointTolerance = 1e-12;
+    if (oneMinusW < 0 && oneMinusW >= -floatingPointTolerance) oneMinusW = 0;
+    if (oneMinusW > 1 && oneMinusW <= 1 + floatingPointTolerance) oneMinusW = 1;
+    if (oneMinusW < 0 || oneMinusW > 1 || !Number.isFinite(oneMinusW)) {
+        throw new Error(`Statistik Shapiro-Wilk tidak valid: 1-W = ${oneMinusW}`);
+    }
+    const W = 1 - oneMinusW;
+
 
     // LANGKAH 6: Hitung nilai-p menggunakan pendekatan Royston
     // Perhitungan nilai-p dibagi menjadi tiga kasus:
     //   n = 3: rumus eksak (Shapiro & Wilk, 1965)
     //   4 ≤ n ≤ 11: pendekatan polinomial kubik sampel kecil Royston (1993)
     //   n > 11: pendekatan polinomial berbasis ln(n) untuk sampel besar Royston (1995)
-    console.log('[SW-DEBUG] --------------------------------------------------------');
-    console.log('[SW-DEBUG] P-value calculation');
-    console.log('[SW-DEBUG] --------------------------------------------------------');
 
     const pValue = shapiroWilkPValue(W, n);
 
@@ -1213,9 +1241,9 @@ function runNormalityTests(values, options = {}) {
  * formatNormalityNumber(NaN);
  * // => 'N/A'
  */
-function formatNormalityNumber(num, decimals = 6) {
+function formatNormalityNumber(num) {
     if (typeof num !== 'number' || isNaN(num)) return 'N/A';
-    return num.toFixed(decimals);
+    return String(num);
 }
 
 /**
@@ -1346,6 +1374,7 @@ if (typeof self !== 'undefined') {
     self.shapiroWilkPValue = shapiroWilkPValue;
     self.runNormalityTests = runNormalityTests;
     self.printNormalityLog = printNormalityLog;
+    self.normalityMean = normalityMean;
 }
 
 // Expose ke globalThis untuk environment hybrid/test harness
@@ -1356,6 +1385,7 @@ if (typeof globalThis !== 'undefined') {
     globalThis.shapiroWilkPValue = shapiroWilkPValue;
     globalThis.runNormalityTests = runNormalityTests;
     globalThis.printNormalityLog = printNormalityLog;
+    globalThis.normalityMean = normalityMean;
 }
 
 // Expose ke CommonJS untuk unit testing dengan require()
@@ -1367,5 +1397,6 @@ if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
         shapiroWilkPValue,
         runNormalityTests,
         printNormalityLog,
+        normalityMean,
     };
 }

@@ -3,7 +3,7 @@ import { buildNormalityDescription, buildNormalityInterpretation } from '@/compo
 describe('normality interpretation', () => {
   it('builds a fail-to-reject conclusion at the alpha boundary', () => {
     expect(buildNormalityInterpretation('Shapiro-Wilk', 'Pendapatan', 0.05, 0.05)).toBe(
-      'Shapiro-Wilk — Pendapatan: p-value = 0.050 ≥ α = 0.050; gagal menolak H₀, artinya tidak terdapat cukup bukti untuk membuktikan bahwa data tidak berdistribusi normal (data berdistribusi normal).',
+      'Shapiro-Wilk — Pendapatan: p-value = 0.05 ≥ α = 0.05; gagal menolak H₀, artinya tidak terdapat cukup bukti untuk membuktikan bahwa data tidak berdistribusi normal (data berdistribusi normal).',
     );
   });
 

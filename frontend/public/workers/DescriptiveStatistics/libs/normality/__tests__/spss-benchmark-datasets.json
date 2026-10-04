@@ -4,9 +4,9 @@
     "version": "1.0.0",
     "description": "SPSS-compatible Shapiro-Wilk benchmark datasets",
     "notes": [
-      "Since actual SPSS Statistics 28.0 may not be available, expected W and p-values",
-      "are computed using Statify's Royston (1995) implementation.",
-      "These serve as reference values for regression testing and validation.",
+      "Expected W and p-values were calculated independently from the AS R94 equations",
+      "using Python standard-library NormalDist for the normal quantile and CDF.",
+      "These values serve as numerical regression references for Statify.",
       "Tolerances: W difference < 0.0001, p-value difference < 0.001"
     ],
     "references": [
@@ -26,8 +26,8 @@
         2.5,
         3.1
       ],
-      "expectedW": 0.95671378,
-      "expectedP": 0.925706,
+      "expectedW": 0.9567137809187277,
+      "expectedP": 0.5997232961892934,
       "notes": "Tests n=3 special case with exact p-value formula",
       "computedSuccessfully": true
     },
@@ -48,8 +48,8 @@
         111.764639,
         105.149808
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.9741799202356115,
+      "expectedP": 0.9266656039951391,
       "notes": "Tests small sample approximation (n≤11)",
       "computedSuccessfully": true
     },
@@ -90,8 +90,8 @@
         37.051061,
         30.723397
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.9597787242482804,
+      "expectedP": 0.30576331163234016,
       "notes": "Common sample size for normality testing",
       "computedSuccessfully": true
     },
@@ -152,8 +152,8 @@
         -1.569271,
         0.574492
       ],
-      "expectedW": 0.00838462,
-      "expectedP": 0,
+      "expectedW": 0.9557337370847582,
+      "expectedP": 0.05894042512830355,
       "notes": "Moderate sample size, should show high W and high p-value",
       "computedSuccessfully": true
     },
@@ -264,8 +264,8 @@
         15.277642,
         23.759116
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.9890863347791939,
+      "expectedP": 0.5913725879470153,
       "notes": "Large sample normality test",
       "computedSuccessfully": true
     },
@@ -776,8 +776,8 @@
         1250.10455,
         1123.732382
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.997644129916098,
+      "expectedP": 0.7119386856825468,
       "notes": "Very large sample, tests Royston 1995 approximation",
       "computedSuccessfully": true
     },
@@ -818,8 +818,8 @@
         7.973829,
         7.528199
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.93393497441393,
+      "expectedP": 0.0625166873733452,
       "notes": "Non-normal distribution, should reject normality",
       "computedSuccessfully": true
     },
@@ -880,8 +880,8 @@
         15.96506,
         15.34386
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.9337158292211435,
+      "expectedP": 0.007659801610277794,
       "notes": "Moderate uniform sample, low W expected",
       "computedSuccessfully": true
     },
@@ -922,8 +922,8 @@
         0.145125,
         2.187736
       ],
-      "expectedW": 0.54061731,
-      "expectedP": 0,
+      "expectedW": 0.6951751322454731,
+      "expectedP": 0.0000013283339355685264,
       "notes": "Right-skewed distribution, should reject normality",
       "computedSuccessfully": true
     },
@@ -1034,8 +1034,8 @@
         0.327605,
         0.780673
       ],
-      "expectedW": 0.7567864,
-      "expectedP": 0,
+      "expectedW": 0.7055334816939689,
+      "expectedP": 7.27085058827015e-13,
       "notes": "Large exponential sample, very low p-value expected",
       "computedSuccessfully": true
     },
@@ -1056,8 +1056,8 @@
         0.84,
         1.28
       ],
-      "expectedW": 0.0224492,
-      "expectedP": 0,
+      "expectedW": 0.9929847038677689,
+      "expectedP": 0.9992130354734916,
       "notes": "Approximate standard normal quantiles, high W expected",
       "computedSuccessfully": true
     },
@@ -1078,8 +1078,8 @@
         0.952261,
         0.423452
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.9634101977741569,
+      "expectedP": 0.8239461496586195,
       "notes": "Small uniform sample for small-n approximation test",
       "computedSuccessfully": true
     },
@@ -1140,8 +1140,8 @@
         31.899001,
         27.620008
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.7796767144204382,
+      "expectedP": 3.0768043263185163e-7,
       "notes": "Two normal distributions mixed, should reject normality",
       "computedSuccessfully": true
     },
@@ -1182,8 +1182,8 @@
         38.13348,
         150
       ],
-      "expectedW": 1,
-      "expectedP": 1,
+      "expectedW": 0.6392933519608925,
+      "expectedP": 2.2821770434555688e-7,
       "notes": "Tests robustness to outliers",
       "computedSuccessfully": true
     },
@@ -6194,8 +6194,8 @@
         -2.859847,
         0.175011
       ],
-      "expectedW": 0.00401409,
-      "expectedP": null,
+      "expectedW": 0.9997706989330473,
+      "expectedP": 0.8941343371340322,
       "notes": "Maximum supported sample size boundary test",
       "computedSuccessfully": true
     }

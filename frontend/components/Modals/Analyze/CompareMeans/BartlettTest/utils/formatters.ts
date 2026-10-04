@@ -1,4 +1,3 @@
-import { formatNumber, formatPValue } from '@/components/Modals/Analyze/shared/statisticalOutput';
 import type { Variable } from '@/types/Variable';
 import type { BartlettTestResult, BartlettTestTable } from '../types';
 import { buildBartlettDescription } from './interpretation';
@@ -10,7 +9,10 @@ const getVariableName = (variable: Variable): string => {
 };
 
 const formatDF = (value: number | undefined): number | string =>
-    Number.isFinite(value) ? Math.round(value as number) : '';
+    Number.isFinite(value) ? String(value) : '';
+
+const formatExactNumber = (value: number | null | undefined): string =>
+    Number.isFinite(value) ? String(value) : '';
 
 export function formatBartlettTestTable(results: BartlettTestResult[]): BartlettTestTable {
     if (results.length === 0) {
@@ -47,9 +49,9 @@ export function formatBartlettTestTable(results: BartlettTestResult[]): Bartlett
             }
             : {
                 rowHeader: [variableName],
-                chiSquare: formatNumber(result.statistic),
+                chiSquare: formatExactNumber(result.statistic),
                 df: formatDF(result.df),
-                sig: formatPValue(result.pValue),
+                sig: formatExactNumber(result.pValue),
             });
     });
 
@@ -86,7 +88,7 @@ export function formatDescriptiveStatisticsTable(results: BartlettTestResult[]):
                 rowHeader: [variableName],
                 group,
                 n: result.groupSizes?.[index]?.toString() ?? '',
-                variance: formatNumber(result.groupVariances?.[index], 4),
+                variance: formatExactNumber(result.groupVariances?.[index]),
             });
         });
 
@@ -94,7 +96,7 @@ export function formatDescriptiveStatisticsTable(results: BartlettTestResult[]):
             rowHeader: [variableName],
             group: 'Pooled',
             n: result.totalSampleSize?.toString() ?? '',
-            variance: formatNumber(result.pooledVariance, 4),
+            variance: formatExactNumber(result.pooledVariance),
         });
     });
 

@@ -20,9 +20,9 @@ export const formatCaseProcessingSummary = (
     {
       rowHeader: [`${rowVarNames} * ${colVarNames}`],
       valid_n: valid,
-      valid_percent: total > 0 ? `${((valid / total) * 100).toFixed(1)}%` : '0.0%',
+      valid_percent: total > 0 ? `${String((valid / total) * 100)}%` : '0%',
       missing_n: missing,
-      missing_percent: total > 0 ? `${((missing / total) * 100).toFixed(1)}%` : '0.0%',
+      missing_percent: total > 0 ? `${String((missing / total) * 100)}%` : '0%',
       total_n: total,
       total_percent: '100.0%',
     },
@@ -59,4 +59,4 @@ export const formatCaseProcessingSummary = (
   ];
 
   return { title: 'Case Processing Summary', columnHeaders, rows };
-}; 
+};

@@ -1,7 +1,9 @@
-import { formatNumber, formatPValue } from '@/components/Modals/Analyze/shared/statisticalOutput';
 import type { CrosstabsAnalysisParams, CrosstabsWorkerResult } from '../../types';
 import type { ColumnHeader, FormattedTable, TableRowData } from '../helpers';
 import { buildChiSquareDescription } from './interpretation';
+
+const formatExactNumber = (value: number | null | undefined): string =>
+  Number.isFinite(value) ? String(value) : '';
 
 const getVariableName = (
   variable: { label?: string; name?: string } | undefined,
@@ -19,6 +21,7 @@ export const formatChiSquareTestsTable = (
 
   const pearson = result?.chiSquare?.pearson;
   if (!pearson) return null;
+  const proportion = result?.chiSquare?.proportion;
 
   const columnHeaders: ColumnHeader[] = [
     { header: '', key: 'rh1' },
@@ -30,9 +33,9 @@ export const formatChiSquareTestsTable = (
   const rows: TableRowData[] = [
     {
       rowHeader: ['Pearson Chi-Square'],
-      value: formatNumber(pearson.value),
+      value: formatExactNumber(pearson.value),
       df: String(pearson.df),
-      sig: formatPValue(pearson.pValue),
+      sig: formatExactNumber(pearson.pValue),
     },
     {
       rowHeader: ['N of Valid Cases'],
@@ -46,10 +49,10 @@ export const formatChiSquareTestsTable = (
   const footer: string[] = [];
   if (diagnostics) {
     footer.push(
-      `${diagnostics.cellsUnder5} cells (${formatNumber(diagnostics.percentCellsUnder5, 1)}%) have expected count less than 5.`,
+      `${diagnostics.cellsUnder5} cells (${formatExactNumber(diagnostics.percentCellsUnder5)}%) have expected count less than 5.`,
     );
     if (diagnostics.minExpectedCount !== null) {
-      footer.push(`The minimum expected count is ${formatNumber(diagnostics.minExpectedCount, 2)}.`);
+      footer.push(`The minimum expected count is ${formatExactNumber(diagnostics.minExpectedCount)}.`);
     }
   }
 
@@ -61,12 +64,14 @@ export const formatChiSquareTestsTable = (
     description: buildChiSquareDescription({
       rowName: getVariableName(params.rowVariables[0], 'variabel baris'),
       columnName: getVariableName(params.columnVariables[0], 'variabel kolom'),
-      outcomeCategoryCount: result.summary?.colCategories?.length ?? 0,
-      value: pearson.value,
-      df: pearson.df,
-      pValue: pearson.pValue,
+      outcomeCategoryCount: proportion?.outcomeCategoryCount
+        ?? result.summary?.colCategories?.length
+        ?? 0,
+      value: proportion?.value ?? pearson.value,
+      df: proportion?.df ?? pearson.df,
+      pValue: proportion?.pValue ?? pearson.pValue,
       sampleSize: result.summary?.valid,
-      diagnostics,
+      purpose: params.options.statistics?.purpose ?? 'independence',
     }),
   };
 };

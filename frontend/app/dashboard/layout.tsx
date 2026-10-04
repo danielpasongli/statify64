@@ -60,7 +60,14 @@ export default function DashboardLayout({
     const topModalId = modals.length > 0 ? modals[modals.length - 1].id : null;
     const topModalType =
         modals.length > 0 ? modals[modals.length - 1].type : null;
-    const isKNNModalOpen = topModalType === ModalType.ModalNearestNeighbor;
+    // Naive Bayes memakai sidebar khusus yang identik dengan Nearest
+    // Neighbor (AGENTS.md §4.6 / PLAN.md Fase 6 §1) — kondisi yang sudah
+    // ada diperluas, bukan di-rename, supaya perubahan di file bersama ini
+    // seminimal mungkin.
+    const isKNNModalOpen =
+        topModalType === ModalType.ModalNearestNeighbor ||
+        topModalType === ModalType.ModalNaiveBayes ||
+        topModalType === ModalType.ModalApplyModel;
     const activeSidebarWidth = isKNNModalOpen ? KNN_SIDEBAR_WIDTH : sidebarWidth;
 
     // Key untuk memaksa ResizablePanelGroup re-mount saat perubahan state

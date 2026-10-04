@@ -11,7 +11,7 @@ const result = {
 describe('Bartlett interpretation', () => {
   it('builds a safe dynamic conclusion', () => {
     expect(buildBartlettInterpretation(result)).toBe(
-      '<p>Bartlett <br> &lt;Score&gt;: χ²(2) = 5.123, p-value = 0.077 ≥ α = 0.050; gagal menolak H₀, artinya belum terdapat cukup bukti untuk membuktikan bahwa varians antar kelompok berbeda (varians antar kelompok sama).</p>',
+      '<p>Bartlett <br> &lt;Score&gt;: χ²(2) = 5.123, p-value = 0.077 ≥ α = 0.05; gagal menolak H₀, artinya belum terdapat cukup bukti untuk membuktikan bahwa varians antar kelompok berbeda (varians antar kelompok sama).</p>',
     );
   });
 

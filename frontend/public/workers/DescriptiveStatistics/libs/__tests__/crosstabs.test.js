@@ -18,6 +18,7 @@ global.importScripts = loadScript;
 
 // Load required scripts
 loadScript('utils/utils.js');
+loadScript('categoricalTests/categoricalChiSquare.js');
 loadScript('crosstabs/crosstabs.js');
 
 const CrosstabsCalculator = global.self.CrosstabsCalculator;

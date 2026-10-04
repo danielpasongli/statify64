@@ -22,6 +22,8 @@ type AnalysisType =
     | "Tree"
     | "Discriminant"
     | "NearestNeighbor"
+    | "NaiveBayes"
+    | "ApplyModel"
     | "ROCCurve"
     | "ROCAnalysis"
     // Time Series

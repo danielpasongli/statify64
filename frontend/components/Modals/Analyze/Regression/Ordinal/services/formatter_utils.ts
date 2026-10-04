@@ -144,7 +144,7 @@ export const buildDefaultOutputOptions = (
     iterationHistoryStep: iterationHistoryEvery,
     printIterationHistory,
     iterationHistoryEvery,
-    cellInformation: params.display.cellInformation,
+    // cellInformation: params.display.cellInformation,
     predictedResponseCategory: params.savedVariables.predictedResponseCategory,
     estimatedResponseProbabilities:
       params.savedVariables.estimatedResponseProbabilities,

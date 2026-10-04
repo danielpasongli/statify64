@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import React from "react";
-import type { StatisticsTabProps } from "./types";
+import type { ChiSquareTestPurpose, StatisticsTabProps } from "./types";
 import ChiSquareOptions from "./components/ChiSquareOptions";
 
 const StatisticsTab: FC<StatisticsTabProps> = ({
@@ -14,6 +14,7 @@ const StatisticsTab: FC<StatisticsTabProps> = ({
     const chiSquareStep = getStepIndex('crosstabs-statistics-chi-square-section');
 
     const chiSquareChecked = options.statistics?.chiSquare ?? false;
+    const chiSquarePurpose = options.statistics?.purpose ?? 'independence';
 
     const handleChiSquareChange = (checked: boolean) => {
         setOptions(prev => ({
@@ -21,7 +22,18 @@ const StatisticsTab: FC<StatisticsTabProps> = ({
             statistics: {
                 ...(prev.statistics ?? { chiSquare: false }),
                 chiSquare: checked,
+                purpose: prev.statistics?.purpose ?? 'independence',
             }
+        }));
+    };
+
+    const handlePurposeChange = (purpose: ChiSquareTestPurpose) => {
+        setOptions(prev => ({
+            ...prev,
+            statistics: {
+                ...(prev.statistics ?? { chiSquare: true }),
+                purpose,
+            },
         }));
     };
 
@@ -30,6 +42,8 @@ const StatisticsTab: FC<StatisticsTabProps> = ({
             <ChiSquareOptions
                 checked={chiSquareChecked}
                 onCheckedChange={handleChiSquareChange}
+                purpose={chiSquarePurpose}
+                onPurposeChange={handlePurposeChange}
                 highlighted={tourActive && currentStep === chiSquareStep}
             />
         </div>

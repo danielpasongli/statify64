@@ -54,8 +54,25 @@
  * ============================================================================
  */
 
-import chiSquareCdf from 'https://cdn.jsdelivr.net/npm/@stdlib/stats-base-dists-chisquare-cdf@0.2.2/+esm';
+import '../DescriptiveStatistics/libs/categoricalTests/categoricalChiSquare.js';
 import { checkIsMissing } from './libs/utils.js';
+
+const { chiSquarePValue } = self.CategoricalChiSquare;
+
+/** Menjumlahkan nilai dengan koreksi Neumaier untuk mengurangi galat floating point. */
+function compensatedSum(length, valueAt) {
+    let sum = 0;
+    let correction = 0;
+    for (let index = 0; index < length; index++) {
+        const value = valueAt(index);
+        const next = sum + value;
+        correction += Math.abs(sum) >= Math.abs(value)
+            ? (sum - next) + value
+            : (value - next) + sum;
+        sum = next;
+    }
+    return sum + correction;
+}
 
 /**
  * Menghitung varians dari larik data menggunakan Typed Array yang dioptimalkan
@@ -82,21 +99,19 @@ function calculateVariance(data) {
     // Konversi ke Float64Array jika belum
     const values = data instanceof Float64Array ? data : new Float64Array(data);
 
-    // Hitung rata-rata (mean) dengan traditional for loop (tercepat)
-    let sum = 0;
-    for (let i = 0; i < n; i++) {
-        sum += values[i];
-    }
-    const mean = sum / n;
+    // Gunakan nilai pertama sebagai origin agar pengurangan pada data ber-offset
+    // besar tetap mempertahankan selisih antarpengamatan.
+    const origin = values[0];
+    const meanOffset = compensatedSum(n, index => values[index] - origin) / n;
+    const mean = origin + meanOffset;
 
     console.log('[DEBUG] Worker - Mean calculated:', mean);
 
     // Hitung jumlah kuadrat deviasi dari mean
-    let sumSquaredDeviations = 0;
-    for (let i = 0; i < n; i++) {
-        const diff = values[i] - mean;
-        sumSquaredDeviations += diff * diff;
-    }
+    const sumSquaredDeviations = compensatedSum(n, index => {
+        const diff = (values[index] - origin) - meanOffset;
+        return diff * diff;
+    });
 
     console.log('[DEBUG] Worker - Sum squared deviations:', sumSquaredDeviations);
 
@@ -120,30 +135,43 @@ function safeLog(value) {
     return Math.log(value);
 }
 
+/** Memberi kode sementara 1, 2, 3, ... tanpa mengubah data faktor asli. */
+function recodeCategoricalValues(values) {
+    if (!Array.isArray(values)) {
+        throw new TypeError('Nilai kategori harus berupa array.');
+    }
+
+    const categories = [];
+    const codeByValue = new Map();
+    const codes = new Int32Array(values.length);
+
+    for (let i = 0; i < values.length; i++) {
+        const rawValue = values[i];
+        if (rawValue === null || rawValue === undefined) continue;
+        if (typeof rawValue === 'number' && !Number.isFinite(rawValue)) continue;
+
+        const value = String(rawValue).trim();
+        if (value === '') continue;
+
+        let code = codeByValue.get(value);
+        if (code === undefined) {
+            categories.push(value);
+            code = categories.length;
+            codeByValue.set(value, code);
+        }
+        codes[i] = code;
+    }
+
+    return { codes, categories };
+}
+
 /**
- * Mengelompokkan data berdasarkan nilai variabel pengelompokan
- *
- * OPTIMASI: Menggunakan traditional for loop untuk performa terbaik
- * dan Float64Array untuk penyimpanan data numerik.
- *
- * @param {number[]} testData - Data variabel yang diuji
- * @param {number[]|string[]} factorData - Data variabel pengelompokan
- * @returns {Object} Objek berisi data setiap kelompok dalam Float64Array
- *
- * Contoh:
- * Masukan:
- *   testData   = [10, 12, 11, 15, 17, 16, 20, 22, 21]
- *   factorData = [ 1,  1,  1,  2,  2,  2,  3,  3,  3]
- *
- * Keluaran:
- *   {
- *     '1': Float64Array([10, 12, 11]),
- *     '2': Float64Array([15, 17, 16]),
- *     '3': Float64Array([20, 22, 21])
- *   }
+ * Mengelompokkan data numerik memakai kode faktor sementara.
+ * Nama kelompok asli tetap menjadi kunci hasil agar dapat ditampilkan kembali.
  */
 function groupDataByFactor(testData, factorData, testVariable = {}, factorVariable = {}) {
     const n = testData.length;
+    const factorEncoding = recodeCategoricalValues(factorData);
     const isValidCase = (index) => {
         const value = testData[index];
         const group = factorData[index];
@@ -165,49 +193,48 @@ function groupDataByFactor(testData, factorData, testVariable = {}, factorVariab
     });
 
     // LANGKAH 1: Hitung jumlah item per grup (first pass)
-    const groupCounts = Object.create(null);
+    const groupCounts = new Int32Array(factorEncoding.categories.length + 1);
     for (let i = 0; i < n; i++) {
-        // Skip missing values
+        // Lewati kasus dengan nilai uji atau faktor yang missing.
         if (!isValidCase(i)) continue;
 
-        const factorValue = String(factorData[i]);
+        const factorCode = factorEncoding.codes[i];
         const testValue = Number(testData[i]);
 
-        // Skip jika konversi gagal
+        // Lewati nilai yang tidak dapat dikonversi menjadi angka.
         if (isNaN(testValue)) {
             console.warn(`[WARN] Worker - Invalid number at index ${i}:`, testData[i]);
             continue;
         }
 
-        if (!groupCounts[factorValue]) {
-            groupCounts[factorValue] = 0;
-        }
-        groupCounts[factorValue]++;
+        groupCounts[factorCode]++;
     }
 
     // LANGKAH 2: Buat Float64Array untuk setiap grup
     const grouped = Object.create(null);
-    const groupIndices = Object.create(null);
-    for (const key in groupCounts) {
-        grouped[key] = new Float64Array(groupCounts[key]);
-        groupIndices[key] = 0;
+    const groupIndices = new Int32Array(factorEncoding.categories.length + 1);
+    for (let code = 1; code < groupCounts.length; code++) {
+        if (groupCounts[code] === 0) continue;
+        const label = factorEncoding.categories[code - 1];
+        grouped[label] = new Float64Array(groupCounts[code]);
     }
 
     // LANGKAH 3: Isi data ke Float64Array pada iterasi kedua
     for (let i = 0; i < n; i++) {
-        // Skip missing values
+        // Lewati kasus dengan nilai uji atau faktor yang missing.
         if (!isValidCase(i)) continue;
 
-        const factorValue = String(factorData[i]);
+        const factorCode = factorEncoding.codes[i];
+        const factorValue = factorEncoding.categories[factorCode - 1];
         const testValue = Number(testData[i]);
 
-        // Skip jika konversi gagal
+        // Lewati nilai yang tidak dapat dikonversi menjadi angka.
         if (isNaN(testValue)) continue;
 
         // Tambahkan nilai ke Float64Array
-        const idx = groupIndices[factorValue];
+        const idx = groupIndices[factorCode];
         grouped[factorValue][idx] = testValue;
-        groupIndices[factorValue]++;
+        groupIndices[factorCode]++;
     }
 
     console.log('[DEBUG] Worker - Grouped data:', Object.keys(grouped).map(key => ({
@@ -297,7 +324,7 @@ function calculateBartlettTest(groupedData) {
     const validGroupNames = [];
     const validGroupSizes = [];
 
-    // Menggunakan traditional for loop (lebih cepat dari for...of untuk objek)
+    // Periksa setiap kelompok tanpa membuat salinan data kelompok.
     const groupKeys = Object.keys(groupedData);
     for (let i = 0; i < groupKeys.length; i++) {
         const groupKey = groupKeys[i];
@@ -362,12 +389,12 @@ function calculateBartlettTest(groupedData) {
     // Rumus: sp² = Σ(Nᵢ-1)×sᵢ² / (N-k)
     //
     // Pooled variance adalah rata-rata tertimbang dari varians semua kelompok
-    // Menggunakan traditional for loop untuk performa optimal
+    // Akumulasikan pembilang pooled variance tanpa membuat larik perantara.
 
-    let pooledNumerator = 0;
-    for (let i = 0; i < numGroups; i++) {
-        pooledNumerator += degreesOfFreedom[i] * variances[i];
-    }
+    const pooledNumerator = compensatedSum(
+        numGroups,
+        index => degreesOfFreedom[index] * variances[index],
+    );
     const pooledVariance = pooledNumerator / totalDF;
 
     console.log('[DEBUG] Worker - Pooled Variance:', pooledVariance);
@@ -401,11 +428,11 @@ function calculateBartlettTest(groupedData) {
 
     const numeratorPart1 = totalDF * safeLog(pooledVariance);
 
-    // Menggunakan traditional for loop untuk performa optimal
-    let numeratorPart2 = 0;
-    for (let i = 0; i < numGroups; i++) {
-        numeratorPart2 += degreesOfFreedom[i] * safeLog(variances[i]);
-    }
+    // Akumulasikan bagian kedua statistik M untuk seluruh kelompok.
+    const numeratorPart2 = compensatedSum(
+        numGroups,
+        index => degreesOfFreedom[index] * safeLog(variances[index]),
+    );
     const M = numeratorPart1 - numeratorPart2;
 
     console.log('[DEBUG] Worker - M:', M, 'numeratorPart1:', numeratorPart1, 'numeratorPart2:', numeratorPart2);    // ========================================================================
@@ -426,11 +453,8 @@ function calculateBartlettTest(groupedData) {
     //
     //   C = 1 + 0.1111 = 1.1111
 
-    // Menggunakan traditional for loop untuk performa optimal
-    let sumInverseDf = 0;
-    for (let i = 0; i < numGroups; i++) {
-        sumInverseDf += 1 / degreesOfFreedom[i];
-    }
+    // Jumlahkan kebalikan derajat bebas setiap kelompok untuk faktor koreksi.
+    const sumInverseDf = compensatedSum(numGroups, index => 1 / degreesOfFreedom[index]);
     const correctionTerm = (sumInverseDf - (1 / totalDF)) / (3 * (numGroups - 1));
     const C = 1 + correctionTerm;
 
@@ -460,12 +484,11 @@ function calculateBartlettTest(groupedData) {
     const df = numGroups - 1;
 
     // P-value = P(χ² > T)
-    // Menggunakan fungsi CDF dari distribusi chi-square
-    // p-value = 1 - CDF(T, df)
+    // Gunakan peluang ekor atas dari mesin Chi-Square lokal.
     //
-    // Jika T=0 → CDF=0 → nilai-p = 1,0 (varians homogen sempurna)
-    // Jika T besar → CDF mendekati 1 → p-value mendekati 0 (varians berbeda)
-    const pValue = 1 - chiSquareCdf(bartlettStatistic, df);
+    // Jika T=0 → nilai-p = 1,0 (varians homogen sempurna)
+    // Jika T besar → nilai-p mendekati 0 (varians berbeda)
+    const pValue = chiSquarePValue(bartlettStatistic, df);
 
     console.log('[DEBUG] Worker - df:', df, 'pValue:', pValue);
     console.log('[DEBUG] Worker - Final result:', {statistic: bartlettStatistic, df, pValue});
@@ -490,9 +513,9 @@ function calculateBartlettTest(groupedData) {
 /**
  * Memformat angka dengan presisi tertentu
  */
-function formatNumber(num, decimals = 6) {
+function formatNumber(num) {
     if (typeof num !== 'number' || isNaN(num)) return 'N/A';
-    return num.toFixed(decimals);
+    return String(num);
 }
 
 /**
@@ -658,9 +681,9 @@ self.onmessage = function(e) {
                 factorData
             } = data;
 
-            // Validate chiSquareCdf is loaded
-            if (!chiSquareCdf) {
-                throw new Error('Chi-square CDF library not loaded');
+            // Pastikan fungsi distribusi Chi-Square lokal tersedia.
+            if (typeof chiSquarePValue !== 'function') {
+                throw new Error('Fungsi p-value Chi-Square lokal tidak tersedia.');
             }
 
             const results = [];

@@ -9,9 +9,14 @@ const {
   runNormalityTests,
   calculateKolmogorovSmirnov,
   calculateShapiroWilk,
+  normalityMean,
 } = require(normalityModulePath);
 
 describe('runNormalityTests', () => {
+  it('mempertahankan kontribusi kecil saat menghitung mean', () => {
+    expect(normalityMean([1e16, 1, -1e16])).toBeCloseTo(1 / 3, 15);
+  });
+
   it('returns Bartlett-like structured summary with per-test entries', () => {
     const values = [10, 12, 11, 13, 14, 10, 12, 11];
     const result = runNormalityTests(values, { alpha: 0.05 });

@@ -67,6 +67,7 @@ const CrosstabsContent: FC<BaseModalProps> = ({ onClose, containerType = "dialog
     const [options, setOptions] = useState<CrosstabsAnalysisParams['options']>({
         statistics: {
             chiSquare: false,
+            purpose: 'independence',
         },
         cells: {
             observed: true,
@@ -162,6 +163,7 @@ const CrosstabsContent: FC<BaseModalProps> = ({ onClose, containerType = "dialog
         setOptions({
             statistics: {
                 chiSquare: false,
+                purpose: 'independence',
             },
             cells: {
                 observed: true,

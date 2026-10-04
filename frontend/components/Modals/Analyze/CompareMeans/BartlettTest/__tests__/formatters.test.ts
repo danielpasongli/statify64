@@ -47,6 +47,19 @@ describe('formatters', () => {
     };
 
     describe('formatBartlettTestTable', () => {
+        it('menampilkan statistik dan p-value tanpa pembulatan desimal tetap', () => {
+            const result = formatBartlettTestTable([{
+                variable: mockVariable,
+                factorVariable: mockFactorVariable,
+                statistic: 5.123456789012345,
+                df: 2,
+                pValue: 0.000123456789,
+            }]);
+
+            expect(result.rows[0].chiSquare).toBe('5.123456789012345');
+            expect(result.rows[0].sig).toBe('0.000123456789');
+        });
+
         it('harus mengembalikan tabel kosong jika results kosong', () => {
             const result = formatBartlettTestTable([]);
 
@@ -80,7 +93,7 @@ describe('formatters', () => {
                 '<p><strong>Hipotesis</strong></p>',
                 '<p>H₀: σ₁² = σ₂² = ⋯ = σₖ² — seluruh kelompok memiliki varians yang sama (homogen).</p>',
                 '<p><strong>Interpretasi</strong></p>',
-                '<p>Bartlett — Test Score: χ²(2) = 5.123, p = 0.077 ≥ α = 0.050; gagal menolak H₀. Belum terdapat bukti bahwa varians antar kelompok berbeda.</p>',
+                '<p>Bartlett <br> Test Score: χ²(2) = 5.123, p-value = 0.077 ≥ α = 0.05; gagal menolak H₀, artinya belum terdapat cukup bukti untuk membuktikan bahwa varians antar kelompok berbeda (varians antar kelompok sama).</p>',
             ]));
 
             // Verifikasi rowHeader adalah array non-empty
@@ -107,10 +120,10 @@ describe('formatters', () => {
 
             const result = formatBartlettTestTable(mockResults);
 
-            // p-value < 0.001 harus ditampilkan sebagai <.001
+            // P-value kecil tetap ditampilkan sebagai nilai mentah, bukan batas pembulatan.
             const sigValue = result.rows[0].sig;
-            expect(sigValue).toBe('<.001');
-            expect(result.description?.join(' ')).toContain('H₀ ditolak. Varians antar kelompok berbeda secara signifikan.');
+            expect(sigValue).toBe('0.0001');
+            expect(result.description?.join(' ')).toContain('H₀ ditolak');
         });
 
         it('harus menangani error result', () => {

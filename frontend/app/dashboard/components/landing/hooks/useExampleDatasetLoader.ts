@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useDataStore } from '@/stores/useDataStore';
 import { useMetaStore } from '@/stores/useMetaStore';
 import { useVariableStore } from '@/stores/useVariableStore';
-import { handleApiResponse, getApiUrl } from '@/services/api';
+import { uploadSavFile } from '@/services/api';
 import type { Variable } from '@/types/Variable';
 import type { DataRow } from '@/types/Data';
 import { parseCSV, parseXLSX, generateDefaultVariables } from '@/utils/file-parsers';
@@ -42,13 +42,13 @@ export const useExampleDatasetLoader = (onClose: () => void) => {
             } else if (fileExtension === 'sav') {
                 const savBlob = await response.blob();
                 const formData = new FormData();
-                formData.append('file', savBlob, fileName);
+                const validSavName = fileName.toLowerCase().endsWith('.sav') ? fileName : `${fileName}.sav`;
+                formData.append('file', savBlob, validSavName);
 
                 await resetData();
                 await resetVariables();
 
-                const uploadResponse = await fetch(getApiUrl('sav/upload'), { method: 'POST', body: formData });
-                const result = await handleApiResponse(uploadResponse) as SavUploadResponse;
+                const result = await uploadSavFile(formData);
 
                 const { variables: savVariables, dataMatrix } = processSavApiResponse(result);
                 variables = savVariables;

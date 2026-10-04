@@ -16,7 +16,7 @@ export const buildNormalityInterpretation = (
     ? 'H₀ ditolak, artinya data tidak berdistribusi normal.'
     : 'gagal menolak H₀, artinya tidak terdapat cukup bukti untuk membuktikan bahwa data tidak berdistribusi normal (data berdistribusi normal).';
 
-  return `${safeTestName} — ${safeSubject}: p-value = ${numericPValue.toFixed(3)} ${significant ? '<' : '≥'} α = ${alpha.toFixed(3)}; ${decision}`;
+  return `${safeTestName} — ${safeSubject}: p-value = ${String(numericPValue)} ${significant ? '<' : '≥'} α = ${String(alpha)}; ${decision}`;
 };
 
 export const buildNormalityDescription = (interpretations: string[]): string[] | undefined => {

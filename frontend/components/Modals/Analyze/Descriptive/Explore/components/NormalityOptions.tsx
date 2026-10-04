@@ -27,8 +27,8 @@ const NormalityOptions = ({ checked, onCheckedChange }: NormalityOptionsProps) =
             </button>
           </TooltipTrigger>
           <TooltipContent side="right" className="max-w-xs space-y-1 text-xs">
-            <p>Syarat:</p>
-            <p>Data numerik dan bisa digunakan hanya dengan 1 variabel.</p>
+            <p>Uji Kolmogorov–Smirnov dan Shapiro–Wilk digunakan untuk memeriksa apakah satu variabel berdistribusi normal.</p>
+            <p>Gunakan satu variabel numerik dengan minimal tiga observasi valid.</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
