@@ -313,8 +313,7 @@ function normalityPearsonCorrelation(x, y) {
  * Aproksimasi CDF Normal Standar Φ(x).
  *
  * Menghitung probabilitas kumulatif P(Z ≤ x) untuk distribusi normal standar.
- * Menggunakan pendekatan polinomial Abramowitz & Stegun (1964), Rumus 26.2.17.
- * Akurasi: |error| < 7.5 × 10⁻⁸.
+ * Menggunakan simetri terhadap peluang ekor atas yang dihitung langsung.
  *
  * Digunakan dalam:
  * - Kolmogorov-Smirnov: menghitung F₀(xᵢ) = Φ((xᵢ - x̄)/s)
@@ -335,22 +334,59 @@ function normalityPearsonCorrelation(x, y) {
  * normalityCDF(-1.96);
  * // => ~0.025
  *
- * @see {@link https://en.wikipedia.org/wiki/Normal_distribution#Numerical_approximations_for_the_normal_CDF}
- * @see Abramowitz, M. & Stegun, I. A. (1964). Handbook of Mathematical Functions, Formula 26.2.17.
+ * @see normalitySurvival
  */
 function normalityCDF(x) {
-    if (x < -10) return 0;
-    if (x > 10) return 1;
+    return normalitySurvival(-x);
+}
 
-    const t = 1 / (1 + 0.2316419 * Math.abs(x));
-    const d = 0.3989423 * Math.exp(-x * x / 2);
-    let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+/**
+ * Peluang ekor atas normal standar P(Z > z).
+ * Untuk z >= 0: P(Z > z) = Q(1/2, z²/2) / 2.
+ * Deret gamma dipakai dekat nol; pecahan berlanjut dipakai di ekor distribusi.
+ * Pola ini sama dengan fungsi gamma di modul kategorik, khusus bentuk 1/2,
+ * sehingga worker normalitas tetap mandiri tanpa impor atau koneksi internet.
+ * Nilai-p kecil dihitung langsung agar tidak hilang karena pengurangan 1 - CDF.
+ * Nilai yang lebih kecil dari jangkauan Number tetap dapat mengalami underflow.
+ */
+function normalitySurvival(z) {
+    if (Number.isNaN(z)) return NaN;
+    const magnitude = Math.abs(z);
+    if (magnitude === 0) return 0.5;
+    if (magnitude > 40) return z > 0 ? 0 : 1;
 
-    if (x > 0) {
-        p = 1 - p;
+    const value = magnitude * magnitude / 2;
+    const scale = magnitude * Math.exp(-value) / Math.sqrt(2 * Math.PI);
+    let tail;
+    if (value < 1.5) {
+        let term = 2;
+        let sum = term;
+        for (let iteration = 1; iteration < 1000; iteration++) {
+            term *= value / (iteration + 0.5);
+            sum += term;
+            if (Math.abs(term) <= Math.abs(sum) * Number.EPSILON) break;
+        }
+        tail = (1 - scale * sum) / 2;
+    } else {
+        let offset = value + 0.5;
+        let previous = 1e300;
+        let current = 1 / offset;
+        let fraction = current;
+        for (let iteration = 1; iteration < 1000; iteration++) {
+            const numerator = -iteration * (iteration - 0.5);
+            offset += 2;
+            current = offset + numerator * current;
+            previous = offset + numerator / previous;
+            if (Math.abs(current) < 1e-300) current = 1e-300;
+            if (Math.abs(previous) < 1e-300) previous = 1e-300;
+            current = 1 / current;
+            const delta = current * previous;
+            fraction *= delta;
+            if (Math.abs(delta - 1) <= 2 * Number.EPSILON) break;
+        }
+        tail = scale * fraction / 2;
     }
-
-    return p;
+    return z < 0 ? 1 - tail : tail;
 }
 
 /**
@@ -677,7 +713,7 @@ function shapiroWilkPValue(W, n) {
         const y2 = -Math.log(gamma - y);
         mu = 0.5440 - 0.39978 * n + 0.025054 * n ** 2 - 0.0006714 * n ** 3;
         sigma = Math.exp(1.3822 - 0.77857 * n + 0.062767 * n ** 2 - 0.0020322 * n ** 3);
-        const pValue = 1 - normalityCDF((y2 - mu) / sigma);
+        const pValue = normalitySurvival((y2 - mu) / sigma);
         return pValue;
     }
 
@@ -691,7 +727,7 @@ function shapiroWilkPValue(W, n) {
     const lnN = Math.log(n);
     mu = -1.5861 - 0.31082 * lnN - 0.083751 * lnN ** 2 + 0.0038915 * lnN ** 3;
     sigma = Math.exp(-0.4803 - 0.082676 * lnN + 0.0030302 * lnN ** 2);
-    const pValue = 1 - normalityCDF((y - mu) / sigma);
+    const pValue = normalitySurvival((y - mu) / sigma);
     return pValue;
 }
 
@@ -800,7 +836,6 @@ function calculateShapiroWilk(values) {
     );
     const mSumSq = 2 * normalityCompensatedSum(halfLength, i => m[i] * m[i]);
 
-    console.log(`[SW-DEBUG] Expected order statistics: Σmᵢ² = ${mSumSq}`);
 
     // ========================================================================
     // LANGKAH 4: Hitung koefisien bobot aᵢ (Royston AS R94)
@@ -823,9 +858,6 @@ function calculateShapiroWilk(values) {
     const a = new Array(halfLength).fill(0);
     const u = 1 / Math.sqrt(n);
 
-    console.log('[SW-DEBUG] --------------------------------------------------------');
-    console.log('[SW-DEBUG] Coefficient calculation');
-    console.log('[SW-DEBUG] --------------------------------------------------------');
 
     if (n === 3) {
         // ----------------------------------------------------------------
@@ -833,7 +865,6 @@ function calculateShapiroWilk(values) {
         //   a₁ = −√(1/2) ≈ −0.7071, a₂ = 0, a₃ = +√(1/2) ≈ +0.7071
         // ----------------------------------------------------------------
         a[0] = Math.SQRT1_2;
-        console.log(`[SW-DEBUG] n=3 special case: a₁ = ${a[0]}`);
     } else {
         // ----------------------------------------------------------------
         //   44(4): 547-551, Table 1.
@@ -854,13 +885,11 @@ function calculateShapiroWilk(values) {
         const normalizedM = Math.sqrt(mSumSq);
 
         a[0] = polyVal(c1, u) - m[0] / normalizedM;
-        console.log(`[SW-DEBUG] Calculated a₁ (end coefficient) = ${a[0]}`);
 
         let firstUnadjustedIndex = 1;
         if (n > 5) {
             a[1] = -m[1] / normalizedM + polyVal(c2, u);
             firstUnadjustedIndex = 2;
-            console.log(`[SW-DEBUG] Calculated a₂ (second-to-end coefficient) = ${a[1]}`);
         }
 
         // ----------------------------------------------------------------
@@ -880,7 +909,6 @@ function calculateShapiroWilk(values) {
                 (1 - 2 * a[0] ** 2);
         }
 
-        console.log(`[SW-DEBUG] Normalization factor φ = ${phi}`);
 
         if (!(phi > 0)) {
             throw new Error(`Faktor normalisasi koefisien Shapiro-Wilk tidak valid: ${phi}`);
@@ -905,9 +933,6 @@ function calculateShapiroWilk(values) {
     // Catatan: S² merupakan jumlah kuadrat yang belum dinormalisasi (tidak dibagi n−1).
     // Bentuk pembilang² / S² setara dengan kuadrat Pearson
     // korelasi Pearson antara x dan a, sehingga secara matematis W ∈ [0, 1].
-    console.log('[SW-DEBUG] --------------------------------------------------------');
-    console.log('[SW-DEBUG] Statistic W calculation');
-    console.log('[SW-DEBUG] --------------------------------------------------------');
 
     const range = x[n - 1] - x[0];
     if (range === 0) {
@@ -952,19 +977,12 @@ function calculateShapiroWilk(values) {
     }
     const W = 1 - oneMinusW;
 
-    console.log(`[SW-DEBUG] n = ${n}`);
-    console.log(`[SW-DEBUG] Σmᵢ² = ${mSumSq}`);
-    console.log(`[SW-DEBUG] 1-W = ${oneMinusW}`);
-    console.log(`[SW-DEBUG] W = ${W}`);
 
     // LANGKAH 6: Hitung nilai-p menggunakan pendekatan Royston
     // Perhitungan nilai-p dibagi menjadi tiga kasus:
     //   n = 3: rumus eksak (Shapiro & Wilk, 1965)
     //   4 ≤ n ≤ 11: pendekatan polinomial kubik sampel kecil Royston (1993)
     //   n > 11: pendekatan polinomial berbasis ln(n) untuk sampel besar Royston (1995)
-    console.log('[SW-DEBUG] --------------------------------------------------------');
-    console.log('[SW-DEBUG] P-value calculation');
-    console.log('[SW-DEBUG] --------------------------------------------------------');
 
     const pValue = shapiroWilkPValue(W, n);
 
