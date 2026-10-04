@@ -648,18 +648,14 @@ function calculateKolmogorovSmirnov(values) {
 function shapiroWilkPValue(W, n) {
     let mu;
     let sigma;
-    let formulaUsed;
 
     // ========================================================================
     // Kasus n=3 menggunakan rumus eksak untuk distribusi W.
     // ========================================================================
     if (n === 3) {
-        formulaUsed = 'n=3 (exact formula)';
-        console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
         const pValue = (6 / Math.PI) * (
             Math.asin(Math.sqrt(W)) - Math.asin(Math.sqrt(0.75))
         );
-        console.log(`[SW-DEBUG] P-value result: ${pValue}`);
         return Math.max(0, Math.min(1, pValue));
     }
 
@@ -673,21 +669,15 @@ function shapiroWilkPValue(W, n) {
     //   5. p-value = 1 − Φ(z)
     // ========================================================================
     if (n <= 11) {
-        formulaUsed = 'n≤11 (Royston 1993 cubic polynomial)';
-        console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
         // gamma adalah batas transformasi untuk sampel kecil.
         const gamma = -2.273 + 0.459 * n;
         if (y >= gamma) {
-            console.log(`[SW-DEBUG] y (${y}) >= gamma (${gamma}), returning minimum p-value 1e-99`);
             return 1e-99;
         }
         const y2 = -Math.log(gamma - y);
         mu = 0.5440 - 0.39978 * n + 0.025054 * n ** 2 - 0.0006714 * n ** 3;
         sigma = Math.exp(1.3822 - 0.77857 * n + 0.062767 * n ** 2 - 0.0020322 * n ** 3);
-        console.log(`[SW-DEBUG] Transform: y=${y}, gamma=${gamma}, y2=${y2}`);
-        console.log(`[SW-DEBUG] Distribution params: μ=${mu}, σ=${sigma}`);
         const pValue = 1 - normalityCDF((y2 - mu) / sigma);
-        console.log(`[SW-DEBUG] P-value result: ${pValue}`);
         return pValue;
     }
 
@@ -698,15 +688,10 @@ function shapiroWilkPValue(W, n) {
     //   4. p-value = 1 − Φ(z)
     //
     // ========================================================================
-    formulaUsed = 'n>11 (Royston 1995 ln-based polynomial)';
-    console.log(`[SW-DEBUG] P-value formula: ${formulaUsed}`);
     const lnN = Math.log(n);
     mu = -1.5861 - 0.31082 * lnN - 0.083751 * lnN ** 2 + 0.0038915 * lnN ** 3;
     sigma = Math.exp(-0.4803 - 0.082676 * lnN + 0.0030302 * lnN ** 2);
-    console.log(`[SW-DEBUG] Transform: y=${y}, ln(n)=${lnN}`);
-    console.log(`[SW-DEBUG] Distribution params: μ=${mu}, σ=${sigma}`);
     const pValue = 1 - normalityCDF((y - mu) / sigma);
-    console.log(`[SW-DEBUG] P-value result: ${pValue}`);
     return pValue;
 }
 
