@@ -475,6 +475,7 @@
 
     const api = {
         compensatedSum,
+        chiSquarePValue,
         normalizeCategoryValue,
         recodeCategoricalValues,
         buildContingencyTable,
