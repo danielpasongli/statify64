@@ -3291,31 +3291,27 @@ describe('Kolmogorov-Smirnov: Edge Case Coverage (Code Review R3)', () => {
 
     describe('approximateKSPValue: very small n (n <= 4)', () => {
         /**
-         * For n ≤ 4, the Dallal-Wilkinson formula is not reliable.
-         * The function should return p=1.0 (no evidence against normality) and isLowerBound=false.
+         * Hampiran Dallal-Wilkinson hanya berlaku untuk n ≥ 5 (lillie.test di R
+         * menolak n < 5), sehingga nilai-p tidak dihitung (NaN).
          */
-        test('returns pValue=1.0 for n=1', () => {
-            const result = approximateKSPValue(0.5, 1);
-            expect(result.pValue).toBe(1.0);
-            expect(result.isLowerBound).toBe(false);
-        });
+        test.each([[0.5, 1], [0.4, 2], [0.3, 3], [0.2, 4]])(
+            'returns pValue=NaN for D=%p, n=%p',
+            (d, n) => {
+                const result = approximateKSPValue(d, n);
+                expect(Number.isNaN(result.pValue)).toBe(true);
+                expect(result.isLowerBound).toBe(false);
+            },
+        );
 
-        test('returns pValue=1.0 for n=2', () => {
-            const result = approximateKSPValue(0.4, 2);
-            expect(result.pValue).toBe(1.0);
-            expect(result.isLowerBound).toBe(false);
-        });
-
-        test('returns pValue=1.0 for n=3', () => {
-            const result = approximateKSPValue(0.3, 3);
-            expect(result.pValue).toBe(1.0);
-            expect(result.isLowerBound).toBe(false);
-        });
-
-        test('returns pValue=1.0 for n=4 (boundary)', () => {
-            const result = approximateKSPValue(0.2, 4);
-            expect(result.pValue).toBe(1.0);
-            expect(result.isLowerBound).toBe(false);
+        test('runNormalityTests marks KS unavailable for n=4 and keeps Shapiro-Wilk', () => {
+            const result = runNormalityTests([1, 2, 3, 5]);
+            const ksEntry = result.tests.find(t => t.key === 'kolmogorovSmirnov');
+            const swEntry = result.tests.find(t => t.key === 'shapiroWilk');
+            expect(ksEntry.available).toBe(false);
+            expect(ksEntry.statistic).toBeNull();
+            expect(ksEntry.unavailableReason).toBe('Kolmogorov-Smirnov is only reported for sample sizes of at least 5.');
+            expect(result.notes).toContain('Kolmogorov-Smirnov is only reported for sample sizes of at least 5.');
+            expect(swEntry.available).toBe(true);
         });
 
         test('returns computed pValue for n=5 (above boundary)', () => {
@@ -3325,3 +3321,37 @@ describe('Kolmogorov-Smirnov: Edge Case Coverage (Code Review R3)', () => {
         });
     });
 });
+
+// =============================================================================
+// Nilai rujukan R: nortest::lillie.test (penyesuaian sampel besar n > 100)
+// Data: IBM HR Analytics (dataset demo skripsi), D dan n dari Statify,
+// nilai-p rujukan dari R dengan presisi penuh.
+// =============================================================================
+describe('approximateKSPValue: cocok dengan nortest::lillie.test di R', () => {
+    let approximateKSPValue;
+
+    beforeAll(() => {
+        const fs = require('fs');
+        const path = require('path');
+        const vm = require('vm');
+        const code = fs.readFileSync(path.join(__dirname, '..', 'normalityTests.js'), 'utf8');
+        const context = { console: { log: () => {} }, performance: global.performance };
+        vm.createContext(context);
+        vm.runInContext(code, context);
+        approximateKSPValue = context.approximateKSPValue;
+    });
+
+    test.each([
+        // [D, n, nilai-p R]
+        [0.102927570773381, 69, 0.0671646108716067],
+        [0.158321136920746, 106, 6.8919213593733e-07],
+        [0.0729583386234326, 218, 0.00676673143153942],
+        [0.0815446689513402, 534, 4.92353462734337e-09],
+        [0.0930421678772182, 543, 3.83753378690636e-12],
+    ])('D=%p, n=%p menghasilkan nilai-p R %p', (d, n, rPValue) => {
+        const { pValue } = approximateKSPValue(d, n);
+        expect(Math.abs(pValue - rPValue)).toBeLessThanOrEqual(1e-6);
+        expect(Math.abs(pValue - rPValue) / rPValue).toBeLessThan(1e-9);
+    });
+});
+

@@ -481,8 +481,14 @@ function normalityQuantile(p) {
  *   menjadi kurang akurat pada nilai D yang sangat kecil (data sangat normal).
  *   Jika p > 0.200, nilai dilaporkan sebagai ".200*" (lower bound).
  *
+ * SAMPEL BESAR (n > 100):
+ *   Dallal & Wilkinson (1986) menyarankan D diganti D × (n/100)^0,49 dan
+ *   n diganti 100 sebelum dimasukkan ke rumus, sama seperti lillie.test di R
+ *   (paket nortest).
+ *
  * VALIDITAS:
- *   Rumus berlaku untuk n ≥ 5. Untuk n ≤ 4, nilai-p ditetapkan = 1,0.
+ *   Rumus berlaku untuk n ≥ 5. Untuk n ≤ 4, nilai-p tidak dihitung (NaN),
+ *   sama seperti lillie.test di R yang menolak sampel kurang dari 5.
  *
  * @param {number} d - Statistik D (selisih CDF empiris dan teoritis maksimum, d > 0)
  * @param {number} n - Ukuran sampel (integer ≥ 1)
@@ -499,24 +505,32 @@ function normalityQuantile(p) {
  * // => { pValue: 0.200, isLowerBound: true }
  *
  * @example
- * // n sangat kecil → p-value = 1.0
+ * // n sangat kecil → p-value tidak dihitung
  * approximateKSPValue(0.3, 4);
- * // => { pValue: 1.0, isLowerBound: false }
+ * // => { pValue: NaN, isLowerBound: false }
  *
  * @see Dallal, G. E. & Wilkinson, L. (1986). "An analytic approximation to the
  *   distribution of Lilliefors's test statistic for normality". The American Statistician, 40(4): 294-296.
  */
 function approximateKSPValue(d, n) {
     if (n <= 4) {
-        return { pValue: 1.0, isLowerBound: false };
+        return { pValue: NaN, isLowerBound: false };
+    }
+
+    // Penyesuaian sampel besar dari Dallal & Wilkinson (1986)
+    let dAdj = d;
+    let nAdj = n;
+    if (n > 100) {
+        dAdj = d * Math.pow(n / 100, 0.49);
+        nAdj = 100;
     }
 
     let p = Math.exp(
-        -7.01256 * d * d * (n + 2.78019) +
-        2.99587 * d * Math.sqrt(n + 2.78019) -
+        -7.01256 * dAdj * dAdj * (nAdj + 2.78019) +
+        2.99587 * dAdj * Math.sqrt(nAdj + 2.78019) -
         0.122119 +
-        0.974598 / Math.sqrt(n) +
-        1.67997 / n
+        0.974598 / Math.sqrt(nAdj) +
+        1.67997 / nAdj
     );
 
     let isLowerBound = false;
@@ -1165,8 +1179,18 @@ function runNormalityTests(values, options = {}) {
     const notes = [];
     const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
-    // Jalankan Kolmogorov-Smirnov
-    const ks = calculateKolmogorovSmirnov(values);
+    // Jalankan Kolmogorov-Smirnov (hampiran Dallal-Wilkinson hanya berlaku untuk n ≥ 5)
+    const ksSampleSize = cleanNumericData(values).length;
+    const ksAvailable = ksSampleSize >= 5;
+    let ksUnavailableReason;
+    let ks = null;
+
+    if (ksAvailable) {
+        ks = calculateKolmogorovSmirnov(values);
+    } else {
+        ksUnavailableReason = 'Kolmogorov-Smirnov is only reported for sample sizes of at least 5.';
+        notes.push(ksUnavailableReason);
+    }
 
     // Jalankan Shapiro-Wilk (dibatasi sampai 5000 observasi)
     let sw = null;
@@ -1188,10 +1212,12 @@ function runNormalityTests(values, options = {}) {
         createNormalityTestEntry({
             key: 'kolmogorovSmirnov',
             label: 'Kolmogorov-Smirnov',
-            available: !!ks,
+            available: ksAvailable && !!ks,
             result: ks,
             alpha,
-            unavailableReason: ks ? undefined : 'Kolmogorov-Smirnov could not be computed for this data.',
+            unavailableReason: ksAvailable
+                ? (ks ? undefined : 'Kolmogorov-Smirnov could not be computed for this data.')
+                : ksUnavailableReason,
         }),
         createNormalityTestEntry({
             key: 'shapiroWilk',
