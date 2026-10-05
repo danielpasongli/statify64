@@ -141,6 +141,9 @@ impl KnnData {
         ) || self
             .target_values
             .iter()
+            // Missing targets (holdout cases kept for prediction) say nothing
+            // about the target type.
+            .filter(|value| !matches!(value, DataValue::Null))
             .all(|value| matches!(value, DataValue::Text(_) | DataValue::Boolean(_)))
     }
 

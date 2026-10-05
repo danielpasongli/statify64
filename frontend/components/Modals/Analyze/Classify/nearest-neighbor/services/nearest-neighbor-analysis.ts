@@ -161,7 +161,7 @@ export async function analyzeKNN({
   const workerConfigData = withInternalChartOutputs(configData);
 
   const worker = new Worker(
-    "/workers/Classify/NearestNeighbor/nearest-neighbor.worker.js?v=knn-float-tolerance-20260926",
+    "/workers/Classify/NearestNeighbor/nearest-neighbor.worker.js?v=knn-holdout-missing-target-20261005",
     { type: "module" },
   );
 

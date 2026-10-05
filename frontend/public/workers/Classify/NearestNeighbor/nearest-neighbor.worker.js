@@ -1,7 +1,7 @@
-import init, { KNNAnalysis } from "/workers/Classify/NearestNeighbor/pkg/wasm.js?v=knn-float-tolerance-20260926";
+import init, { KNNAnalysis } from "/workers/Classify/NearestNeighbor/pkg/wasm.js?v=knn-holdout-missing-target-20261005";
 
 const WASM_URL =
-  "/workers/Classify/NearestNeighbor/pkg/wasm_bg.wasm?v=knn-float-tolerance-20260926";
+  "/workers/Classify/NearestNeighbor/pkg/wasm_bg.wasm?v=knn-holdout-missing-target-20261005";
 
 self.onmessage = async (e) => {
   const {
