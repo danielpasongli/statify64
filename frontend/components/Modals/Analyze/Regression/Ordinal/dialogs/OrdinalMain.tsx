@@ -117,7 +117,6 @@ const OrdinalMain: React.FC = () => {
       parameterEstimates: true,
       asymptoticCovariance: false,
       asymptoticCorrelation: false,
-      cellInformation: false,
       testOfParallelLines: false,
       iterationHistory: false,
       iterationHistoryStep: 1,
@@ -371,12 +370,50 @@ const OrdinalMain: React.FC = () => {
       if (typeof responseVariable.columnIndex !== "number") {
         throw new Error("Response variable tidak memiliki columnIndex yang valid.");
       }
+      if (responseVariable.measure !== "ordinal") {
+        throw new Error("Variabel respon wajib bertipe Ordinal.");
+      }
       if (!data || data.length === 0) {
         throw new Error("Dataset kosong atau tidak tersedia.");
       }
 
+      // Validasi parameter options (tidak boleh minus / negatif)
+      if (optParams.maxIterations <= 0) {
+        throw new Error("Maximum iterations tidak boleh minus atau nol.");
+      }
+      if (optParams.maxStepHalving <= 0) {
+        throw new Error("Maximum step-halving tidak boleh minus atau nol.");
+      }
+      if (optParams.logLikelihoodConvergence < 0) {
+        throw new Error("Log-likelihood convergence tidak boleh minus.");
+      }
+      if (optParams.parameterConvergence < 0) {
+        throw new Error("Parameter convergence tidak boleh minus.");
+      }
+      if (optParams.confidenceInterval < 0) {
+        throw new Error("Confidence interval tidak boleh minus.");
+      }
+      if (optParams.delta < 0) {
+        throw new Error("Delta tidak boleh minus.");
+      }
+      if (optParams.singularityTolerance < 0) {
+        throw new Error("Singularity tolerance tidak boleh minus.");
+      }
+
       const factors = options.factors;
       const covariates = options.covariates;
+
+      for (const factor of factors) {
+        if (factor.measure !== "nominal" && factor.measure !== "ordinal") {
+          throw new Error(`Variabel faktor '${factor.name}' harus memiliki tipe pengukuran Nominal atau Ordinal.`);
+        }
+      }
+
+      for (const covariate of covariates) {
+        if (covariate.measure !== "scale") {
+          throw new Error(`Variabel kovariat '${covariate.name}' harus memiliki tipe pengukuran Scale.`);
+        }
+      }
 
       const factorIdentities = new Set(factors.map(getVariableIdentity));
       const covariateIdentities = new Set(covariates.map(getVariableIdentity));
@@ -831,7 +868,6 @@ const OrdinalMain: React.FC = () => {
           parameterEstimates: outputParams.display.parameterEstimates,
           asymptoticCovariance: outputParams.display.asymptoticCovariance,
           asymptoticCorrelation: outputParams.display.asymptoticCorrelation,
-          cellInformation: outputParams.display.cellInformation,
           testOfParallelLines: outputParams.display.testOfParallelLines,
           iterationHistory: printIterationHistory,
           iterationHistoryStep: iterationHistoryEvery,
@@ -995,6 +1031,18 @@ const OrdinalMain: React.FC = () => {
     }
   };
 
+  const isOptionsInvalid = useMemo(() => {
+    return (
+      optParams.maxIterations < 0 ||
+      optParams.maxStepHalving < 0 ||
+      optParams.logLikelihoodConvergence < 0 ||
+      optParams.parameterConvergence < 0 ||
+      optParams.confidenceInterval < 0 ||
+      optParams.delta < 0 ||
+      optParams.singularityTolerance < 0
+    );
+  }, [optParams]);
+
   // --- RENDER ---
   return (
     <div className="flex flex-col h-full bg-background">
@@ -1091,7 +1139,7 @@ const OrdinalMain: React.FC = () => {
           </TooltipProvider>
         </div>
         <div className="flex items-center space-x-4">
-          <Button onClick={handleAnalyze} disabled={isLoading || !options.dependent}>
+          <Button onClick={handleAnalyze} disabled={isLoading || !options.dependent || isOptionsInvalid}>
             {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> OK</> : "OK"}
           </Button>
           <Button

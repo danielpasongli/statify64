@@ -38,6 +38,8 @@ import type { TabType, TabControlProps } from "./types";
 
 import VariablesTab from "./components/VariablesTab";
 import OptionsTab from "./components/OptionsTab";
+import BartlettInfo from "./components/BartlettInfo";
+import { getBartlettSelectionError } from "./utils/validation";
 
 /**
  * Komponen konten utama Bartlett Test
@@ -75,10 +77,10 @@ const BartlettTestContent: FC<Omit<BaseModalProps, 'containerType'> & { containe
         resetSettings,
     } = useTestSettings();
 
-    // Wrapper onClose yang navigasi ke result
+    // Pembungkus onClose yang mengarahkan pengguna ke hasil
     const handleCloseWithNavigation = useCallback(() => {
         onClose();
-        // Navigate ke result page setelah modal ditutup
+        // Arahkan pengguna ke halaman hasil setelah modal ditutup
         router.push('/dashboard/result');
     }, [onClose, router]);
 
@@ -119,14 +121,9 @@ const BartlettTestContent: FC<Omit<BaseModalProps, 'containerType'> & { containe
      * Melakukan validasi sebelum menjalankan analisis
      */
     const handleOkClick = useCallback(() => {
-        // Validasi
-        if (testVariables.length === 0) {
-            toast.error('Please select at least one test variable');
-            return;
-        }
-
-        if (!factorVariable) {
-            toast.error('Please select a grouping variable');
+        const selectionError = getBartlettSelectionError(testVariables.length, Boolean(factorVariable));
+        if (selectionError) {
+            toast.error(selectionError);
             return;
         }
 
@@ -327,9 +324,12 @@ const BartlettTest: FC<BaseModalProps> = ({
     return (
         <DialogContent className="max-w-[600px] p-0 bg-popover text-popover-foreground border border-border shadow-md rounded-md flex flex-col max-h-[85vh]">
             <DialogHeader className="px-6 py-4 border-b border-border flex-shrink-0">
-                <DialogTitle className="text-[22px] font-semibold">
-                    Bartlett&apos;s Test of Homogeneity of Variances
-                </DialogTitle>
+                <div className="flex items-center gap-1">
+                    <DialogTitle className="text-[22px] font-semibold">
+                        Bartlett&apos;s Test of Homogeneity of Variances
+                    </DialogTitle>
+                    <BartlettInfo />
+                </div>
             </DialogHeader>
 
             <div className="flex-grow flex flex-col overflow-hidden">

@@ -16,7 +16,7 @@
  * REFERENCE:
  * - Design Document: Phase 1 (Algorithm Validation)
  * - Royston AS R94 Algorithm
- * - Exact n=3 formula: p = 1 - exp(-6/π × arcsin(√W))
+ * - Rumus eksak n=3: p = (6/π) × [arcsin(√W) - arcsin(√0,75)]
  */
 
 // Import the functions to test
@@ -158,7 +158,7 @@ describe('Shapiro-Wilk Test: n=3 Special Case', () => {
     describe('Requirement 2.1: Exact P-Value Formula for n=3', () => {
         /**
          * Test that p-value for n=3 uses the exact formula:
-         * p = 1 - exp(-6/π × arcsin(√W))
+         * p = (6/π) × [arcsin(√W) - arcsin(√0,75)]
          *
          * This is different from the approximation used for n>3
          */
@@ -174,7 +174,9 @@ describe('Shapiro-Wilk Test: n=3 Special Case', () => {
             expect(result).not.toBeNull();
 
             const W = result.statistic;
-            const expectedP = 1 - Math.exp(-6.0 / Math.PI * Math.asin(Math.sqrt(W)));
+            const expectedP = (6 / Math.PI) * (
+                Math.asin(Math.sqrt(W)) - Math.asin(Math.sqrt(0.75))
+            );
 
             // The computed p-value should match the exact formula
             expect(result.pValue).toBeCloseTo(expectedP, 10);
@@ -233,7 +235,7 @@ describe('Shapiro-Wilk Test: n=3 Special Case', () => {
 
         test('should match exact formula for various W values', () => {
             // We'll test the exact formula by computing W for different datasets
-            // and verifying p-value matches 1 - exp(-6/π × arcsin(√W))
+            // dan memeriksa p-value terhadap rumus eksak n=3.
 
             const testCases = [
                 { data: [1, 2, 3], description: 'linear increasing' },
@@ -248,7 +250,9 @@ describe('Shapiro-Wilk Test: n=3 Special Case', () => {
 
                 // Calculate expected p-value using exact formula
                 const W = result.statistic;
-                const expectedP = 1 - Math.exp(-6.0 / Math.PI * Math.asin(Math.sqrt(W)));
+                const expectedP = (6 / Math.PI) * (
+                    Math.asin(Math.sqrt(W)) - Math.asin(Math.sqrt(0.75))
+                );
 
                 // Should match within floating-point precision
                 expect(result.pValue).toBeCloseTo(expectedP, 10);
@@ -263,11 +267,11 @@ describe('Shapiro-Wilk Test: n=3 Special Case', () => {
             const result = calculateShapiroWilk(data);
 
             // Assert: For W=1, arcsin(√1) = arcsin(1) = π/2
-            // p = 1 - exp(-6/π × π/2) = 1 - exp(-3) ≈ 0.950
+            // Pada W=1, rumus eksak menghasilkan p=1.
             expect(result).not.toBeNull();
             expect(result.statistic).toBeCloseTo(1.0, 5);
 
-            const expectedP = 1 - Math.exp(-6.0 / Math.PI * Math.asin(Math.sqrt(1.0)));
+            const expectedP = 1;
             expect(result.pValue).toBeCloseTo(expectedP, 5);
             expect(result.pValue).toBeGreaterThan(0.9); // High p-value for perfect normality
         });
@@ -386,7 +390,9 @@ describe('Shapiro-Wilk Test: n=3 Special Case', () => {
 
             // n=3 should use exact formula (we verify by checking p-value matches exact calculation)
             const W3 = result3.statistic;
-            const expectedP3 = 1 - Math.exp(-6.0 / Math.PI * Math.asin(Math.sqrt(W3)));
+            const expectedP3 = (6 / Math.PI) * (
+                Math.asin(Math.sqrt(W3)) - Math.asin(Math.sqrt(0.75))
+            );
             expect(result3.pValue).toBeCloseTo(expectedP3, 10);
 
             // n=4 should produce different results (uses different coefficient calculation)

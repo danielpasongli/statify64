@@ -16,6 +16,7 @@ function loadWorker() {
 
   // Load libs
   require(path.join(process.cwd(), 'public/workers/DescriptiveStatistics/libs/utils/utils.js'));
+  require(path.join(process.cwd(), 'public/workers/DescriptiveStatistics/libs/categoricalTests/categoricalChiSquare.js'));
   require(path.join(process.cwd(), 'public/workers/DescriptiveStatistics/libs/crosstabs/crosstabs.js'));
 
   const workerPath = path.join(process.cwd(), 'public/workers/DescriptiveStatistics/crosstabs.worker.js');
@@ -78,6 +79,58 @@ describe('crosstabs.worker – basics and date handling', () => {
     // With rounding at cell level, 1.2 rounds to 1 and 0.6 rounds to 1, so total becomes 2
     const total = table.flat().reduce((a, b) => a + b, 0);
     expect(total).toBe(2);
+  });
+
+  test('menyimpan expected count dan residual tanpa pembulatan antara', () => {
+    const postSpy = jest.fn();
+    global.postMessage = postSpy;
+    loadWorker();
+
+    const variable = {
+      row: { name: 'R', label: 'R' },
+      col: { name: 'C', label: 'C' },
+    };
+    const data = [
+      { R: 'x', C: 'a' },
+      { R: 'y', C: 'b' },
+      { R: 'y', C: 'b' },
+    ];
+
+    global.onmessage({ data: { variable, data, options: { cells: { expected: true }, residuals: {}, nonintegerWeights: 'noAdjustment' } } });
+
+    const cell = postSpy.mock.calls[0][0].results.cellStatistics[0][0];
+    expect(cell.expected).toBe(1 / 3);
+    expect(cell.residual).toBe(1 - (1 / 3));
+  });
+
+  test.each([
+    {
+      categories: ['Ya', 'Tidak'],
+      expectedType: 'binomial-proportion-homogeneity',
+    },
+    {
+      categories: ['Rendah', 'Sedang', 'Tinggi'],
+      expectedType: 'multinomial-proportion-homogeneity',
+    },
+  ])('menyertakan uji proporsi $expectedType dari mesin kategorik', ({ categories, expectedType }) => {
+    const postSpy = jest.fn();
+    global.postMessage = postSpy;
+    loadWorker();
+
+    const variable = {
+      row: { name: 'Kelompok', label: 'Kelompok' },
+      col: { name: 'Hasil', label: 'Hasil' },
+    };
+    const data = ['A', 'B'].flatMap((group) => categories.map((category) => ({
+      Kelompok: group,
+      Hasil: category,
+    })));
+
+    global.onmessage({ data: { variable, data, options: { cells: {}, residuals: {} } } });
+
+    const chiSquare = postSpy.mock.calls[0][0].results.chiSquare;
+    expect(chiSquare.pearson.testType).toBe('independence');
+    expect(chiSquare.proportion.testType).toBe(expectedType);
   });
 });
 

@@ -51,7 +51,7 @@ export interface OrdinalOutputParams {
     parameterEstimates: boolean;
     asymptoticCovariance: boolean;
     asymptoticCorrelation: boolean;
-    cellInformation: boolean;
+    // cellInformation: boolean;
     testOfParallelLines: boolean;
     iterationHistory: boolean;
     iterationHistoryStep: number;
@@ -145,7 +145,7 @@ export interface PlumOutputOptions {
   iterationHistoryStep?: number;
   printIterationHistory?: boolean;
   iterationHistoryEvery?: number;
-  cellInformation?: boolean;
+  // cellInformation?: boolean;
   predictedResponseCategory?: boolean;
   estimatedResponseProbabilities?: boolean;
   predictedCategoryProbability?: boolean;

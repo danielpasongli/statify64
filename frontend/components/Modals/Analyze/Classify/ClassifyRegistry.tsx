@@ -53,6 +53,16 @@ const NearestNeighborModal = lazy(() =>
         "@/components/Modals/Analyze/Classify/nearest-neighbor/dialogs/nearest-neighbor-main"
     ).then((module) => ({ default: module.KNNContainer }))
 );
+const NaiveBayesModal = lazy(() =>
+    import(
+        "@/components/Modals/Analyze/Classify/naive-bayes/dialogs/naive-bayes-main"
+    )
+);
+const ApplyModelModal = lazy(() =>
+    import(
+        "@/components/Modals/Analyze/Classify/apply-model/dialogs/apply-model-main"
+    )
+);
 const ROCCurveModal = lazy(() =>
     import(
         "@/components/Modals/Analyze/Classify/roc-curve/dialogs/roc-curve-main"
@@ -84,6 +94,12 @@ export const CLASSIFY_MODAL_COMPONENTS: Record<
     ) as React.ComponentType<BaseModalProps>,
     [ModalType.ModalNearestNeighbor]: withSuspense(
         NearestNeighborModal as any
+    ) as React.ComponentType<BaseModalProps>,
+    [ModalType.ModalNaiveBayes]: withSuspense(
+        NaiveBayesModal as any
+    ) as React.ComponentType<BaseModalProps>,
+    [ModalType.ModalApplyModel]: withSuspense(
+        ApplyModelModal as any
     ) as React.ComponentType<BaseModalProps>,
     [ModalType.ModalROCCurve]: withSuspense(
         ROCCurveModal as any
@@ -127,6 +143,8 @@ export const CLASSIFY_MODAL_CONTAINER_PREFERENCES: Partial<
     [ModalType.ModalTree]: "sidebar",
     [ModalType.ModalDiscriminant]: "sidebar",
     [ModalType.ModalNearestNeighbor]: "sidebar",
+    [ModalType.ModalNaiveBayes]: "sidebar",
+    [ModalType.ModalApplyModel]: "sidebar",
     [ModalType.ModalROCCurve]: "sidebar",
     [ModalType.ModalROCAnalysis]: "sidebar",
 };

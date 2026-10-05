@@ -187,49 +187,42 @@ describe('Shapiro-Wilk Test: Memory Usage Validation', () => {
 
     describe('Memory Leak Detection: Arrays released after function return', () => {
 
-        test('should not exhibit unbounded memory growth across repeated calculations', () => {
-            // Strategy: Run two batches of calculations and verify that the second batch
-            // doesn't use significantly more memory than the first. If there's a real leak,
-            // the second batch would show higher peak memory.
-            const data = generateNormalData(5000);
-            const batchSize = 10;
-
-            // Extended warmup to fully stabilize V8 JIT and heap
-            suppressConsole();
-            for (let i = 0; i < 20; i++) {
-                calculateShapiroWilk(data);
+        test('tidak menahan memori berlebihan setelah perhitungan berulang', () => {
+            // Ukur memori yang tertahan setelah GC, bukan alokasi sementara.
+            // Proses terpisah memastikan GC tersedia dan heap Jest tidak ikut diukur.
+            const { spawnSync } = require('child_process');
+            const path = require('path');
+            const script = `
+                const fs = require('fs');
+                console.log = () => {};
+                const { calculateShapiroWilk } = require(process.argv[1]);
+                const data = JSON.parse(fs.readFileSync(0, 'utf8'));
+                for (let i = 0; i < 20; i++) calculateShapiroWilk(data);
+                global.gc();
+                const baseline = process.memoryUsage().heapUsed;
+                const growth = [];
+                for (let batch = 0; batch < 2; batch++) {
+                    for (let i = 0; i < 10; i++) {
+                        if (!calculateShapiroWilk(data)) throw new Error('Perhitungan gagal');
+                    }
+                    global.gc();
+                    growth.push(process.memoryUsage().heapUsed - baseline);
+                }
+                process.stdout.write(JSON.stringify(growth));
+            `;
+            const child = spawnSync(process.execPath, [
+                '--expose-gc', '-e', script,
+                path.join(__dirname, '../normalityTests.js'),
+            ], {
+                input: JSON.stringify(generateNormalData(5000)),
+                encoding: 'utf8',
+                timeout: 10000,
+            });
+            expect(child.error).toBeUndefined();
+            expect(child.status).toBe(0);
+            for (const retainedBytes of JSON.parse(child.stdout)) {
+                expect(retainedBytes).toBeLessThan(10 * 1024 * 1024);
             }
-            forceGC();
-
-            // Measure first batch peak
-            const firstBatchStart = getHeapUsed();
-            for (let i = 0; i < batchSize; i++) {
-                calculateShapiroWilk(data);
-            }
-            const firstBatchEnd = getHeapUsed();
-            const firstBatchGrowth = firstBatchEnd - firstBatchStart;
-
-            forceGC();
-
-            // Measure second batch peak
-            const secondBatchStart = getHeapUsed();
-            for (let i = 0; i < batchSize; i++) {
-                calculateShapiroWilk(data);
-            }
-            const secondBatchEnd = getHeapUsed();
-            const secondBatchGrowth = secondBatchEnd - secondBatchStart;
-
-            restoreConsole();
-
-            console.log('[MEMORY LEAK TEST] Two-batch comparison (10 iterations each):');
-            console.log(`  First batch growth:  ${(firstBatchGrowth / 1024).toFixed(2)} KB`);
-            console.log(`  Second batch growth: ${(secondBatchGrowth / 1024).toFixed(2)} KB`);
-
-            // Assert: If there's no leak, second batch growth should not be significantly
-            // larger than first batch. Allow generous tolerance for GC timing.
-            // A real leak would cause monotonically increasing growth per batch.
-            const TEN_MB = 10 * 1024 * 1024;
-            expect(secondBatchGrowth).toBeLessThan(TEN_MB);
         });
 
         test('should release intermediate arrays after computation completes', () => {

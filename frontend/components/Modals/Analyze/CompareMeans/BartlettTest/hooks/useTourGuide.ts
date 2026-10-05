@@ -5,7 +5,7 @@
  * pengguna memahami cara menggunakan modal Bartlett Test.
  *
  * Fitur:
- * - Navigasi step by step
+ * - Navigasi langkah demi langkah
  * - Switching tab otomatis saat diperlukan
  * - Tracking elemen target untuk highlight
  * - Responsif terhadap resize window
@@ -100,7 +100,7 @@ export const useTourGuide = (
     }, [tourActive, tourSteps, findTargetElement]);
 
     /**
-     * Dapatkan tab yang diperlukan untuk step tertentu
+     * Dapatkan tab yang diperlukan untuk langkah tertentu
      */
     const getRequiredTabForStep = useCallback(
         (stepIndex: number): string | undefined => {
@@ -111,7 +111,7 @@ export const useTourGuide = (
     );
 
     /**
-     * Switch tab jika diperlukan untuk step saat ini
+     * Pindahkan tab jika diperlukan untuk langkah saat ini
      */
     const switchTabIfNeeded = useCallback(
         (requiredTab?: string | TabType) => {
@@ -143,7 +143,7 @@ export const useTourGuide = (
     }, [tourActive, refreshTargetElements]);
 
     /**
-     * Mulai tour dari step pertama
+     * Mulai tur dari langkah pertama
      */
     const startTour = useCallback(() => {
         setCurrentStep(0);
@@ -164,7 +164,7 @@ export const useTourGuide = (
     }, [clearTimeout]);
 
     /**
-     * Pindah ke step berikutnya
+     * Pindah ke langkah berikutnya
      */
     const nextStep = useCallback(() => {
         const nextStepIndex = currentStep + 1;
@@ -181,7 +181,7 @@ export const useTourGuide = (
     }, [currentStep, tourSteps, switchTabIfNeeded, endTour]);
 
     /**
-     * Pindah ke step sebelumnya
+     * Pindah ke langkah sebelumnya
      */
     const prevStep = useCallback(() => {
         const prevStepIndex = currentStep - 1;
@@ -202,8 +202,8 @@ export const useTourGuide = (
     }, [tourActive, tourSteps, currentStep, targetElements]);
 
     /**
-     * Effect untuk refresh target elements dan switch tab
-     * saat step berubah
+     * Efek untuk memperbarui elemen target dan memindahkan tab
+     * saat langkah berubah
      */
     useEffect(() => {
         if (tourActive) {
