@@ -15,14 +15,14 @@ export const evaluateExpectedCountAssumption = (
   const valid = Boolean(
     diagnostics
       && diagnostics.minExpectedCount !== null
-      && diagnostics.minExpectedCount > 0
+      && diagnostics.minExpectedCount >= 1
       && diagnostics.percentCellsUnder5 <= 20,
   );
 
   return {
     valid,
     text: valid
-      ? 'Syarat expected count terpenuhi: seluruh expected count lebih dari nol dan maksimal 20% sel memiliki expected count kurang dari 5.'
+      ? 'Syarat expected count terpenuhi: seluruh expected count paling sedikit 1 dan maksimal 20% sel memiliki expected count kurang dari 5.'
       : 'Syarat expected count tidak terpenuhi. Tafsirkan hasil dengan hati-hati dan pertimbangkan menggabungkan kategori atau menggunakan uji exact.',
   };
 };
