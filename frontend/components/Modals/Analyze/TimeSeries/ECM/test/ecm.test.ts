@@ -131,10 +131,9 @@ const runHook = (
     indep: Variable[],
     data: DataRow[],
     maxLagADF = 1,
-    maxLagECM = 1,
 ) =>
     renderHook(() =>
-        useAnalyzeHook(dep, indep, data, null, maxLagADF, maxLagECM, false, false, jest.fn()),
+        useAnalyzeHook(dep, indep, data, null, maxLagADF, false, false, jest.fn()),
     );
 
 const runAndAnalyze = async (
@@ -142,9 +141,8 @@ const runAndAnalyze = async (
     indep: Variable[],
     data: DataRow[],
     maxLagADF = 1,
-    maxLagECM = 1,
 ) => {
-    const { result } = runHook(dep, indep, data, maxLagADF, maxLagECM);
+    const { result } = runHook(dep, indep, data, maxLagADF);
     await act(async () => { await result.current.handleAnalyzes(); });
     return result;
 };

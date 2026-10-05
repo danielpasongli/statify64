@@ -5,16 +5,12 @@ import { Input } from "@/components/ui/input";
 
 interface OptionTabProps {
     maxLagADF: number;
-    maxLagECM: number;
     handleMaxLagADF: (value: number) => void;
-    handleMaxLagECM: (value: number) => void;
 }
 
 const OptionTab: FC<OptionTabProps> = ({
     maxLagADF,
-    maxLagECM,
     handleMaxLagADF,
-    handleMaxLagECM,
 }) => {
     return (
         <div className="space-y-6 p-4">
@@ -33,20 +29,7 @@ const OptionTab: FC<OptionTabProps> = ({
                 </p>
             </div>
 
-            <div className="space-y-2">
-                <Label htmlFor="maxLagECM">Max Lag for ECM</Label>
-                <Input
-                    id="maxLagECM"
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={maxLagECM}
-                    onChange={(e) => handleMaxLagECM(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                />
-                <p className="text-xs text-muted-foreground">
-                    Maximum lag for Error Correction Model estimation (typically 1-2)
-                </p>
-            </div>
+
 
             <div className="p-4 bg-muted/50 rounded-lg space-y-2">
                 <h4 className="font-medium text-sm">Model Overview</h4>
@@ -59,8 +42,8 @@ const OptionTab: FC<OptionTabProps> = ({
                     ADF test on residuals (εₜ)
                 </p>
                 <p className="text-xs text-muted-foreground">
-                    <strong>Step 3: Error Correction Model</strong><br/>
-                    ΔYₜ = α + γ·ECTₜ₋₁ + θ·ΔYₜ₋₁ + φ·ΔXₜ + uₜ
+                    <strong>Step 3: Error Correction Model (Parsimony)</strong><br/>
+                    ΔYₜ = α + γ·ECTₜ₋₁ + φ₁·ΔX₁ₜ + φ₂·ΔX₂ₜ + … + uₜ
                 </p>
             </div>
         </div>
