@@ -14,7 +14,6 @@ export const useAnalyzeHook = (
     data: DataRow[],
     selectedPeriod: any,
     maxLagADF: number,
-    maxLagECM: number,
     saveLongRun: boolean,
     saveShortRun: boolean,
     onClose: () => void
@@ -84,7 +83,6 @@ export const useAnalyzeHook = (
                     x: xData,
                     n_vars: n_vars,
                     max_lag_adf: maxLagADF,
-                    max_lag_ecm: maxLagECM
                 }
             });
 
