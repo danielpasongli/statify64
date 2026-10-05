@@ -192,7 +192,9 @@ fn calculate_case_predictions_for_knn_data(
                     }
                 })
             });
-            let correct = Some(category_key(Some(&actual)) == category_key(Some(&predicted)));
+            // Without an observed category the prediction cannot be scored.
+            let correct = category_key(Some(&actual))
+                .map(|actual_key| Some(actual_key) == category_key(Some(&predicted)));
             (predicted, correct, probability, None, None)
         };
 

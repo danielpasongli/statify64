@@ -6,7 +6,8 @@ use crate::models::{
 };
 
 use super::partition::{
-    has_valid_partitioning_values, split_partition_and_cross_validation_by_config,
+    has_valid_partitioning_values, is_holdout_by_partition_variable,
+    split_partition_and_cross_validation_by_config,
 };
 
 pub fn preprocess_knn_data(data: &AnalysisData, config: &KnnConfig) -> Result<KnnData, String> {
@@ -112,7 +113,7 @@ pub fn preprocess_knn_data(data: &AnalysisData, config: &KnnConfig) -> Result<Kn
         data,
         &case_filter_features,
         &case_filter_measures,
-        Some(target_var.as_str()),
+        Some((target_var.as_str(), config)),
     );
     let analysis_case_indices: Vec<usize> = valid_case_indices
         .into_iter()
@@ -161,7 +162,9 @@ pub fn preprocess_knn_data(data: &AnalysisData, config: &KnnConfig) -> Result<Kn
         // Get target value if a target variable is specified
         let target_value = extract_target_value(case_idx, &target_var, data);
 
-        if is_missing_target_value(&target_value) {
+        if is_missing_target_value(&target_value)
+            && !is_holdout_by_partition_variable(data, config, case_idx)
+        {
             continue;
         }
 
@@ -303,7 +306,7 @@ fn collect_valid_case_indices(
     data: &AnalysisData,
     features: &[String],
     feature_measures: &[VariableMeasure],
-    target_var: Option<&str>,
+    target: Option<(&str, &KnnConfig)>,
 ) -> Vec<usize> {
     let mut valid_case_indices = Vec::new();
 
@@ -329,9 +332,13 @@ fn collect_valid_case_indices(
             continue;
         }
 
-        if let Some(target_var_name) = target_var {
+        // A holdout case with a missing target stays in the analysis: KNN can
+        // still predict it, but it is left out of accuracy and error measures.
+        if let Some((target_var_name, config)) = target {
             let target_value = extract_target_value(case_idx, target_var_name, data);
-            if is_missing_target_value(&target_value) {
+            if is_missing_target_value(&target_value)
+                && !is_holdout_by_partition_variable(data, config, case_idx)
+            {
                 continue;
             }
         }
@@ -1140,6 +1147,75 @@ mod tests {
         assert_eq!(knn_data.training_indices, vec![0, 1]);
         assert!(knn_data.holdout_indices.is_empty());
         assert_eq!(knn_data.data_matrix, vec![vec![1.0, 0.0], vec![0.0, 1.0]]);
+    }
+
+    #[test]
+    fn holdout_case_with_missing_target_is_predicted_but_not_scored() {
+        let data = AnalysisData {
+            target_data: vec![vec![
+                record("target", DataValue::Text("A".to_string())),
+                record("target", DataValue::Text("B".to_string())),
+                record("target", DataValue::Null),
+                record("target", DataValue::Null),
+                record("target", DataValue::Text("A".to_string())),
+            ]],
+            features_data: vec![vec![
+                record("score", DataValue::Number(0.0)),
+                record("score", DataValue::Number(10.0)),
+                record("score", DataValue::Number(5.0)),
+                record("score", DataValue::Number(9.0)),
+                record("score", DataValue::Number(1.0)),
+            ]],
+            focal_case_data: Vec::new(),
+            case_data: Some(vec![vec![
+                record("partition", DataValue::Number(1.0)),
+                record("partition", DataValue::Number(1.0)),
+                // Training case without a target: still excluded.
+                record("partition", DataValue::Number(1.0)),
+                // Holdout case without a target: kept for prediction.
+                record("partition", DataValue::Number(0.0)),
+                record("partition", DataValue::Number(0.0)),
+            ]]),
+            target_data_defs: vec![vec![variable_def("target", VariableMeasure::Nominal)]],
+            features_data_defs: vec![vec![variable_def("score", VariableMeasure::Scale)]],
+            focal_case_data_defs: Vec::new(),
+            case_data_defs: None,
+        };
+        let mut config = config();
+        config.main.feature_var = Some(vec!["score".to_string()]);
+        config.partition.use_variable = true;
+        config.partition.use_randomly = false;
+        config.partition.partitioning_variable = Some("partition".to_string());
+
+        let knn_data = preprocess_knn_data(&data, &config).unwrap();
+        assert_eq!(knn_data.processed_case_indices, vec![0, 1, 3, 4]);
+        assert_eq!(knn_data.training_indices, vec![0, 1]);
+        assert_eq!(knn_data.holdout_indices, vec![2, 3]);
+        assert!(knn_data.target_is_categorical());
+
+        // The case is predicted (nearest training case has B) but stays out of
+        // the confusion matrix and the error rate.
+        let table =
+            crate::stats::classification_table::calculate_classification_table(&data, &config)
+                .unwrap();
+        assert_eq!(table.holdout.confusion_matrix, vec![vec![1, 0], vec![0, 0]]);
+        assert_eq!(table.holdout.observed, vec![1, 0]);
+        assert_eq!(table.holdout.missing, vec![0, 1]);
+        let summary = crate::stats::error_summary::calculate_error_summary(&Some(table)).unwrap();
+        assert_eq!(summary.holdout, 0.0);
+
+        let computation =
+            crate::stats::prediction_results::calculate_prediction_computation(&data, &config)
+                .unwrap();
+        assert!(matches!(&computation.predicted_values[2], DataValue::Text(value) if value == "B"));
+        let row = computation
+            .rows
+            .iter()
+            .find(|row| row.row_index == 3)
+            .unwrap();
+        assert_eq!(row.sample_type, "Holdout");
+        assert!(matches!(row.actual, DataValue::Null));
+        assert_eq!(row.correct, None);
     }
 
     #[test]
