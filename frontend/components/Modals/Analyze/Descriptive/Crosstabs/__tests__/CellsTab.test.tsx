@@ -35,7 +35,7 @@ describe('CellsTab Component', () => {
   it('renders Counts, Percentages and Residuals sections', () => {
     mockedUseMetaStore.mockReturnValue({ meta: { weight: null } });
     const setOptions = jest.fn();
-    render(<CellsTab options={createDefaultOptions()} setOptions={setOptions} />);
+    render(<CellsTab options={createDefaultOptions()} setOptions={setOptions} rowVariables={[]} columnVariables={[]} />);
 
     expect(screen.getByText('Counts')).toBeInTheDocument();
     expect(screen.getByText('Percentages')).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe('CellsTab Component', () => {
   it('does NOT render the "Noninteger Weights" section when no weight variable is active', () => {
     mockedUseMetaStore.mockReturnValue({ meta: { weight: null } });
     const setOptions = jest.fn();
-    render(<CellsTab options={createDefaultOptions()} setOptions={setOptions} />);
+    render(<CellsTab options={createDefaultOptions()} setOptions={setOptions} rowVariables={[]} columnVariables={[]} />);
 
     expect(screen.queryByText('Noninteger Weights')).not.toBeInTheDocument();
   });
@@ -56,7 +56,7 @@ describe('CellsTab Component', () => {
     mockedUseMetaStore.mockReturnValue({ meta: { weight: null } });
     const user = userEvent.setup();
     const setOptions = jest.fn();
-    render(<CellsTab options={createDefaultOptions()} setOptions={setOptions} />);
+    render(<CellsTab options={createDefaultOptions()} setOptions={setOptions} rowVariables={[]} columnVariables={[]} />);
 
     const observedCheckbox = screen.getByLabelText('Observed');
     expect(observedCheckbox).toBeChecked();
