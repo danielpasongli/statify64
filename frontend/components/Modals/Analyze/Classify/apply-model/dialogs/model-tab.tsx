@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { validateAnyModel } from "@/components/Modals/Analyze/Classify/apply-model/adapters/registry";
+import CollapsibleNameList from "@/components/Modals/Analyze/Classify/apply-model/dialogs/collapsible-name-list";
 import { APPLY_MODEL_MESSAGES } from "@/components/Modals/Analyze/Classify/apply-model/constants/apply-model-codes";
 import type { ApplyModelIssue } from "@/components/Modals/Analyze/Classify/apply-model/constants/apply-model-codes";
 import { BUILTIN_MODELS } from "@/components/Modals/Analyze/Classify/apply-model/constants/builtin-models";
@@ -355,6 +356,39 @@ export function ModelTab({ data, onModelLoaded, showFieldHelp }: ModelTabProps) 
             ))}
           </dl>
 
+          {descriptor.text !== undefined && (
+            <div
+              data-testid="model-text-info"
+              className="flex flex-col gap-1"
+            >
+              <span className="text-sm text-muted-foreground">Text features</span>
+              {descriptor.text.source === "raw" ? (
+                <p className="text-sm">
+                  Raw text variable: {descriptor.text.rawVariable ?? "-"}
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm">
+                    Word-vector columns: {descriptor.text.columns.length}
+                  </p>
+                  <CollapsibleNameList
+                    label="Show word-vector columns"
+                    names={descriptor.text.columns}
+                    testId="model-text-columns-list"
+                  />
+                </>
+              )}
+            </div>
+          )}
+
+          {descriptor.features.length === 0 && descriptor.text !== undefined ? (
+            <p
+              data-testid="model-no-features"
+              className="text-sm text-muted-foreground"
+            >
+              No numerical or categorical features (text features only).
+            </p>
+          ) : (
           <div className="flex flex-col gap-1">
             <span className="text-sm text-muted-foreground">Features</span>
             <table className="w-full text-sm">
@@ -374,6 +408,7 @@ export function ModelTab({ data, onModelLoaded, showFieldHelp }: ModelTabProps) 
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
     </div>

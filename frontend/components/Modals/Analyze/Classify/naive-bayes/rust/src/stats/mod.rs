@@ -82,5 +82,15 @@ pub mod numerical_distribution;
 pub mod partition;
 pub mod prediction;
 pub mod preprocess_data;
+// Fase N3b (PLAN_V2): jalur Raw Text anti-leakage (fit per holdout/fold,
+// model final + resep). Lihat kepala `raw_text.rs`.
+pub mod raw_text;
 pub mod save;
+// Fase N3a (PLAN_V2): integrasi fitur Text (jalur `vector`, lewat
+// `statify_text_core::nb_text`) ke pelatihan/prediksi + Gaussian min-std
+// (`numerical_distribution`). Lihat kepala `text_features.rs`.
+pub mod text_features;
+// Fase N4 (PLAN_V2): Text Feature Table (Top-k kata per kelas + data lengkap
+// untuk CSV/TSV). Lihat kepala `text_feature_table.rs`.
+pub mod text_feature_table;
 pub mod training;

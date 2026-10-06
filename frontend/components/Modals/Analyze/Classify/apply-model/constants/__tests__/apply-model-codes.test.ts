@@ -12,9 +12,9 @@ describe("Apply Model — kode & pesan (AGENTS.md §4.5)", () => {
     );
   });
 
-  it("setiap kode bernama AM_E_* atau AM_W_*", () => {
+  it("setiap kode bernama AM_E_*, AM_W_*, atau AM_I_* (v2)", () => {
     for (const code of ALL_APPLY_MODEL_CODES) {
-      expect(code).toMatch(/^AM_[EW]_[A-Z_]+$/);
+      expect(code).toMatch(/^AM_[EWI]_[A-Z0-9_]+$/);
     }
   });
 
@@ -32,34 +32,34 @@ describe("Apply Model — kode & pesan (AGENTS.md §4.5)", () => {
     );
   });
 
-  it("jumlah kode: 43 error dan 8 warning", () => {
+  it("jumlah kode: 50 error (43 v1 + 7 v2) dan 9 warning (8 v1 + 1 v2)", () => {
     const errors = ALL_APPLY_MODEL_CODES.filter((c) => c.startsWith("AM_E_"));
     const warnings = ALL_APPLY_MODEL_CODES.filter((c) => c.startsWith("AM_W_"));
-    expect(errors).toHaveLength(43);
-    expect(warnings).toHaveLength(8);
+    expect(errors).toHaveLength(50);
+    expect(warnings).toHaveLength(9);
   });
 
-  it("lima teks wajib persis seperti AGENTS.md §4.5", () => {
+  it("teks kunci memakai kalimat Inggris dengan kode di akhir (PLAN_V3_UI_EN E3)", () => {
     expect(APPLY_MODEL_MESSAGES.AM_E_MODEL_TYPE_UNSUPPORTED).toBe(
-      'Jenis model "{detail}" belum didukung oleh Apply Model.'
+      'The model type "{detail}" is not supported by Apply Model. (AM_E_MODEL_TYPE_UNSUPPORTED)'
     );
     expect(APPLY_MODEL_MESSAGES.AM_E_SCHEMA_VERSION_UNSUPPORTED).toBe(
-      'Versi format model "{detail}" tidak didukung. Versi yang didukung: 1.0, 1.1.'
+      'The model format version "{detail}" is not supported. Supported versions: 1.0, 1.1, 2.0. (AM_E_SCHEMA_VERSION_UNSUPPORTED)'
     );
     expect(APPLY_MODEL_MESSAGES.AM_E_MAP_ROLE_MISMATCH).toBe(
-      'Fitur "{detail}" tidak cocok dengan measurement level variabel yang dipilih.'
+      'Feature "{detail}" does not match the measurement level of the selected variable. (AM_E_MAP_ROLE_MISMATCH)'
     );
     expect(APPLY_MODEL_MESSAGES.AM_E_NO_ROWS).toBe(
-      "Dataset aktif tidak berisi baris data pada variabel yang dipetakan."
+      "The active dataset has no data rows for the mapped variables. (AM_E_NO_ROWS)"
     );
     expect(APPLY_MODEL_MESSAGES.AM_W_LEGACY_SCHEMA).toBe(
-      "Model ini memakai format lama (1.0). Kategori yang tidak dikenal akan dilewati saat prediksi. Ekspor ulang model dari menu Naive Bayes untuk hasil yang konsisten."
+      "This model uses the old format (1.0). Unknown categories are skipped during prediction. Export the model again from the Naive Bayes menu for consistent results."
     );
   });
 
   it("AM_W_BUILTIN_EMPTY memakai teks wajib tab Model (§6.2)", () => {
     expect(APPLY_MODEL_MESSAGES.AM_W_BUILTIN_EMPTY).toBe(
-      "Belum ada model bawaan Statify."
+      "There are no built-in Statify models yet."
     );
   });
 });

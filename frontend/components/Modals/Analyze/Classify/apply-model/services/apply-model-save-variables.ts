@@ -28,7 +28,7 @@ function resolveColumnValues(
   const classIndex = raw.model_summary.classes.indexOf(className);
   const values = classIndex < 0 ? undefined : raw.predictions.class_probabilities[classIndex];
   if (values === undefined) {
-    throw new Error(`AM_E_PAYLOAD: kolom probabilitas untuk kelas "${className}" tidak ada pada hasil`);
+    throw new Error(`AM_E_PAYLOAD: the probability column for class "${className}" is missing from the result`);
   }
   return values;
 }
@@ -58,7 +58,7 @@ export function buildOutputColumns(
   startColumnIndex: number,
 ): BuiltOutputColumns {
   if (finalNames.length !== specs.length) {
-    throw new Error("AM_E_PAYLOAD: jumlah nama kolom akhir tidak sama dengan jumlah kolom output");
+    throw new Error("AM_E_PAYLOAD: the number of final column names does not match the number of output columns");
   }
 
   const definitions: Partial<Variable>[] = [];

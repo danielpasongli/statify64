@@ -8,6 +8,12 @@
 //               ringkasan, evaluasi, salinan classification_table NB).
 //   utils/    — konversi tipe & error umum (salinan NB).
 //   wasm/     — binding yang diekspos ke JS.
+//
+// Revisi v2 (AGENTS_V2.md V13): pengecualian aturan P6 ("salin, jangan import
+// lintas crate") KHUSUS teks — preprocessing resep & likelihood Text dipakai
+// dari path dependency `statify-text-core` (`scoring/text.rs`). Kode yang
+// tetap disalin dari NB v1 (value_label, classification_table, error,
+// log_gaussian_density/safe_ln) tidak berubah dan header sumbernya dipertahankan.
 pub mod models;
 pub mod scoring;
 pub mod stats;

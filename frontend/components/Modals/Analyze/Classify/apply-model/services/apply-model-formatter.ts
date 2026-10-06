@@ -6,6 +6,7 @@ import type { ResultJson, Table } from "@/types/Table";
 import { getModelAdapter } from "@/components/Modals/Analyze/Classify/apply-model/adapters/registry";
 import type { ApplyModelOutputTabType } from "@/components/Modals/Analyze/Classify/apply-model/types/apply-model";
 import type { ApplyModelRawResult } from "@/components/Modals/Analyze/Classify/apply-model/types/apply-model-worker";
+import { describeVectorColumnsFound } from "@/components/Modals/Analyze/Classify/apply-model/services/apply-model-interpretation";
 import {
   buildConfusionMatrixTable,
   buildEvaluationMetricsTables,
@@ -18,9 +19,17 @@ export type ApplyModelSavedColumn = {
   measure: string;
 };
 
+// v2 (AGENTS_V2.md §10.4): pemetaan fitur Text untuk baris ringkasan model.
+// Baris `Text source`, `Text likelihood`, `Text features zero-filled` / `Rows with empty text`
+// datang dari Rust lewat `model_summary.parameters`; pemetaan variabel hanya diketahui sisi TS.
+export type ApplyModelTextMappingInfo =
+  | { source: "raw"; modelVariable: string | null; datasetVariable: string }
+  | { source: "vector"; totalColumns: number; mappedColumns: number };
+
 export type ApplyModelFormatterContext = {
   sourceLabel: string;
   savedColumns: ApplyModelSavedColumn[];
+  textMapping?: ApplyModelTextMappingInfo; // hanya untuk model dengan fitur Text
 };
 
 // Disalin dari NB/services/naive-bayes-analysis-formatter.ts (formatNumber,
@@ -33,9 +42,29 @@ const keyValueHeaders = [
   { header: "Value", key: "value" },
 ];
 
+function buildTextMappingRows(textMapping?: ApplyModelTextMappingInfo): Table["rows"] {
+  if (!textMapping) return [];
+  if (textMapping.source === "raw") {
+    return [
+      {
+        rowHeader: ["Text Variable"],
+        value: `${textMapping.modelVariable ?? "-"} → ${textMapping.datasetVariable} (raw text)`,
+      },
+    ];
+  }
+  return [
+    {
+      rowHeader: ["Word-Vector Columns"],
+      // Teks kanonik PLAN_V3_UI_EN §3.3: "{m} of {V} vector columns found; {V−m} treated as 0."
+      value: describeVectorColumnsFound(textMapping.mappedColumns, textMapping.totalColumns),
+    },
+  ];
+}
+
 export function buildApplyModelSummaryTable(
   raw: ApplyModelRawResult["model_summary"],
-  sourceLabel: string
+  sourceLabel: string,
+  textMapping?: ApplyModelTextMappingInfo
 ): Table {
   const algorithmLabel = getModelAdapter(raw.model_type)?.algorithmLabel ?? raw.model_type;
 
@@ -54,6 +83,7 @@ export function buildApplyModelSummaryTable(
         rowHeader: ["Feature"],
         value: `${feature.name} → ${feature.mapped_variable} (${feature.role})`,
       })),
+      ...buildTextMappingRows(textMapping),
       ...raw.parameters.map((parameter) => ({
         rowHeader: [parameter.label],
         value: parameter.value,
@@ -151,7 +181,9 @@ export function transformApplyModelResult(
   const tables: Table[] = [];
 
   if (outputFlags.ModelSummary) {
-    tables.push(buildApplyModelSummaryTable(raw.model_summary, context.sourceLabel));
+    tables.push(
+      buildApplyModelSummaryTable(raw.model_summary, context.sourceLabel, context.textMapping)
+    );
   }
 
   if (outputFlags.CaseProcessingSummary) {

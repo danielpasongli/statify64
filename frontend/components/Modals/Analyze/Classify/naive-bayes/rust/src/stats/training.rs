@@ -18,7 +18,11 @@ use super::categorical_distribution::{
     compute_all_categorical_distributions, CategoricalDistribution,
 };
 use super::class_prior::{compute_class_priors, ClassPriors};
-use super::numerical_distribution::{compute_all_gaussian_parameters, GaussianParams};
+use super::numerical_distribution::{
+    compute_all_gaussian_parameters, compute_all_gaussian_parameters_with_spec, GaussianParams,
+    NumericLikelihoodSpec,
+};
+use super::text_features::{train_text_model, TextTrainInput, TrainedTextModel};
 
 #[derive(Debug, Clone)]
 pub struct TrainedModelParams {
@@ -27,6 +31,13 @@ pub struct TrainedModelParams {
     pub gaussian: HashMap<String, HashMap<String, GaussianParams>>,
     /// factor name -> distribusi kategorik (kategori + stat per kelas).
     pub categorical: HashMap<String, CategoricalDistribution>,
+    /// Fase N3a (AGENTS_V2 §8): parameter Text (jalur `vector`) dari
+    /// `CORE::nb_text` + nama term. `None` untuk model setara v1.
+    pub text: Option<TrainedTextModel>,
+    /// Fase N3a: `min_var` Gaussian min-std per covariate (HANYA atribut
+    /// ber-`gaussian_minstd`; atribut Gaussian biasa tidak punya entri).
+    /// Variance di `gaussian` sudah mencakup min-std dan floor.
+    pub numeric_min_variance: HashMap<String, f64>,
 }
 
 /// Latih satu model Naive Bayes campuran dari `cases` yang diberikan:
@@ -50,7 +61,50 @@ pub fn train_naive_bayes_model(
         class_priors: compute_class_priors(cases, classes),
         gaussian: compute_all_gaussian_parameters(cases, classes, covariate_names, variance_floor),
         categorical: compute_all_categorical_distributions(cases, classes, factor_names, alpha),
+        text: None,
+        numeric_min_variance: HashMap::new(),
     }
+}
+
+/// Fase N3a (PLAN_V2): padanan `train_naive_bayes_model` untuk konfigurasi v2 —
+/// likelihood Numeric per atribut (`gaussian` / `gaussian_minstd`) dan,
+/// opsional, fitur Text jalur `vector` lewat `CORE::nb_text` (AGENTS_V2 §6).
+///
+/// `text.x` HARUS sejajar dengan `cases`. `alpha` hanya untuk factor
+/// (Categorical); alpha Text ada di `text.alpha` dan divalidasi
+/// (`0 < alpha <= 999`) SEBELUM `nb_text::train`. Tanpa `text` dan dengan
+/// `numeric` Gaussian biasa, hasilnya identik dengan `train_naive_bayes_model`
+/// (diuji di `text_features::tests::v2_tanpa_text_dan_gaussian_biasa_sama_dengan_v1`).
+#[allow(clippy::too_many_arguments)]
+pub fn train_naive_bayes_model_v2(
+    cases: &[PreprocessedCase],
+    classes: &[String],
+    factor_names: &[String],
+    covariate_names: &[String],
+    alpha: f64,
+    variance_floor: f64,
+    numeric: &NumericLikelihoodSpec,
+    text: Option<&TextTrainInput<'_>>,
+) -> Result<TrainedModelParams, String> {
+    let text_model = match text {
+        Some(input) => Some(train_text_model(cases, classes, input)?),
+        None => None,
+    };
+    let (gaussian, numeric_min_variance) = compute_all_gaussian_parameters_with_spec(
+        cases,
+        classes,
+        covariate_names,
+        variance_floor,
+        numeric,
+    );
+
+    Ok(TrainedModelParams {
+        class_priors: compute_class_priors(cases, classes),
+        gaussian,
+        categorical: compute_all_categorical_distributions(cases, classes, factor_names, alpha),
+        text: text_model,
+        numeric_min_variance,
+    })
 }
 
 #[cfg(test)]
@@ -176,5 +230,71 @@ mod tests {
             model_alpha_1.categorical["Outlook"].per_class["Yes"]["Sunny"].probability,
             model_alpha_5.categorical["Outlook"].per_class["Yes"]["Sunny"].probability
         );
+    }
+}
+
+#[cfg(test)]
+mod tests_n3a {
+    use super::*;
+    use crate::models::config::NumericLikelihood;
+    use std::collections::HashMap as StdHashMap;
+
+    fn case_x(target_class: &str, x: f64) -> PreprocessedCase {
+        let mut covariates = StdHashMap::new();
+        covariates.insert("x".to_string(), Some(x));
+        PreprocessedCase {
+            target_class: target_class.to_string(),
+            factors: StdHashMap::new(),
+            covariates,
+        }
+    }
+
+    fn golden_cases() -> Vec<PreprocessedCase> {
+        vec![
+            case_x("A", 1.0),
+            case_x("A", 1.0),
+            case_x("A", 1.0),
+            case_x("B", 3.0),
+            case_x("B", 5.0),
+        ]
+    }
+
+    #[test]
+    fn v2_gaussian_minstd_mengisi_min_variance_dan_variance_setelah_min_std() {
+        let classes = vec!["A".to_string(), "B".to_string()];
+        let names = vec!["x".to_string()];
+        let spec = NumericLikelihoodSpec {
+            default: NumericLikelihood::GaussianMinstd,
+            overrides: StdHashMap::new(),
+        };
+
+        let model = train_naive_bayes_model_v2(
+            &golden_cases(),
+            &classes,
+            &[],
+            &names,
+            1.0,
+            1e-9,
+            &spec,
+            None,
+        )
+        .expect("pelatihan min-std");
+
+        assert!((model.numeric_min_variance["x"] - 0.111111).abs() < 1e-6);
+        assert!((model.gaussian["x"]["A"].variance - 0.111111).abs() < 1e-6);
+        assert!((model.gaussian["x"]["B"].variance - 1.0).abs() < 1e-12);
+        assert!(model.text.is_none());
+    }
+
+    #[test]
+    fn model_v1_tidak_punya_text_dan_min_variance() {
+        let classes = vec!["A".to_string(), "B".to_string()];
+        let names = vec!["x".to_string()];
+        let model =
+            train_naive_bayes_model(&golden_cases(), &classes, &[], &names, 1.0, 1e-9);
+        assert!(model.text.is_none());
+        assert!(model.numeric_min_variance.is_empty());
+        // Floor v1 tetap berlaku untuk Gaussian biasa.
+        assert!((model.gaussian["x"]["A"].variance - 1e-9).abs() < 1e-18);
     }
 }

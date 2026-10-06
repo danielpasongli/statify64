@@ -81,7 +81,7 @@ describe("naiveBayesModelAdapter — metadata (PLAN Fase 2 langkah 1)", () => {
   it("memuat konfigurasi adapter sesuai kontrak", () => {
     expect(naiveBayesModelAdapter.modelType).toBe("naive_bayes");
     expect(naiveBayesModelAdapter.algorithmLabel).toBe("Naive Bayes");
-    expect(naiveBayesModelAdapter.supportedSchemaVersions).toEqual(["1.0", "1.1"]);
+    expect(naiveBayesModelAdapter.supportedSchemaVersions).toEqual(["1.0", "1.1", "2.0"]);
     expect(naiveBayesModelAdapter.defaultOutputPrefix).toBe("NB");
     expect(naiveBayesModelAdapter.resultStoreSource).toEqual({
       componentKey: "Export Model",
@@ -511,7 +511,7 @@ describe("naiveBayesModelAdapter.validate — langkah 11 (khusus 1.1)", () => {
     expectIssue(
       errorsOf(validate(model)),
       "AM_E_COUNTS_INVALID",
-      "target.class_counts: panjang"
+      "target.class_counts: length"
     );
   });
 
@@ -521,7 +521,7 @@ describe("naiveBayesModelAdapter.validate — langkah 11 (khusus 1.1)", () => {
     expectIssue(
       errorsOf(validate(model)),
       "AM_E_COUNTS_INVALID",
-      "target.class_counts: nilai"
+      "target.class_counts: values"
     );
   });
 
@@ -531,7 +531,7 @@ describe("naiveBayesModelAdapter.validate — langkah 11 (khusus 1.1)", () => {
     expectIssue(
       errorsOf(validate(model)),
       "AM_E_COUNTS_INVALID",
-      "target.class_counts: nilai"
+      "target.class_counts: values"
     );
   });
 
@@ -541,7 +541,7 @@ describe("naiveBayesModelAdapter.validate — langkah 11 (khusus 1.1)", () => {
     expectIssue(
       errorsOf(validate(model)),
       "AM_E_COUNTS_INVALID",
-      "target.class_counts: jumlah 0"
+      "target.class_counts: sum is 0"
     );
   });
 

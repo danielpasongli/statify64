@@ -38,7 +38,7 @@ describe("ExportModelAction", () => {
         const onExport = jest.fn();
         render(<ExportModelAction trainedModel={dummyTrainedModel} onExport={onExport} />);
 
-        const input = screen.getByLabelText(/nama file/i);
+        const input = screen.getByLabelText(/file name/i);
         fireEvent.change(input, { target: { value: "custom-model.json" } });
         fireEvent.click(screen.getByRole("button", { name: /export model/i }));
 
@@ -49,7 +49,7 @@ describe("ExportModelAction", () => {
         const onExport = jest.fn();
         render(<ExportModelAction trainedModel={dummyTrainedModel} onExport={onExport} />);
 
-        const input = screen.getByLabelText(/nama file/i);
+        const input = screen.getByLabelText(/file name/i);
         fireEvent.change(input, { target: { value: "   " } });
         fireEvent.click(screen.getByRole("button", { name: /export model/i }));
 

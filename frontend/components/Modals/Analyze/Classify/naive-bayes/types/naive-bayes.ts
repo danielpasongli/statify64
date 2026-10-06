@@ -1,3 +1,5 @@
+import type { StwvConfig } from "@/components/Modals/Transform/StringToWordVector/config";
+
 /* =========================
    MAIN TAB
 ========================= */
@@ -9,12 +11,23 @@
 // versi lama `getEffectivePredictors` di `useNaiveBayesValidation.ts`).
 export type NaiveBayesSpecificationMode = "exclude" | "candidates";
 
+// --- v2 (AGENTS_V2 §4) ---
+export type NaiveBayesTextSource = "none" | "raw" | "vector";
+export type NaiveBayesNumericLikelihood = "gaussian" | "gaussian_minstd";
+export type NaiveBayesTextLikelihood = "multinomial" | "bernoulli" | "complement";
+
 export type NaiveBayesMainType = {
     TargetVar: string | null;
     SpecificationMode: NaiveBayesSpecificationMode;
     ExcludedVar: string[] | null;
     CandidateFactors: string[] | null;
     CandidateCovariates: string[] | null;
+    // --- v2 (AGENTS_V2 §4): Text Features ---------------------------------
+    // `TextSource` tetap disimpan, tetapi nilai efektifnya diturunkan dari isi
+    // slot (lihat `getEffectiveTextSource` di useNaiveBayesValidation.ts).
+    TextSource: NaiveBayesTextSource;
+    RawTextVar: string | null;
+    TextVectorVars: string[] | null;
 };
 
 /* =========================
@@ -26,6 +39,11 @@ export type NaiveBayesOptionsType = {
     UnseenCategoryPolicy: "ignore" | "smoothing";
     SmoothingAlpha: number;
     VarianceFloor: number;
+    // --- v2 (AGENTS_V2 §4) ---
+    NumericLikelihood: NaiveBayesNumericLikelihood;
+    NumericLikelihoodOverrides: Record<string, NaiveBayesNumericLikelihood>;
+    TextLikelihood: NaiveBayesTextLikelihood;
+    TextAlpha: number;
 };
 
 /* =========================
@@ -53,6 +71,9 @@ export type NaiveBayesOutputType = {
     AttributeDistributionTable: boolean;
     ModelEvaluationMetrics: boolean;
     ConfusionMatrix: boolean;
+    // --- v2 (AGENTS_V2 §3.7): Text Feature Table ---
+    TextFeatureTable: boolean;
+    TextTopK: number;
 };
 
 /* =========================
@@ -64,7 +85,20 @@ export type NaiveBayesType = {
     options: NaiveBayesOptionsType;
     validation: NaiveBayesValidationType;
     output: NaiveBayesOutputType;
+    // v2 (AGENTS_V2 §3.5/§4): konfigurasi Text Preprocessing (jalur Raw Text),
+    // memakai ulang tipe STWV (impor read-only).
+    text: StwvConfig;
 };
+
+/* =========================
+   PAYLOAD TEXT (AGENTS_V2 §5.1)
+   Sejajar baris dengan target yang dikirim ke worker.
+========================= */
+
+export type NaiveBayesTextPayload =
+    | { source: "none" }
+    | { source: "raw"; variable: string; values: (string | null)[] }
+    | { source: "vector"; columns: string[]; values: (number | null)[][] };
 
 /* =========================
    CONTAINER

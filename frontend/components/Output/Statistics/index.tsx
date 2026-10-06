@@ -12,6 +12,8 @@ import CaseProcessingSummary from './CaseProcessingSummary';
 // Naive Bayes: tombol Export Model wajib muncul di output viewer, bukan di
 // tab Output/form (AGENTS.md §4.3) — dipasang lewat registry ini.
 import ExportModelOutput from '@/components/Modals/Analyze/Classify/naive-bayes/components/export-model-output';
+// Naive Bayes v2: tabel fitur teks (Top-k) + tombol Download CSV / Copy TSV.
+import TextFeatureTableOutput from '@/components/Modals/Analyze/Classify/naive-bayes/components/text-feature-table-output';
 
 // Import Factor Analysis chart components
 import { ScreePlot } from '@/components/Modals/Analyze/dimension-reduction/factor/charts/ScreePlot';
@@ -49,6 +51,9 @@ export const StatisticsComponents: StatisticsComponentsRegistry = {
   // Naive Bayes: tombol Export Model + input nama file di output viewer
   // (AGENTS.md §4.3), dipasang lewat naive-bayes-analysis-output.ts
   "Export Model": ExportModelOutput,
+
+  // Naive Bayes v2: Text Feature Table (AGENTS_V2 §9) dengan aksi Download CSV & Copy TSV
+  "Text Feature Table": TextFeatureTableOutput,
 
   // Add Factor Analysis ScreePlot component
   ScreePlot,

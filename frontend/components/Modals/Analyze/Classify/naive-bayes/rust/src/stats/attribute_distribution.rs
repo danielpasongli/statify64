@@ -229,6 +229,44 @@ fn build_numerical_row(
     }
 }
 
+// =====================================================================
+// Fase N4 (PLAN_V2 / AGENTS_V2 §9) — keterangan likelihood Numeric.
+//
+// Tabel di atas TETAP hanya memuat atribut Numeric/Categorical dari
+// `predictor_order` (fitur Text tidak punya baris di sini; ia punya Text
+// Feature Table sendiri). `AttributeDistributionRow` tidak diubah (bentuk v1
+// tetap); keterangan "Gaussian (Weka min. std)" untuk atribut ber-
+// `gaussian_minstd` diambil lewat fungsi terpisah di bawah. Kolom `std_dev`
+// pada tabel sudah memakai variance SETELAH min-std dan floor.
+// =====================================================================
+
+/// Keterangan likelihood satu atribut Numeric ber-`gaussian_minstd`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NumericLikelihoodNote {
+    /// Selalu `"gaussian_minstd"` (Gaussian biasa tidak punya keterangan).
+    pub likelihood: &'static str,
+    /// `min_var` §6.4 yang dipakai.
+    pub min_variance: f64,
+    /// Teks tampilan (Inggris, label UI).
+    pub note: String,
+}
+
+/// Keterangan untuk atribut `name` bila ia memakai Gaussian min-std (ada di
+/// `model.numeric_min_variance`); `None` untuk Gaussian biasa (perilaku v1).
+pub fn numeric_likelihood_note(
+    model: &TrainedModelParams,
+    name: &str,
+) -> Option<NumericLikelihoodNote> {
+    model
+        .numeric_min_variance
+        .get(name)
+        .map(|&min_variance| NumericLikelihoodNote {
+            likelihood: "gaussian_minstd",
+            min_variance,
+            note: format!("Gaussian with a minimum standard deviation floor (Weka-style); minimum variance = {}", min_variance),
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,5 +541,172 @@ mod tests {
         assert_eq!(table.len(), 1);
         assert_eq!(table[0].name, "NotInModel");
         assert!(table[0].categorical.as_ref().unwrap().is_empty());
+    }
+}
+
+// Fase N4 — test keterangan likelihood Numeric dan tabel tanpa baris Text
+// (modul terpisah; test lama tidak diubah).
+#[cfg(test)]
+mod tests_n4 {
+    use super::*;
+    use crate::models::config::{NumericLikelihood, TextLikelihood};
+    use crate::models::data::PreprocessedCase;
+    use crate::stats::numerical_distribution::NumericLikelihoodSpec;
+    use crate::stats::text_features::TextTrainInput;
+    use crate::stats::training::{train_naive_bayes_model, train_naive_bayes_model_v2};
+    use statify_text_core::CsrMatrix;
+    use std::collections::HashMap as StdHashMap;
+
+    fn xy_case(target_class: &str, x: f64, y: f64) -> PreprocessedCase {
+        let mut covariates = StdHashMap::new();
+        covariates.insert("x".to_string(), Some(x));
+        covariates.insert("y".to_string(), Some(y));
+        PreprocessedCase {
+            target_class: target_class.to_string(),
+            factors: StdHashMap::new(),
+            covariates,
+        }
+    }
+
+    /// Golden min-std AGENTS_V2 §6.7: x kelas A [1,1,1], kelas B [3,5].
+    fn minstd_cases() -> Vec<PreprocessedCase> {
+        vec![
+            xy_case("A", 1.0, 1.0),
+            xy_case("A", 1.0, 2.0),
+            xy_case("A", 1.0, 3.0),
+            xy_case("B", 3.0, 10.0),
+            xy_case("B", 5.0, 20.0),
+        ]
+    }
+
+    fn classes() -> Vec<String> {
+        vec!["A".to_string(), "B".to_string()]
+    }
+
+    fn names() -> Vec<String> {
+        vec!["x".to_string(), "y".to_string()]
+    }
+
+    fn order() -> Vec<(String, PredictorRole)> {
+        vec![
+            ("x".to_string(), PredictorRole::Covariate),
+            ("y".to_string(), PredictorRole::Covariate),
+        ]
+    }
+
+    fn minstd_x_model() -> TrainedModelParams {
+        let mut overrides = StdHashMap::new();
+        overrides.insert("x".to_string(), NumericLikelihood::GaussianMinstd);
+        let spec = NumericLikelihoodSpec {
+            default: NumericLikelihood::Gaussian,
+            overrides,
+        };
+        train_naive_bayes_model_v2(
+            &minstd_cases(),
+            &classes(),
+            &[],
+            &names(),
+            1.0,
+            1e-9,
+            &spec,
+            None,
+        )
+        .expect("latih min-std")
+    }
+
+    #[test]
+    fn keterangan_hanya_untuk_atribut_gaussian_minstd() {
+        let model = minstd_x_model();
+
+        let note = numeric_likelihood_note(&model, "x").expect("x memakai min-std");
+        assert_eq!(note.likelihood, "gaussian_minstd");
+        assert!((note.min_variance - 0.111111).abs() < 1e-6);
+        assert!(note.note.contains("minimum standard deviation floor"), "{}", note.note);
+
+        // y Gaussian biasa dan atribut yang tidak ada: tanpa keterangan (perilaku v1).
+        assert_eq!(numeric_likelihood_note(&model, "y"), None);
+        assert_eq!(numeric_likelihood_note(&model, "tidak_ada"), None);
+
+        // Model v1 murni: tidak pernah ada keterangan.
+        let v1 = train_naive_bayes_model(&minstd_cases(), &classes(), &[], &names(), 1.0, 1e-9);
+        assert_eq!(numeric_likelihood_note(&v1, "x"), None);
+    }
+
+    #[test]
+    fn std_dev_tabel_memakai_variance_setelah_min_std() {
+        let model = minstd_x_model();
+        let rows = compute_attribute_distribution_table(&model, &order(), &classes());
+        assert_eq!(rows.len(), 2);
+
+        // x kelas A: variance dinaikkan ke min_var (1/9) -> std = 1/3, bukan sqrt(floor).
+        let x_stats = rows[0].numeric.as_ref().expect("baris numerik x");
+        assert!((x_stats[0].std_dev - 1.0 / 3.0).abs() < 1e-9);
+        // x kelas B: variance 1.0 -> std 1.0.
+        assert!((x_stats[1].std_dev - 1.0).abs() < 1e-9);
+    }
+
+    fn text_matrix() -> CsrMatrix {
+        // 5 baris x 2 term: A A A B B.
+        CsrMatrix {
+            n_rows: 5,
+            n_cols: 2,
+            indptr: vec![0, 1, 2, 3, 4, 5],
+            indices: vec![0, 0, 1, 1, 1],
+            data: vec![1.0, 2.0, 1.0, 3.0, 1.0],
+        }
+    }
+
+    #[test]
+    fn model_dengan_text_tidak_menambah_baris_tabel_hanya_numeric_dan_categorical() {
+        let x = text_matrix();
+        let terms = vec!["kata_a".to_string(), "kata_b".to_string()];
+        let input = TextTrainInput {
+            x: &x,
+            terms: &terms,
+            likelihood: TextLikelihood::Multinomial,
+            alpha: 1.0,
+        };
+        let model = train_naive_bayes_model_v2(
+            &minstd_cases(),
+            &classes(),
+            &[],
+            &names(),
+            1.0,
+            1e-9,
+            &NumericLikelihoodSpec::default(),
+            Some(&input),
+        )
+        .expect("latih campuran");
+        assert!(model.text.is_some());
+
+        // `predictor_order` hanya memuat Numeric/Categorical -> tepat 2 baris,
+        // tak satu pun bernama term Text.
+        let rows = compute_attribute_distribution_table(&model, &order(), &classes());
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|row| row.role == AttributeRole::Numerical));
+        assert!(rows.iter().all(|row| !row.name.starts_with("kata_")));
+
+        // Model hanya-Text (tanpa predictor lain): tabel kosong, bukan error.
+        let text_only_cases: Vec<PreprocessedCase> = ["A", "A", "A", "B", "B"]
+            .iter()
+            .map(|target| PreprocessedCase {
+                target_class: target.to_string(),
+                factors: StdHashMap::new(),
+                covariates: StdHashMap::new(),
+            })
+            .collect();
+        let text_only = train_naive_bayes_model_v2(
+            &text_only_cases,
+            &classes(),
+            &[],
+            &[],
+            1.0,
+            1e-9,
+            &NumericLikelihoodSpec::default(),
+            Some(&input),
+        )
+        .expect("latih hanya-Text");
+        let rows = compute_attribute_distribution_table(&text_only, &[], &classes());
+        assert!(rows.is_empty());
     }
 }

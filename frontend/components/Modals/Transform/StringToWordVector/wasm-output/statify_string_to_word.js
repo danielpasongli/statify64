@@ -9,7 +9,7 @@ export function init_panic_hook() {
  * - `js_data`   : Array<string> (kolom teks dari dataset)
  * - `js_config` : VectorizerConfig object
  *
- * Mengembalikan JSON: { vocabulary, matrix, stats } atau { code, message } jika error.
+ * Mengembalikan objek: { vocabulary, matrix, stats }; bila error, melempar objek JS { code, message }.
  * @param {any} js_data
  * @param {any} js_config
  * @returns {any}
@@ -70,6 +70,10 @@ function __wbg_get_imports() {
             const ret = typeof(val) === 'object' && val !== null;
             return ret;
         },
+        __wbg___wbindgen_is_string_dde0fd9020db4434: function(arg0) {
+            const ret = typeof(arg0) === 'string';
+            return ret;
+        },
         __wbg___wbindgen_is_undefined_35bb9f4c7fd651d5: function(arg0) {
             const ret = arg0 === undefined;
             return ret;
@@ -107,6 +111,10 @@ function __wbg_get_imports() {
             const ret = arg0.done;
             return ret;
         },
+        __wbg_entries_564a7e8b1e54ede5: function(arg0) {
+            const ret = Object.entries(arg0);
+            return ret;
+        },
         __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
             let deferred0_0;
             let deferred0_1;
@@ -122,6 +130,10 @@ function __wbg_get_imports() {
             const ret = Reflect.get(arg0, arg1);
             return ret;
         }, arguments); },
+        __wbg_get_98fdf51d029a75eb: function(arg0, arg1) {
+            const ret = arg0[arg1 >>> 0];
+            return ret;
+        },
         __wbg_get_unchecked_1dfe6d05ad91d9b7: function(arg0, arg1) {
             const ret = arg0[arg1 >>> 0];
             return ret;

@@ -12,6 +12,9 @@ export type ApplyModelModelTabType = {
 export type ApplyModelVariablesTabType = {
   FeatureMapping: Record<string, string | null>; // nama fitur model -> nama variabel dataset
   ActualTargetVar: string | null; // opsional, untuk evaluasi
+  // v2 (AGENTS_V2.md §10.2). Opsional agar data form lama & kode v1 tetap valid.
+  RawTextVar?: string | null; // text.source = raw: variabel STRING dataset untuk teks mentah
+  VectorMapping?: Record<string, string | null>; // text.source = vector: kolom model -> variabel dataset (null = diisi 0)
 };
 
 export type ApplyModelSaveTabType = {

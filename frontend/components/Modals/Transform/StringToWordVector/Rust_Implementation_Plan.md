@@ -1,10 +1,14 @@
 # Rencana Implementasi: Fase 3 (Mesin Rust & WASM)
 
+> **⚠️ Dokumen historis (Fase 3 asli).** Setelah Tahap 1 (`PLAN_FIX.md` S1–S9), sebagian isi di bawah **tidak berlaku lagi**: logika Rust dipindah ke crate `frontend/rust-crates/statify-text-core` (CORE), rumus vektorisasi diganti (preset Weka/scikit-learn/Custom), dan format `stats` serta penanganan error berubah. Rujukan yang berlaku: `README.md` bagian "Status Terkini", `PLAN_FIX.md` §3 (kontrak teknis), dan `frontend/rust-crates/statify-text-core/README.md`. Isi lama dipertahankan apa adanya sebagai sejarah; setiap bagian yang usang ditandai "⚠️ Tidak berlaku lagi" atau "⚠️ Diperbarui".
+
 Dokumen ini adalah panduan teknis step-by-step pengembangan mesin NLP menggunakan Rust yang dikompilasi ke WebAssembly (WASM). Versi ini telah diperbarui dengan perbaikan pipeline, formula standar, error handling, output format, dan rencana integrasi WASM.
 
 ---
 
 ## ⚙️ Dependensi `Cargo.toml` (Final)
+
+> **⚠️ Diperbarui (Tahap 1):** dependensi pengolah teks kini dideklarasikan di `statify-text-core/Cargo.toml` (tanpa `wasm-bindgen`, `web-sys`, `serde-wasm-bindgen`, `console_error_panic_hook`). `STWV/rust/Cargo.toml` hanya menambah dependensi path ke CORE untuk pembungkus WASM.
 
 ```toml
 [dependencies]
@@ -88,6 +92,8 @@ Output: JSON { vocabulary, matrix, stats }
 
 ## 🛠 Langkah 1: Validasi Input (`src/validator.rs`)
 
+> **⚠️ Diperbarui (Tahap 1):** `validator.rs` sekarang di CORE. Perubahan perilaku: dokumen kosong di tengah array **diperbolehkan** (menjadi baris nol); `EMPTY_INPUT` hanya untuk array kosong atau semua dokumen kosong. `ngram_max` dibatasi ≤ 5, `min_term_freq` ≥ 1, dan kombinasi TF/IDF/Normalisasi divalidasi per preset (`INVALID_CONFIG`). Nilai enum tidak dikenal ditolak, tidak lagi jatuh ke default.
+
 **Tujuan:** Sanitasi data sebelum masuk pipeline agar tidak ada crash di tengah proses.
 
 **Logika:**
@@ -135,6 +141,8 @@ pub fn validate_documents(docs: &[String]) -> Result<(), AppError> {
 
 ## 🛠 Langkah 3: Stopwords Filter (`src/stopwords.rs`)
 
+> **⚠️ Diperbarui (Tahap 1):** daftar stopword di-parse **sekali** (`build_set`) dan JSON yang rusak menghasilkan `INVALID_STOPWORDS` (tidak ada lagi fallback diam-diam yang mengosongkan token). Bagian "Log peringatan, lanjutkan tanpa filter" untuk `custom_stopwords = None` tetap berlaku.
+
 **Tujuan:** Buang kata-kata yang tidak informatif berdasarkan HashSet dinamis dari frontend.
 
 **Logika:**
@@ -152,6 +160,8 @@ pub fn validate_documents(docs: &[String]) -> Result<(), AppError> {
 ---
 
 ## 🛠 Langkah 4: Stemmer (`src/stemmer.rs`)
+
+> **⚠️ Diperbarui (Tahap 1):** `Pipeline` membuat stemmer dan `Dictionary` Sastrawi **sekali per batch** (dengan cache memo), bukan per dokumen. Metode tidak dikenal (`_ => tokens`) tidak lagi diterima: nilai enum tidak dikenal menghasilkan `INVALID_CONFIG`. Stemmer tetap memaksa lowercase (catatan tampil di UI).
 
 **Tujuan:** Memangkas kata ke bentuk dasarnya.
 
@@ -203,6 +213,8 @@ pub fn generate_ngrams(tokens: &[String], min: usize, max: usize) -> Vec<String>
 
 ## 🛠 Langkah 6: Vectorizer (`src/vectorizer.rs`)
 
+> **⚠️ Tidak berlaku lagi (rumus lama):** tabel "Formula yang Digunakan" di bawah (TF = `count/total`, IDF smooth sebagai satu-satunya IDF, tanpa normalisasi baris, klaim "kompatibel sklearn") sudah **digantikan** oleh rumus terkunci di `PLAN_FIX.md` §3.2 dan tabel rumus pada `README.md` bagian "Status Terkini". Default baru adalah Weka raw / IDF none / Norm none; padanan sklearn tersedia lewat preset scikit-learn (raw/smooth/l2 = `TfidfVectorizer()` default). Pemilihan kosakata (min term freq, rangking Words to Keep, truncate ketat) dan perhitungan df satu pass juga berubah; lihat README.
+
 **Tujuan:** Mengubah koleksi token per dokumen menjadi matriks angka.
 
 ### Formula yang Digunakan (Standar scikit-learn, kompatibel Python)
@@ -233,6 +245,8 @@ Agar hasil dapat dibandingkan langsung dengan Python `sklearn.TfidfVectorizer`:
 ---
 
 ## 🛠 Langkah 7: Output & Struct Hasil (`lib.rs`)
+
+> **⚠️ Diperbarui (Tahap 1):** `OutputStats` kini berisi `total_documents`, `empty_documents`, `vocabulary_size`, `formula_standard`, dan `method` (mis. `"TF: raw, IDF: none, Norm: none, Keep: 1000, MinFreq: 1"`) sesuai `PLAN_FIX.md` §3.5; contoh JSON dan field `method` di bawah adalah format lama. `AppError` kini bernama `TextError` dan dikirim ke JS sebagai **objek** `{code, message}` (bukan string JSON).
 
 **Format output JSON final yang lengkap:**
 
@@ -282,6 +296,8 @@ Semua error dari `process_text_data` di-return sebagai `Err(JsValue)` berisi JSO
 ---
 
 ## 🛠 Langkah 8: Penyambungan Pipeline (`lib.rs`)
+
+> **⚠️ Tidak berlaku lagi (alur lama):** `process_text_data` di `STWV/rust/src/lib.rs` kini pembungkus tipis yang memanggil `fit_transform` dari CORE lalu `to_dense()`. Alur per dokumen (`tokenizer → stopwords → stemmer → ngram`) berada di `Pipeline::tokens_batch` pada CORE. Urutan pipeline NLP di bagian "Pipeline NLP yang Benar" tetap berlaku.
 
 ```rust
 #[wasm_bindgen]
@@ -386,10 +402,14 @@ Ini mencegah Vite mencoba mem-bundle file WASM glue code yang sudah self-contain
 **Solusi:** Wajib gunakan `once_cell::sync::Lazy<Regex>` atau kompilasi sekali sebelum loop.
 
 ### R3: `sastrawi::Dictionary` Loading
+
+> **✅ Terselesaikan (S2):** `Dictionary`/`Stemmer` dibuat sekali per batch di `Pipeline`.
 **Masalah:** `Dictionary::new()` memuat file FST ke memori. Jika dipanggil per-dokumen, ini lambat.
 **Solusi:** Inisialisasi Dictionary di luar loop: `let dict = Dictionary::new(); let stemmer = Stemmer::new(&dict);`
 
 ### R4: Normalisasi TF-IDF (L2 Norm)
+
+> **⚠️ Diperbarui (S3):** normalisasi diimplementasikan sebagai opsi `normalization` (`none` | `l1` | `l2` | `doc_length`), bukan field `normalize: bool`. Default `none` (preset Weka); preset scikit-learn memakai `l2`.
 **Masalah:** scikit-learn secara default menerapkan **L2 normalization** pada setiap baris matriks TF-IDF. Tanpa ini, hasil angka akan berbeda meski formula IDF sama.
 **Solusi:** Implementasikan langkah normalisasi opsional. Formula: `v_normalized[i] = v[i] / sqrt(sum(v[j]^2))`. Tambahkan field `normalize: bool` di `VectorizerConfig`.
 

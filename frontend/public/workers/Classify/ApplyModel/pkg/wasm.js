@@ -35,9 +35,10 @@ export class ApplyModelAnalysis {
      * @param {any} actual
      * @param {any} actual_defs
      * @param {any} model
+     * @param {any} text
      */
-    constructor(predictors, predictor_defs, mapping, actual, actual_defs, model) {
-        const ret = wasm.applymodelanalysis_new(predictors, predictor_defs, mapping, actual, actual_defs, model);
+    constructor(predictors, predictor_defs, mapping, actual, actual_defs, model, text) {
+        const ret = wasm.applymodelanalysis_new(predictors, predictor_defs, mapping, actual, actual_defs, model, text);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -93,6 +94,10 @@ function __wbg_get_imports() {
         },
         __wbg___wbindgen_is_function_1f9d30630b8b1d3d: function(arg0) {
             const ret = typeof(arg0) === 'function';
+            return ret;
+        },
+        __wbg___wbindgen_is_null_e343b7d08827ba72: function(arg0) {
+            const ret = arg0 === null;
             return ret;
         },
         __wbg___wbindgen_is_object_3c45d4f2dde4e749: function(arg0) {

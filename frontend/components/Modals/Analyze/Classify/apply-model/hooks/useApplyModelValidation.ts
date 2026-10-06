@@ -28,7 +28,7 @@ export type ApplyModelValidationResult = {
 
 export type ApplyModelValidationOutput = {
   validation: ApplyModelValidationResult;
-  /** Pesan (bahasa Indonesia) dari issue error pertama; null bila valid. */
+  /** Pesan (bahasa Inggris) dari issue error pertama; null bila valid. */
   firstErrorMessage: string | null;
 };
 
@@ -60,7 +60,11 @@ function buildValidation(
         descriptor,
         formData.variables.FeatureMapping,
         formData.variables.ActualTargetVar,
-        variables
+        variables,
+        {
+          RawTextVar: formData.variables.RawTextVar,
+          VectorMapping: formData.variables.VectorMapping,
+        }
       )
     );
 

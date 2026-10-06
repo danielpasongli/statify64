@@ -8,21 +8,35 @@
 // SELALU diawali kode error pertama.
 //
 // `score_row` diisi di Fase 8 (§5.4); posterior/argmax di Fase 9.
+//
+// Revisi v2 (Fase A2, AGENTS_V2.md §10): schema `2.0` diterima. Langkah 12
+// (likelihood fitur) dan 13 (blok `text`) ada di `scoring/text.rs`; skor Text
+// memakai `statify-text-core` (V13), BUKAN salinan NB. Perilaku v1 (schema
+// 1.0/1.1) tidak berubah: `score_row` v1 identik, hanya dibungkus
+// `score_row_inner` yang menerima kontribusi Text opsional.
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use serde_json::{Map, Value};
 
 use crate::models::data::DataValue;
-use crate::scoring::{ClassifierScorer, FeatureRole, FeatureSpec, RowScore};
+use crate::scoring::text::TextModel;
+use crate::scoring::{ClassifierScorer, FeatureRole, FeatureSpec, RowScore, TextRowInput};
 use crate::stats::value_label::{
     data_value_to_label, is_missing_value, numeric_value, MISSING_CATEGORY_LABEL,
 };
 
 const MODEL_TYPE: &str = "naive_bayes";
-const SUPPORTED_SCHEMA_VERSIONS: [&str; 2] = ["1.0", "1.1"];
+const SUPPORTED_SCHEMA_VERSIONS: [&str; 3] = ["1.0", "1.1", "2.0"];
 const LEGACY_SCHEMA_VERSION: &str = "1.0";
 const SCHEMA_VERSION_WITH_COUNTS: &str = "1.1";
+/// Revisi v2: schema 2.0 membawa `class_counts`/`class_totals` seperti 1.1.
+const SCHEMA_VERSION_V2: &str = "2.0";
+
+/// Schema yang wajib membawa `target.class_counts` dan `class_totals` (1.1 dan 2.0).
+fn schema_has_counts(version: &str) -> bool {
+    version == SCHEMA_VERSION_WITH_COUNTS || version == SCHEMA_VERSION_V2
+}
 /// Toleransi konsistensi internal (AGENTS.md K8).
 const TOLERANCE: f64 = 1e-6;
 
@@ -82,6 +96,8 @@ pub struct NaiveBayesScorer {
     pub features: Vec<FeatureSpec>,
     /// Sejajar `features`.
     pub feature_params: Vec<NbFeatureParams>,
+    /// Revisi v2: parameter fitur Text (schema 2.0); `None` untuk model v1 / tanpa Text.
+    pub text: Option<TextModel>,
     validation_summary: String,
 }
 
@@ -157,7 +173,7 @@ fn validate_step1_schema_version(root: &JsonObject, errors: &mut Vec<String>) ->
             false
         }
         Some(Value::Null) | None => {
-            errors.push(err("AM_E_SCHEMA_VERSION_UNSUPPORTED", "(tidak ada)"));
+            errors.push(err("AM_E_SCHEMA_VERSION_UNSUPPORTED", "(missing)"));
             false
         }
         Some(other) => {
@@ -293,11 +309,11 @@ fn validate_step4_classes(classes: Option<&[String]>, errors: &mut Vec<String>) 
         None => return, // tipe salah sudah dilaporkan di langkah 3
     };
     if classes.is_empty() {
-        errors.push(err("AM_E_CLASSES_EMPTY", "classes kosong"));
+        errors.push(err("AM_E_CLASSES_EMPTY", "classes is empty"));
         return;
     }
     if has_duplicates(classes) {
-        errors.push(err("AM_E_CLASSES_DUPLICATE", "classes berisi duplikat"));
+        errors.push(err("AM_E_CLASSES_DUPLICATE", "classes contains duplicates"));
     }
 }
 
@@ -368,12 +384,15 @@ fn validate_step7_feature_order(root: &JsonObject, errors: &mut Vec<String>) {
         .filter_map(|n| n.as_str().map(str::to_string))
         .collect();
 
-    if order.is_empty() {
-        errors.push(err("AM_E_FEATURE_ORDER_MISMATCH", "feature_order kosong"));
+    // Revisi v2: model hanya-Text (blok `text` ada, tanpa fitur Numeric/Categorical)
+    // memiliki `feature_order` kosong.
+    let text_only = crate::scoring::text::has_text_block(root) && features.is_empty();
+    if order.is_empty() && !text_only {
+        errors.push(err("AM_E_FEATURE_ORDER_MISMATCH", "feature_order is empty"));
         return;
     }
     if has_duplicates(&order) {
-        errors.push(err("AM_E_FEATURE_ORDER_MISMATCH", "feature_order duplikat"));
+        errors.push(err("AM_E_FEATURE_ORDER_MISMATCH", "feature_order contains duplicates"));
         return;
     }
     let name_set: HashSet<&String> = names.iter().collect();
@@ -385,7 +404,7 @@ fn validate_step7_feature_order(root: &JsonObject, errors: &mut Vec<String>) {
     if !same_set {
         errors.push(err(
             "AM_E_FEATURE_ORDER_MISMATCH",
-            "tidak sama dengan features[].name",
+            "does not match features[].name",
         ));
     }
 }
@@ -537,14 +556,15 @@ fn validate_step10_numerical(
     }
 }
 
-/// Langkah 11 (khusus 1.1): `class_counts` & `class_totals`.
+/// Langkah 11 (khusus 1.1 dan 2.0): `class_counts` & `class_totals`.
 fn validate_step11_counts(
     root: &JsonObject,
     target: Option<&JsonObject>,
     classes: Option<&[String]>,
     errors: &mut Vec<String>,
 ) {
-    if root.get("schema_version").and_then(Value::as_str) != Some(SCHEMA_VERSION_WITH_COUNTS) {
+    let version = root.get("schema_version").and_then(Value::as_str);
+    if !version.map_or(false, schema_has_counts) {
         return;
     }
 
@@ -557,13 +577,13 @@ fn validate_step11_counts(
             match counts {
                 None => errors.push(err("AM_E_COUNTS_INVALID", "target.class_counts")),
                 Some(counts) if counts.len() != class_count => {
-                    errors.push(err("AM_E_COUNTS_INVALID", "target.class_counts: panjang"));
+                    errors.push(err("AM_E_COUNTS_INVALID", "target.class_counts: wrong length"));
                 }
                 Some(counts) if !counts.iter().all(is_non_negative_integer) => {
-                    errors.push(err("AM_E_COUNTS_INVALID", "target.class_counts: nilai"));
+                    errors.push(err("AM_E_COUNTS_INVALID", "target.class_counts: invalid values"));
                 }
                 Some(counts) if counts.iter().filter_map(Value::as_f64).sum::<f64>() == 0.0 => {
-                    errors.push(err("AM_E_COUNTS_INVALID", "target.class_counts: jumlah 0"));
+                    errors.push(err("AM_E_COUNTS_INVALID", "target.class_counts: total is 0"));
                 }
                 Some(_) => counts_valid = true,
             }
@@ -627,7 +647,7 @@ fn validate_step11_counts(
     }
 }
 
-/// Jalankan langkah 1–11; hasil kosong = valid.
+/// Jalankan langkah 1–13 (12–13 khusus schema 2.0); hasil kosong = valid.
 fn validate_model(root: &JsonObject) -> Vec<String> {
     let mut errors: Vec<String> = Vec::new();
 
@@ -654,6 +674,9 @@ fn validate_model(root: &JsonObject) -> Vec<String> {
     validate_step9_categorical(root, classes_ref, &mut errors);
     validate_step10_numerical(root, classes_ref, &mut errors);
     validate_step11_counts(root, target, classes_ref, &mut errors);
+    // Revisi v2 (§10.1): langkah 12 (likelihood fitur) dan 13 (blok `text`).
+    crate::scoring::text::validate_feature_likelihoods(root, &mut errors);
+    crate::scoring::text::validate_text_block(root, classes_ref, &mut errors);
 
     errors
 }
@@ -715,7 +738,7 @@ impl NaiveBayesScorer {
     pub fn from_json(model: &Value) -> Result<NaiveBayesScorer, String> {
         let root = model
             .as_object()
-            .ok_or_else(|| err("AM_E_NOT_OBJECT", "model bukan objek JSON"))?;
+            .ok_or_else(|| err("AM_E_NOT_OBJECT", "The model file must contain a JSON object."))?;
 
         let errors = validate_model(root);
         if !errors.is_empty() {
@@ -730,7 +753,7 @@ impl NaiveBayesScorer {
             .and_then(Value::as_str)
             .ok_or_else(|| type_err("schema_version"))?
             .to_string();
-        let has_counts = schema_version == SCHEMA_VERSION_WITH_COUNTS;
+        let has_counts = schema_has_counts(&schema_version);
 
         let target = root
             .get("target")
@@ -884,6 +907,9 @@ impl NaiveBayesScorer {
             }
         }
 
+        // Revisi v2: blok `text` (hanya schema 2.0; `None` bila tidak ada / `null`).
+        let text = crate::scoring::text::extract_text_model(root, &classes)?;
+
         Ok(NaiveBayesScorer {
             schema_version,
             classes,
@@ -893,6 +919,7 @@ impl NaiveBayesScorer {
             variance_floor,
             features,
             feature_params,
+            text,
             validation_summary: format_training_validation(root.get("validation_config")),
         })
     }
@@ -942,7 +969,7 @@ impl ClassifierScorer for NaiveBayesScorer {
     }
 
     fn summary_parameters(&self) -> Vec<(String, String)> {
-        vec![
+        let mut parameters = vec![
             (
                 "Smoothing alpha".to_string(),
                 self.smoothing_alpha.to_string(),
@@ -955,7 +982,21 @@ impl ClassifierScorer for NaiveBayesScorer {
                 "Validation (training)".to_string(),
                 self.validation_summary.clone(),
             ),
-        ]
+        ];
+        // Revisi v2 (§10.4): baris statis fitur Text (hanya model dengan Text).
+        // Baris dinamis (`Text features zero-filled` / `Rows with empty text`)
+        // ditambahkan oleh `wasm::function` setelah payload Text diproses.
+        if let Some(text) = &self.text {
+            parameters.push((
+                "Text source".to_string(),
+                text.source.as_str().to_string(),
+            ));
+            parameters.push((
+                "Text likelihood".to_string(),
+                crate::scoring::text::likelihood_name(text.params.likelihood).to_string(),
+            ));
+        }
+        parameters
     }
 
     fn is_legacy_unseen_handling(&self) -> bool {
@@ -964,7 +1005,25 @@ impl ClassifierScorer for NaiveBayesScorer {
 
     /// Skor log per kelas untuk satu baris (AGENTS.md §5.4). Hasil `log_scores`
     /// sejajar `classes` model; belum dinormalisasi (posterior = Fase 9).
+    /// Tanpa kontribusi Text (perilaku v1); lihat `score_row_with_text`.
     fn score_row(&self, values: &[DataValue]) -> RowScore {
+        self.score_row_inner(values, None)
+    }
+
+    fn text_model(&self) -> Option<&TextModel> {
+        self.text.as_ref()
+    }
+
+    /// Revisi v2 (AGENTS_V2.md §10.4): skor satu baris + kontribusi Text.
+    fn score_row_with_text(&self, values: &[DataValue], text: Option<TextRowInput<'_>>) -> RowScore {
+        self.score_row_inner(values, text)
+    }
+}
+
+impl NaiveBayesScorer {
+    /// Isi `score_row` v1 + kontribusi Text opsional (revisi v2). Dengan
+    /// `text = None` hasilnya IDENTIK dengan v1 (regresi nol, P-V1).
+    fn score_row_inner(&self, values: &[DataValue], text: Option<TextRowInput<'_>>) -> RowScore {
         // Pengaman: `values` harus sejajar `features`. Ketidaksejajaran
         // payload ditolak (`AM_E_PAYLOAD`) di Fase 9 sebelum scoring; di sini
         // cukup tidak panic.
@@ -973,12 +1032,26 @@ impl ClassifierScorer for NaiveBayesScorer {
         }
 
         // Langkah 1 (K5): seluruh prediktor missing -> tidak diprediksi.
-        if values.iter().all(is_missing_value) {
+        // Revisi v2 (V11): bila ada masukan Text, prediktor Text ikut dihitung —
+        // baris NotScored hanya bila fitur lain DAN teks sama-sama missing.
+        // (Model hanya-Text punya `values` kosong; `all` pada larik kosong = true.)
+        let features_all_missing = values.iter().all(is_missing_value);
+        let text_missing = text.as_ref().map_or(true, |input| input.missing);
+        if features_all_missing && text_missing {
             return RowScore::NotScored;
         }
 
         // Langkah 2: log prior per kelas (urutan `classes` model).
-        let mut log_scores: Vec<f64> = self.class_priors.iter().map(|p| safe_ln(*p)).collect();
+        // Revisi v2 (§6.3): Complement dengan K >= 2 tanpa prior (`uses_class_prior = false`).
+        let uses_class_prior = self
+            .text
+            .as_ref()
+            .map_or(true, |model| model.params.uses_class_prior);
+        let mut log_scores: Vec<f64> = if uses_class_prior {
+            self.class_priors.iter().map(|p| safe_ln(*p)).collect()
+        } else {
+            vec![0.0; self.class_priors.len()]
+        };
         let mut had_missing = false;
         let mut had_unseen = false;
         let mut skipped_unseen: usize = 0;
@@ -1055,6 +1128,19 @@ impl ClassifierScorer for NaiveBayesScorer {
                         }
                     }
                 }
+            }
+        }
+
+        // Revisi v2: kontribusi Text (dihitung `CORE::nb_text::score_rows`, tanpa prior).
+        // Teks missing + prediktor lain = vektor nol: kontribusi tetap ditambahkan apa
+        // adanya (Multinomial/Complement 0; Bernoulli Σ A_ct), baris dihitung punya
+        // prediktor missing.
+        if let Some(input) = text {
+            for (score, extra) in log_scores.iter_mut().zip(input.contribution.iter()) {
+                *score += *extra;
+            }
+            if input.missing {
+                had_missing = true;
             }
         }
 
@@ -1319,9 +1405,11 @@ mod tests {
     #[test]
     fn error_schema_version_unsupported() {
         let mut v = d1();
-        v["schema_version"] = json!("2.0");
+        // Revisi v2 (Fase A2): "2.0" kini didukung, jadi contoh versi tak didukung dinaikkan ke "3.0".
+        // Kode error yang diharapkan tidak berubah.
+        v["schema_version"] = json!("3.0");
         assert_single_code(&v, "AM_E_SCHEMA_VERSION_UNSUPPORTED");
-        assert!(build_err(&v).contains("2.0"));
+        assert!(build_err(&v).contains("3.0"));
     }
 
     #[test]

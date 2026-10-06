@@ -3,26 +3,21 @@ import { useVariableStore, processVariableName } from "@/stores/useVariableStore
 import { useDataStore } from "@/stores/useDataStore";
 import { toast } from "sonner";
 import type { Variable } from "@/types/Variable";
-import { INDONESIAN_STOPWORDS, ENGLISH_STOPWORDS } from "../constants/stopwords";
+import { STWV_DEFAULT_CONFIG, getVectorDecimals, toRustConfig, validateStwvConfig, type StwvConfig } from "../config";
+import type { AppError, VectorizerOutput } from "../types";
+import { buildDocuments, areAllDocumentsEmpty, EMPTY_DATA_ERROR } from "../utils/buildDocuments";
+import { buildColumnData } from "../utils/buildColumnData";
+import { normalizeWorkerError } from "../utils/normalizeWorkerError";
+import { resolveVariable } from "../utils/resolveVariable";
+import { DEFAULT_COLUMN_PREFIX, validateColumnPrefix } from "../utils/columnPrefix";
+import { buildStwvOutput } from "../utils/buildStwvOutput";
+import { writeStwvOutput } from "../utils/writeStwvOutput";
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────────────────────────────────────────
+// Tipe dipusatkan di ../types; di-re-export agar impor lama tetap valid.
+export type { AppError, VectorizerOutput } from "../types";
 
-export interface VectorizerOutput {
-    vocabulary: string[];
-    matrix: number[][];
-    stats: {
-        total_documents: number;
-        vocabulary_size: number;
-        method: string;
-    };
-}
-
-export interface AppError {
-    code: string;
-    message: string;
-}
+const isAppError = (v: unknown): v is AppError =>
+    typeof v === "object" && v !== null && typeof (v as AppError).code === "string" && typeof (v as AppError).message === "string" && !(v instanceof Error);
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Hook
@@ -38,31 +33,11 @@ export const useStringToWordVector = () => {
     const [highlightedVariable, setHighlightedVariable] = useState<Variable | null>(null);
 
     // ── Options state ─────────────────────────────────────────────────────────
-    const [config, setConfig] = useState({
-        lowercase: true,
-        stopwords: {
-            method: "none", // none | indonesian | english | custom
-            customList: "ada\nadalah\nadanya\nadapun\nagak\nagaknya\nagar\nakan\nakankah\nakhir\nakhiri"
-        },
-        stemming: {
-            method: "none", // none | indonesian | english
-        },
-        tokenizer: {
-            type: "word",  // word | ngram
-            minSize: 1,
-            maxSize: 2,
-        },
-        delimiters: "[\\s.,;:'\"()?!]+",
-        vectorization: {
-            tfMethod: "log", // binary | raw | normalized | log
-            idfMethod: "smooth", // none | idf | smooth
-        },
-        wordsToKeep: 1000,
-    });
+    const [config, setConfig] = useState<StwvConfig>(STWV_DEFAULT_CONFIG);
 
     // ── Execution state ───────────────────────────────────────────────────────
     const [isLoading, setIsLoading] = useState(false);
-    const [result, setResult] = useState<VectorizerOutput | null>(null);
+    const [columnPrefix, setColumnPrefix] = useState<string>(DEFAULT_COLUMN_PREFIX);
     const [error, setError] = useState<AppError | null>(null);
 
     // Worker ref — akan diinisialisasi lazy saat pertama kali dibutuhkan
@@ -98,166 +73,196 @@ export const useStringToWordVector = () => {
 
     const removeTarget = () => {
         setSelectedVariable(null);
-        setResult(null);
         setError(null);
     };
 
-    // ── Fungsi Run utama ──────────────────────────────────────────────────────
-    const runVectorizer = useCallback(async () => {
-        if (!selectedVariable) return;
-
-        setIsLoading(true);
-        setError(null);
-        setResult(null);
-
-        try {
-            // 1. Ambil data kolom dari store
-            const { data: columnData } = await getVariableData(selectedVariable);
-
-            // Konversi ke string[], buang null/empty
-            const rawDocuments: string[] = columnData
-                .filter((v): v is string | number => v !== null && v !== undefined && v !== "")
-                .map(v => String(v));
-
-            if (rawDocuments.length === 0) {
-                setError({ code: "EMPTY_DATA", message: "Variabel yang dipilih tidak memiliki data teks." });
-                setIsLoading(false);
-                return;
-            }
-
-            // 2. Siapkan payload config untuk Rust
-            //    Konversi format config UI → format yang dimengerti Rust
-            const isNgram = config.tokenizer.type === "ngram";
-            const rustConfig = {
-                lowercase: config.lowercase,
-                stemming_method: config.stemming.method,
-                stopwords_method: config.stopwords.method,
-                // Kirim stopwords sebagai JSON array string, atau null jika method "none"
-                custom_stopwords: (() => {
-                    if (config.stopwords.method === "indonesian") {
-                        return JSON.stringify(INDONESIAN_STOPWORDS);
-                    }
-                    if (config.stopwords.method === "english") {
-                        return JSON.stringify(ENGLISH_STOPWORDS);
-                    }
-                    if (config.stopwords.method === "custom") {
-                        return JSON.stringify(
-                            config.stopwords.customList
-                                .split("\n")
-                                .map(s => s.trim())
-                                .filter(Boolean)
-                        );
-                    }
-                    return null;
-                })(),
-                // Gunakan regex yang dikirim dari UI sebagai-is
-                delimiters: config.delimiters,
-                // Jika mode "word" (bukan n-gram), paksa min=max=1
-                ngram_min: isNgram ? config.tokenizer.minSize : 1,
-                ngram_max: isNgram ? config.tokenizer.maxSize : 1,
-                tf_method: config.vectorization.tfMethod,
-                idf_method: config.vectorization.idfMethod,
-                words_to_keep: config.wordsToKeep || 1000,
-            };
-
-            // 3. Inisialisasi Worker (lazy) dan kirim pesan
+    // ── Worker helper: kirim pesan lalu tunggu hasil sebagai Promise ───────────
+    const runWorker = (documents: string[], rustConfig: ReturnType<typeof toRustConfig>) =>
+        new Promise<VectorizerOutput>((resolve, reject) => {
             if (!workerRef.current) {
                 workerRef.current = new Worker(
                     new URL("../stringToWord.processor.ts", import.meta.url),
                     { type: "module" }
                 );
             }
-
             const worker = workerRef.current;
 
-            // 4. Set handler sebelum kirim pesan
             worker.onmessage = (event: MessageEvent) => {
                 const { status, payload } = event.data;
                 if (status === "success") {
-                    setResult(payload as VectorizerOutput);
+                    resolve(payload as VectorizerOutput);
                 } else {
-                    setError(payload as AppError);
+                    // F04: payload bisa string JSON / objek / Error — selalu dinormalkan
+                    reject(normalizeWorkerError(payload));
                 }
-                setIsLoading(false);
             };
-
             worker.onerror = (event: ErrorEvent) => {
-                setError({
-                    code: "WORKER_ERROR",
-                    message: `Web Worker error: ${event.message}`,
-                });
-                setIsLoading(false);
+                reject(normalizeWorkerError(event.error ?? event.message, "WORKER_ERROR"));
             };
 
-            worker.postMessage({ data: rawDocuments, config: rustConfig });
+            worker.postMessage({ data: documents, config: rustConfig });
+        });
 
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : "Terjadi kesalahan tidak diketahui.";
-            setError({ code: "INTERNAL_ERROR", message });
-            setIsLoading(false);
-        }
-    }, [selectedVariable, config, getVariableData]);
+    // ── Tambahkan kolom vektor ke dataset; mengembalikan nama final tiap kolom ──
+    const addVectorColumns = async (output: VectorizerOutput, prefix: string): Promise<string[]> => {
+        const dataStore = useDataStore.getState();
+        const varStore = useVariableStore.getState();
+        const tempVariables = [...varStore.variables];
 
-    const saveToDataset = async () => {
-        if (!result) return;
-        try {
-            setIsLoading(true);
-            const dataStore = useDataStore.getState();
-            const variablesStore = useVariableStore.getState();
-            const tempVariables = [...variablesStore.variables];
-            
-            // 1. Prepare safe variable names and ColumnData list
-            const columnDataList = result.vocabulary.map((term, colIndex) => {
-                // Gunakan processVariableName agar nama unik, valid untuk SPSS, 
-                // dan tidak terpotong begitu saja jika illegal
-                const baseName = `VEC_${term}`;
-                const { processedName } = processVariableName(baseName, tempVariables);
-                const finalName = processedName || `VEC_VAR_${colIndex}`;
-                
-                // Simpan ke tempVariables agar iterasi berikutnya tau kalau nama ini sudah dipakai (uniqueness check)
-                tempVariables.push({ name: finalName, columnIndex: 999 } as any);
+        // 1. Nama variabel aman (unik, valid SPSS) dan ColumnData.
+        //    Baris dataset sejajar dengan dokumen asli (F01): values[i] = matrix[i][kolom].
+        const columnDataList = buildColumnData(output, (baseName, claimedNames) => {
+            // Nama yang sudah dipakai kolom vektor sebelumnya dianggap terpakai (cek keunikan)
+            const stubs = claimedNames.map(
+                (name) => ({ name, columnIndex: 999 }) as unknown as Variable
+            );
+            return processVariableName(baseName, [...tempVariables, ...stubs]).processedName;
+        }, prefix);
 
-                return {
-                    variable_name: finalName, // Akan kita pakai untuk tracking
-                    values: result.matrix.map(row => row[colIndex])
-                };
-            });
+        // 2. Tambahkan data ke DataStore.
+        //    Kosongkan dulu pendingUpdates: bila masih ada, saveData() di addVariableColumns hanya
+        //    menulis edit sel dan melewatkan kolom baru (kolom hilang setelah reload/export).
+        await dataStore.checkAndSave();
+        const { startColumnIndex } = await dataStore.addVariableColumns(columnDataList);
 
-            // 2. Tambahkan Data ke DataStore
-            const { startColumnIndex } = await dataStore.addVariableColumns(columnDataList);
+        // 3. Daftarkan metadata variabel ke VariableStore
+        const decimals = getVectorDecimals(config);
+        const newVarsMetadata = output.vocabulary.map((term, index) => ({
+            columnIndex: startColumnIndex + index,
+            name: columnDataList[index].variable_name,
+            type: "NUMERIC" as const,
+            width: 8,
+            // Desimal memperhitungkan IDF dan normalisasi (nilai pecahan bila salah satunya aktif)
+            decimals,
+            label: `Vector of "${term}"`,
+            values: [],
+            missing: null,
+            columns: 64,
+            align: "right" as const,
+            measure: "scale" as const,
+            role: "input" as const,
+        }));
+        await varStore.registerVariableMetadata(newVarsMetadata);
 
-            // 3. Daftarkan Metadata Variabel ke VariableStore
-            const newVarsMetadata = result.vocabulary.map((term, index) => {
-                const finalName = columnDataList[index].variable_name; // Ambil nama yang sudah aman dari map sebelumnya
-                return {
-                    columnIndex: startColumnIndex + index,
-                    name: finalName,
-                    type: 'NUMERIC' as const,
-                    width: 8,
-                    decimals: (config.vectorization.tfMethod === 'none' || config.vectorization.tfMethod === 'binary' || config.vectorization.tfMethod === 'raw') && config.vectorization.idfMethod === 'none' ? 0 : 4,
-                    label: `Vector of "${term}"`,
-                    values: [],
-                    missing: null,
-                    columns: 64,
-                    align: 'right' as const,
-                    measure: 'scale' as const,
-                    role: 'input' as const
-                };
-            });
+        // 4. Sinkronkan ulang UI
+        await varStore.loadVariables();
 
-            await variablesStore.registerVariableMetadata(newVarsMetadata);
-            
-            // 4. Pastikan UI sinkron ulang dengan reload variables
-            await variablesStore.loadVariables();
-
-            toast.success(`${result.vocabulary.length} kolom vektor berhasil ditambahkan ke dataset!`);
-        } catch (err: any) {
-            toast.error("Gagal menyimpan ke dataset: " + err.message);
-        } finally {
-            setIsLoading(false);
-        }
+        return columnDataList.map((c) => c.variable_name);
     };
 
+    // ── Aksi tombol OK: jalankan STWV → tambah kolom ke dataset → tulis Output Viewer ──
+    // Mengembalikan true bila kolom berhasil ditambahkan (modal boleh ditutup).
+    const runAndAddToDataset = useCallback(async (): Promise<boolean> => {
+        if (!selectedVariable) return false;
+
+        const configErrors = validateStwvConfig(config);
+        if (configErrors.length > 0) {
+            setError({ code: "INVALID_CONFIG", message: configErrors[0] });
+            return false;
+        }
+        const prefixError = validateColumnPrefix(columnPrefix);
+        if (prefixError) {
+            setError({ code: "INVALID_COLUMN_NAME", message: prefixError });
+            return false;
+        }
+
+        setIsLoading(true);
+        setError(null);
+
+        let output: VectorizerOutput;
+        let variableName = selectedVariable.name;
+        let durationMs = 0;
+        try {
+            // 0. F20: re-resolve variabel dari store (snapshot bisa basi bila kolom berubah)
+            const currentVariables = useVariableStore.getState().variables;
+            const variable = resolveVariable(selectedVariable, currentVariables);
+            if (!variable) {
+                setError({
+                    code: "VARIABLE_NOT_FOUND",
+                    message: "The selected variable no longer exists in the dataset. Select the text variable again.",
+                });
+                setIsLoading(false);
+                return false;
+            }
+            variableName = variable.name;
+
+            // 1a. Simpan dulu edit sel yang tertunda (pendingUpdates). getVariableData membaca dari
+            //     database, bukan dari memori, sehingga tanpa ini proses memakai teks lama.
+            await useDataStore.getState().checkAndSave();
+
+            // 1b. Ambil data kolom
+            const { data: columnData } = await getVariableData(variable);
+
+            // F01: jangan buang baris. null/undefined → "" agar indeks tetap sejajar dengan dataset.
+            const rawDocuments = buildDocuments(columnData);
+            if (areAllDocumentsEmpty(rawDocuments)) {
+                setError(EMPTY_DATA_ERROR);
+                setIsLoading(false);
+                return false;
+            }
+
+            // 2. Vektorisasi di worker
+            const startedAt = performance.now();
+            output = await runWorker(rawDocuments, toRustConfig(config));
+            durationMs = performance.now() - startedAt;
+        } catch (err: unknown) {
+            if (isAppError(err)) {
+                setError(err);
+            } else {
+                const message = err instanceof Error ? err.message : "An unknown error occurred.";
+                setError({ code: "INTERNAL_ERROR", message });
+            }
+            setIsLoading(false);
+            return false;
+        }
+
+        // 3. Tambahkan kolom ke dataset
+        let columnNames: string[];
+        try {
+            columnNames = await addVectorColumns(output, columnPrefix);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            setError({ code: "SAVE_FAILED", message: "Could not add the vector columns to the dataset: " + message });
+            setIsLoading(false);
+            return false;
+        }
+
+        // 4. Catat proses di Output Viewer (kegagalan di sini tidak membatalkan kolom yang sudah ditambahkan)
+        try {
+            await writeStwvOutput(
+                buildStwvOutput({
+                    variableName,
+                    config,
+                    result: output,
+                    columnPrefix,
+                    columnNames,
+                    durationMs,
+                })
+            );
+            toast.success(
+                columnNames.length === 1
+                    ? "1 vector column was added to the dataset."
+                    : `${columnNames.length} vector columns were added to the dataset.`
+            );
+        } catch (err: unknown) {
+            console.error("Failed to write the String to Word Vector output:", err);
+            toast.warning(
+                `${columnNames.length} vector ${columnNames.length === 1 ? "column was" : "columns were"} added, but the processing summary could not be written to the Output Viewer.`
+            );
+        }
+
+        setIsLoading(false);
+        return true;
+    }, [selectedVariable, config, columnPrefix, getVariableData]);
+
+    // ── Reset: kembalikan semua pilihan ke kondisi awal ───────────────────────
+    const reset = () => {
+        setSelectedVariable(null);
+        setHighlightedVariable(null);
+        setConfig(STWV_DEFAULT_CONFIG);
+        setColumnPrefix(DEFAULT_COLUMN_PREFIX);
+        setError(null);
+    };
 
     // ──────────────────────────────────────────────────────────────────────────
     return {
@@ -273,11 +278,14 @@ export const useStringToWordVector = () => {
         config,
         setConfig,
 
+        // Output column name
+        columnPrefix,
+        setColumnPrefix,
+
         // Execution Context
         isLoading,
-        result,
         error,
-        runVectorizer,
-        saveToDataset,
+        runAndAddToDataset,
+        reset,
     };
 };

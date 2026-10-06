@@ -14,8 +14,8 @@
 // setelah dipindah ke struct).
 use wasm_bindgen::prelude::*;
 
-use crate::models::config::NaiveBayesConfig;
-use crate::models::data::{AnalysisData, DataRecord, VariableDefinition};
+use crate::models::config::{parse_config_v2, NaiveBayesConfig, NaiveBayesConfigV2};
+use crate::models::data::{AnalysisData, DataRecord, TextPayload, VariableDefinition};
 use crate::utils::converter::string_to_js_error;
 use crate::utils::error::ErrorCollector;
 use crate::wasm::function::{self, NaiveBayesAnalysisResult};
@@ -26,6 +26,11 @@ pub struct NaiveBayesAnalysis {
     config: NaiveBayesConfig,
     #[allow(dead_code)]
     data: AnalysisData,
+    // Fase N1 (PLAN_V2): field konfigurasi v2 + payload Text. Disimpan
+    // terpisah dari `config`/`data` v1 supaya struct v1 tidak berubah;
+    // Fase N3a: diteruskan ke `run_analysis` (jalur Text `vector`).
+    config_v2: NaiveBayesConfigV2,
+    text: TextPayload,
     result: Option<NaiveBayesAnalysisResult>,
     error_collector: ErrorCollector,
 }
@@ -39,6 +44,8 @@ impl NaiveBayesAnalysis {
         target_data_defs: JsValue,
         predictors_data_defs: JsValue,
         config_data: JsValue,
+        // Fase N1: argumen baru; `undefined`/`null` (payload v1) -> `TextPayload::None`.
+        text: JsValue,
     ) -> Result<NaiveBayesAnalysis, JsValue> {
         let mut error_collector = ErrorCollector::default();
 
@@ -104,6 +111,35 @@ impl NaiveBayesAnalysis {
             }
         };
 
+        // Fase N1: field konfigurasi v2 dari JSON `config` yang sama. Payload
+        // v1 (tanpa field baru) menghasilkan default v2 sehingga perilaku v1
+        // tidak berubah.
+        let config_v2: NaiveBayesConfigV2 =
+            match serde_wasm_bindgen::from_value::<serde_json::Value>(config_data.clone())
+                .map_err(|e| format!("The Naive Bayes configuration is invalid: {}", e))
+                .and_then(parse_config_v2)
+            {
+                Ok(cfg) => cfg,
+                Err(msg) => {
+                    error_collector.add_error("constructor.config_v2", &msg);
+                    return Err(string_to_js_error(msg));
+                }
+            };
+
+        // Fase N1: payload Text (AGENTS_V2 §5.1). `undefined`/`null` -> None.
+        let text_payload: TextPayload = if text.is_undefined() || text.is_null() {
+            TextPayload::None
+        } else {
+            match serde_wasm_bindgen::from_value(text) {
+                Ok(payload) => payload,
+                Err(e) => {
+                    let msg = format!("Failed to read the text data: {}", e);
+                    error_collector.add_error("constructor.text", &msg);
+                    return Err(string_to_js_error(msg));
+                }
+            }
+        };
+
         // Validasi minimal (pengaman lapis kedua di sisi Rust, mengikuti
         // pola KNN) — validasi lengkap sesuai AGENTS.md §4.4 sudah ditegakkan
         // di sisi UI (`useNaiveBayesValidation`) sejak Fase 5; validasi
@@ -115,7 +151,11 @@ impl NaiveBayesAnalysis {
             .target_var
             .as_ref()
             .is_none_or(|target| target.trim().is_empty());
-        let predictors_are_missing = predictors_data_defs.is_empty();
+        // Fase N1: model hanya-Text (tanpa predictor Numeric/Categorical)
+        // sah di v2 (AGENTS_V2 §3.3); untuk payload v1 (`TextPayload::None`)
+        // aturan lama tetap persis sama.
+        let predictors_are_missing =
+            predictors_data_defs.is_empty() && matches!(text_payload, TextPayload::None);
 
         if target_is_missing && predictors_are_missing {
             let msg = "At least one target and predictor variable must be selected".to_string();
@@ -145,6 +185,8 @@ impl NaiveBayesAnalysis {
         let mut analysis = NaiveBayesAnalysis {
             config,
             data,
+            config_v2,
+            text: text_payload,
             result: None,
             error_collector,
         };
@@ -159,8 +201,22 @@ impl NaiveBayesAnalysis {
         analysis.result = function::run_analysis(
             &analysis.data,
             &analysis.config,
+            &analysis.config_v2,
+            &analysis.text,
             &mut analysis.error_collector,
         );
+
+        // Fase N3a: pada run dengan fitur Text, kegagalan blokir-keras (mis.
+        // `NB_E_TEXT_NEGATIVE` dengan nama kolom, `NB_E_COMPLEMENT_MIXED`) harus
+        // sampai ke pengguna lewat pesan galat konstruktor — bukan hanya lewat
+        // `get_formatted_results()` yang berpesan generik "No analysis results
+        // available". Run tanpa Text (v1) TIDAK berubah: galatnya tetap diambil
+        // dari `get_formatted_results()`/`get_all_errors()` seperti sebelumnya.
+        if analysis.result.is_none() && !matches!(analysis.text, TextPayload::None) {
+            return Err(string_to_js_error(
+                analysis.error_collector.get_error_summary(),
+            ));
+        }
 
         Ok(analysis)
     }

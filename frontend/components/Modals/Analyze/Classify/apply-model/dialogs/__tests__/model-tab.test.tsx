@@ -210,12 +210,12 @@ describe("ModelTab — sumber file", () => {
 });
 
 describe("ModelTab — sumber bawaan dan Output Viewer", () => {
-  it("radio built-in: Select disabled dan teks 'Belum ada model bawaan Statify.'", async () => {
+  it("radio built-in: Select disabled dan teks 'There are no built-in Statify models yet.'", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("radio", { name: "Statify built-in model" }));
 
     expect(
-      await screen.findByText("Belum ada model bawaan Statify.")
+      await screen.findByText("There are no built-in Statify models yet.")
     ).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Built-in model" })).toBeDisabled();
   });

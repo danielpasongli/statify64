@@ -40,7 +40,7 @@ const context = {
   })),
 };
 
-type StatisticArg = { title: string; components: string; output_data: string };
+type StatisticArg = { title: string; description: string; components: string; output_data: string };
 
 function cloneRaw(): ApplyModelRawResult {
   return JSON.parse(JSON.stringify(rawFixture)) as ApplyModelRawResult;
@@ -175,5 +175,45 @@ describe("resultApplyModel", () => {
 
     expect(components()).not.toContain("Case Processing Summary");
     expect(components()).not.toContain("Export Model");
+  });
+});
+
+describe("resultApplyModel — description (interpretasi otomatis)", () => {
+  const plain = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/g, " ");
+  const words = (html: string) => plain(html).split(/\s+/).filter(Boolean).length;
+
+  it("setiap statistic punya description HTML English yang bersih dan 60-220 kata", async () => {
+    await run();
+
+    const args = statisticArgs();
+    expect(args).toHaveLength(7);
+    args.forEach((arg) => {
+      expect(arg.description).toMatch(/^<p><strong>What this shows\.<\/strong>/);
+      expect(arg.description).not.toMatch(/NaN|undefined|\[object|Infinity|AGENTS|§/);
+      expect(arg.description).not.toBe(arg.title);
+      expect(words(arg.description)).toBeGreaterThanOrEqual(60);
+      expect(words(arg.description)).toBeLessThanOrEqual(220);
+    });
+  });
+
+  it("description memuat angka fixture dan baris yang dikecualikan dari evaluasi", async () => {
+    await run();
+
+    const byComponent = (name: string) =>
+      statisticArgs().find((arg) => arg.components === name)?.description ?? "";
+
+    expect(byComponent("Apply Model Case Processing Summary")).toContain("5 of 6 rows (83.3%) were scored");
+    expect(byComponent("Apply Model Prediction Distribution")).toContain("'Yes' with 3 rows (60.0% of the scored rows)");
+    expect(byComponent("Apply Model Saved Variables")).toContain("4 new variables were added");
+    expect(byComponent("Apply Model Cohen's Kappa")).toContain("0.500");
+    expect(byComponent("Apply Model Confusion Matrix")).toContain("excluded from the evaluation");
+  });
+
+  it("flag dimatikan: tidak ada description untuk statistic yang tidak ditulis", async () => {
+    await run({ EvaluationMetrics: false, ConfusionMatrix: false });
+
+    // Metrics + Kappa (satu flag) dan Confusion Matrix mati -> sisa 4 statistic.
+    expect(statisticArgs()).toHaveLength(4);
+    statisticArgs().forEach((arg) => expect(arg.description).not.toBe(arg.title));
   });
 });

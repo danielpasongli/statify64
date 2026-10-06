@@ -1,0 +1,428 @@
+{
+  "schema_version": "2.0",
+  "model_type": "naive_bayes",
+  "trained_at": "2026-10-05T07:00:35.183Z",
+  "target": {
+    "name": "Addiction_Level",
+    "classes": [
+      "High",
+      "Low",
+      "Moderate",
+      "Severe"
+    ],
+    "class_priors": [
+      0.2,
+      0.3,
+      0.2,
+      0.3
+    ],
+    "class_counts": [
+      2,
+      3,
+      2,
+      3
+    ]
+  },
+  "features": [
+    {
+      "name": "Age",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Moderate": 20,
+        "Low": 34.666666666666664,
+        "High": 39,
+        "Severe": 33
+      },
+      "variance": {
+        "Low": 16.88888888888889,
+        "Moderate": 4,
+        "High": 1,
+        "Severe": 104
+      },
+      "min_variance": 0.27126736111111116
+    },
+    {
+      "name": "Anxiety_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "High": 6.449999999999999,
+        "Low": 3.8000000000000003,
+        "Moderate": 4.95,
+        "Severe": 3.733333333333333
+      },
+      "variance": {
+        "High": 1.3224999999999998,
+        "Moderate": 2.4025,
+        "Severe": 0.09555555555555562,
+        "Low": 1.2200000000000002
+      },
+      "min_variance": 0.008919753086419752
+    },
+    {
+      "name": "Daily_Usage_Hours",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Moderate": 4,
+        "High": 5,
+        "Severe": 7.233333333333333,
+        "Low": 3.6666666666666665
+      },
+      "variance": {
+        "Low": 5.7088888888888905,
+        "Severe": 3.3355555555555547,
+        "High": 0.027777777777777776,
+        "Moderate": 0.3599999999999999
+      },
+      "min_variance": 0.027777777777777776
+    },
+    {
+      "name": "Depression_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Severe": 3.1666666666666665,
+        "Low": 3.8666666666666667,
+        "Moderate": 3.05,
+        "High": 1.9
+      },
+      "variance": {
+        "Moderate": 9.302499999999998,
+        "Severe": 0.08222222222222227,
+        "High": 3.61,
+        "Low": 1.3088888888888885
+      },
+      "min_variance": 0.021094104308390017
+    },
+    {
+      "name": "FOMO_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Severe": 4.866666666666666,
+        "High": 3.35,
+        "Moderate": 6.25,
+        "Low": 3.766666666666667
+      },
+      "variance": {
+        "Low": 4.1688888888888895,
+        "Moderate": 0.0625,
+        "Severe": 1.348888888888889,
+        "High": 0.4224999999999999
+      },
+      "min_variance": 0.013611111111111109
+    },
+    {
+      "name": "Loneliness_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Low": 3.533333333333333,
+        "Severe": 5.466666666666666,
+        "Moderate": 3.55,
+        "High": 6.4
+      },
+      "variance": {
+        "Low": 1.8822222222222222,
+        "High": 0.6400000000000003,
+        "Severe": 1.7155555555555557,
+        "Moderate": 0.20249999999999996
+      },
+      "min_variance": 0.013129340277777776
+    },
+    {
+      "name": "Mental_Wellbeing_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Moderate": 6.4,
+        "Low": 7.566666666666666,
+        "High": 5.55,
+        "Severe": 3.933333333333333
+      },
+      "variance": {
+        "Low": 0.035555555555555625,
+        "Moderate": 0.0399999999999999,
+        "Severe": 0.14888888888888885,
+        "High": 0.008025173611111113
+      },
+      "min_variance": 0.008025173611111113
+    },
+    {
+      "name": "Notifications_Per_Day",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Moderate": 61,
+        "Severe": 91.33333333333333,
+        "High": 73,
+        "Low": 53.666666666666664
+      },
+      "variance": {
+        "Severe": 941.5555555555555,
+        "High": 2401,
+        "Low": 138.88888888888889,
+        "Moderate": 9
+      },
+      "min_variance": 4.168402777777777
+    },
+    {
+      "name": "Offline_Relationship_Quality",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "High": 4.1,
+        "Moderate": 4.95,
+        "Low": 5.533333333333332,
+        "Severe": 3.6
+      },
+      "variance": {
+        "Moderate": 3.0625,
+        "Severe": 2.1600000000000006,
+        "High": 1.6900000000000008,
+        "Low": 1.9288888888888893
+      },
+      "min_variance": 0.01265625
+    },
+    {
+      "name": "Physical_Activity_Hrs_Week",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Low": 4.833333333333333,
+        "Moderate": 0.6,
+        "Severe": 2.233333333333333,
+        "High": 1.6
+      },
+      "variance": {
+        "Low": 0.5088888888888891,
+        "Moderate": 0.014600694444444444,
+        "High": 2.5600000000000005,
+        "Severe": 3.2955555555555556
+      },
+      "min_variance": 0.014600694444444444
+    },
+    {
+      "name": "Platforms_Used_Count",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Severe": 2.3333333333333335,
+        "Moderate": 4,
+        "High": 4,
+        "Low": 2.3333333333333335
+      },
+      "variance": {
+        "Severe": 1.5555555555555554,
+        "Low": 1.5555555555555556,
+        "High": 0.027777777777777776,
+        "Moderate": 1
+      },
+      "min_variance": 0.027777777777777776
+    },
+    {
+      "name": "Posts_Per_Week",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Severe": 1.6666666666666667,
+        "High": 4.5,
+        "Low": 3.6666666666666665,
+        "Moderate": 1
+      },
+      "variance": {
+        "High": 0.25,
+        "Moderate": 1,
+        "Severe": 1.5555555555555554,
+        "Low": 0.8888888888888888
+      },
+      "min_variance": 0.04340277777777778
+    },
+    {
+      "name": "Productivity_Loss_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Moderate": 5.3,
+        "Low": 4.3,
+        "Severe": 4.233333333333333,
+        "High": 6.3
+      },
+      "variance": {
+        "Severe": 0.9088888888888889,
+        "Low": 2.3400000000000003,
+        "High": 0.25,
+        "Moderate": 2.25
+      },
+      "min_variance": 0.006944444444444444
+    },
+    {
+      "name": "Screen_Free_Time_Hrs",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Low": 1.5333333333333332,
+        "Severe": 2.5999999999999996,
+        "High": 2.6,
+        "Moderate": 3.8
+      },
+      "variance": {
+        "High": 1.2100000000000002,
+        "Moderate": 7.839999999999999,
+        "Severe": 2.06,
+        "Low": 1.6022222222222222
+      },
+      "min_variance": 0.018906249999999996
+    },
+    {
+      "name": "Scroll_Without_Purpose",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Low": 7.933333333333334,
+        "Severe": 7.2,
+        "High": 4.35,
+        "Moderate": 5.65
+      },
+      "variance": {
+        "High": 3.062499999999999,
+        "Low": 2.675555555555555,
+        "Severe": 4.846666666666667,
+        "Moderate": 2.7224999999999997
+      },
+      "min_variance": 0.01877914951989026
+    },
+    {
+      "name": "Self_Esteem_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Severe": 4.666666666666667,
+        "Moderate": 2.9,
+        "Low": 7.5,
+        "High": 2.9
+      },
+      "variance": {
+        "Severe": 6.295555555555556,
+        "Low": 0.5066666666666667,
+        "High": 5.76,
+        "Moderate": 0.025069444444444443
+      },
+      "min_variance": 0.025069444444444443
+    },
+    {
+      "name": "Sleep_Hours",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Severe": 5.766666666666667,
+        "Low": 5.566666666666666,
+        "High": 8.2,
+        "Moderate": 7.5
+      },
+      "variance": {
+        "Low": 0.04222222222222222,
+        "Severe": 0.062222222222222144,
+        "Moderate": 6.25,
+        "High": 0.010850694444444446
+      },
+      "min_variance": 0.010850694444444446
+    },
+    {
+      "name": "Sleep_Quality_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Low": 7.95,
+        "Severe": 4.966666666666666,
+        "High": 5.55,
+        "Moderate": 4.75
+      },
+      "variance": {
+        "High": 0.5625,
+        "Moderate": 0.9025000000000003,
+        "Low": 0.3024999999999998,
+        "Severe": 4.095555555555555
+      },
+      "min_variance": 0.012191840277777777
+    },
+    {
+      "name": "Social_Comparison_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Severe": 7.3,
+        "Moderate": 8.05,
+        "High": 4.8,
+        "Low": 6.466666666666666
+      },
+      "variance": {
+        "Moderate": 0.30249999999999977,
+        "Severe": 1.806666666666666,
+        "High": 0.006267361111111111,
+        "Low": 0.9755555555555562
+      },
+      "min_variance": 0.006267361111111111
+    },
+    {
+      "name": "Validation_Seeking_Score",
+      "role": "numerical",
+      "likelihood": "gaussian_minstd",
+      "mean": {
+        "Severe": 5.5,
+        "Low": 4.333333333333333,
+        "High": 5.95,
+        "Moderate": 3.4
+      },
+      "variance": {
+        "Moderate": 0.3600000000000001,
+        "Severe": 1.4866666666666664,
+        "Low": 4.308888888888888,
+        "High": 0.008919753086419752
+      },
+      "min_variance": 0.008919753086419752
+    }
+  ],
+  "smoothing_alpha": 1,
+  "variance_floor": 1e-9,
+  "feature_order": [
+    "Age",
+    "Anxiety_Score",
+    "Daily_Usage_Hours",
+    "Depression_Score",
+    "FOMO_Score",
+    "Loneliness_Score",
+    "Mental_Wellbeing_Score",
+    "Notifications_Per_Day",
+    "Offline_Relationship_Quality",
+    "Physical_Activity_Hrs_Week",
+    "Platforms_Used_Count",
+    "Posts_Per_Week",
+    "Productivity_Loss_Score",
+    "Screen_Free_Time_Hrs",
+    "Scroll_Without_Purpose",
+    "Self_Esteem_Score",
+    "Sleep_Hours",
+    "Sleep_Quality_Score",
+    "Social_Comparison_Score",
+    "Validation_Seeking_Score"
+  ],
+  "label_mapping": {
+    "High": 0,
+    "Low": 1,
+    "Moderate": 2,
+    "Severe": 3
+  },
+  "validation_config": {
+    "method": "holdout",
+    "training_percentage": 70,
+    "holdout_percentage": 30,
+    "folds": null,
+    "seed": null
+  },
+  "missing_value_policy": "Kategorik missing dianggap kategori '(Missing)'; numerik missing dikecualikan per-atribut untuk kelas terkait; target missing dibuang (listwise).",
+  "unseen_category_policy": "Kategori tak dikenal pada evaluasi diberi probabilitas kecil melalui smoothing, bukan error.",
+  "text": null
+}

@@ -43,6 +43,10 @@ describe("getEffectivePredictors", () => {
             ExcludedVar: ["factor_a"],
             CandidateFactors: null,
             CandidateCovariates: null,
+            // v2: field Text Features (tanpa mengubah ekspektasi test)
+            TextSource: "none",
+            RawTextVar: null,
+            TextVectorVars: null,
         };
 
         const result = getEffectivePredictors(main, baseVariables);
@@ -59,6 +63,10 @@ describe("getEffectivePredictors", () => {
             ExcludedVar: [],
             CandidateFactors: ["factor_a"],
             CandidateCovariates: ["covariate_a"],
+            // v2: field Text Features (tanpa mengubah ekspektasi test)
+            TextSource: "none",
+            RawTextVar: null,
+            TextVectorVars: null,
         };
 
         const result = getEffectivePredictors(main, baseVariables);
@@ -73,6 +81,10 @@ describe("getEffectivePredictors", () => {
             ExcludedVar: [],
             CandidateFactors: null,
             CandidateCovariates: null,
+            // v2: field Text Features (tanpa mengubah ekspektasi test)
+            TextSource: "none",
+            RawTextVar: null,
+            TextVectorVars: null,
         };
 
         const result = getEffectivePredictors(main, baseVariables);
@@ -92,6 +104,10 @@ describe("getEffectivePredictors", () => {
             // menentukan.
             CandidateFactors: ["factor_a"],
             CandidateCovariates: null,
+            // v2: field Text Features (tanpa mengubah ekspektasi test)
+            TextSource: "none",
+            RawTextVar: null,
+            TextVectorVars: null,
         };
 
         const result = getEffectivePredictors(main, baseVariables);
@@ -200,7 +216,7 @@ describe("getNumericInputError", () => {
         const formData = cloneDefault();
         formData.validation.ValidationMethod = "holdout";
         formData.validation.TrainingPercentage = 0;
-        expect(getNumericInputError(formData)).toMatch(/1 dan 99/);
+        expect(getNumericInputError(formData)).toMatch(/between 1 and 99/);
     });
 
     it("menolak jumlah fold < 1 pada mode kfold", () => {

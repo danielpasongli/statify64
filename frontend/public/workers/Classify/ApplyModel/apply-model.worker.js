@@ -13,7 +13,7 @@
 //
 // Versi cache (`?v=...`) WAJIB di-bump setiap kali `pkg/` diganti (lihat
 // `apply-model-analysis.ts`, konstanta `APPLY_MODEL_WASM_VERSION`).
-const APPLY_MODEL_WASM_VERSION = "apply-model-20261003a";
+const APPLY_MODEL_WASM_VERSION = "apply-model-v3-20261005a";
 
 let wasmModulePromise = null;
 
@@ -37,6 +37,8 @@ self.onmessage = async function (e) {
       actual,
       actualDefs,
       model,
+      // v2: payload Text (AGENTS_V2 §10.3); `undefined` untuk model v1 tanpa Text.
+      text,
     } = e.data;
 
     const wasm = await loadWasmModule();
@@ -46,7 +48,8 @@ self.onmessage = async function (e) {
       mapping,
       actual,
       actualDefs,
-      model
+      model,
+      text
     );
 
     const result = analysis.get_formatted_results();

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Root repo (absolut), dipakai blok yang perlu kembali ke root setelah banyak cd
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+
 # Build script for WASM modules in the project
 
 echo "Building Factor Analysis WASM module..."
@@ -38,6 +41,13 @@ echo "Building K-Medoids Cluster WASM module..."
 cd ../../Classify/k-medoids-cluster/rust
 wasm-pack build --target web --release
 echo "✓ K-Medoids Cluster WASM module built successfully"
+
+echo ""
+echo "Building String To Word Vector WASM module..."
+cd "$REPO_ROOT"
+cd frontend/components/Modals/Transform/StringToWordVector/rust
+wasm-pack build --target web --out-dir ../wasm-output --release
+echo "✓ String To Word Vector WASM module built successfully"
 
 echo ""
 echo "All WASM modules built successfully!"
