@@ -205,9 +205,9 @@ describe('BartlettTest Component', () => {
             await user.hover(screen.getByRole('button', { name: 'Syarat penggunaan uji Bartlett' }));
 
             const tooltip = await screen.findByRole('tooltip');
-            expect(tooltip).toHaveTextContent('Gunakan variabel numerik berskala pada dua atau lebih kelompok independen.');
-            expect(tooltip).toHaveTextContent('Data dalam setiap kelompok harus berdistribusi normal.');
-            expect(tooltip).toHaveTextContent('Setiap kelompok memerlukan minimal dua observasi valid dan varians lebih dari nol.');
+            expect(tooltip).toHaveTextContent('Variabel yang diuji harus numerik.');
+            expect(tooltip).toHaveTextContent('Variabel kelompok harus kategorik dan mempunyai minimal dua kelompok.');
+            expect(tooltip).toHaveTextContent('Data pada setiap kelompok sebaiknya berdistribusi normal.');
         });
 
         it('renders variables tab by default', () => {

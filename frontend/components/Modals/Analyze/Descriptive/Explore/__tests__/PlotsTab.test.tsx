@@ -81,8 +81,8 @@ describe('PlotsTab Component', () => {
         await user.hover(screen.getByRole('button', { name: 'Syarat penggunaan uji normalitas' }));
 
         const tooltip = await screen.findByRole('tooltip');
-        expect(within(tooltip).getByText(/minimal 3 observasi valid/i)).toBeVisible();
-        expect(within(tooltip).getByText(/Shapiro-Wilk tersedia hingga 5\.000 observasi/i)).toBeVisible();
+        expect(within(tooltip).getByText(/berdistribusi normal/i)).toBeVisible();
+        expect(within(tooltip).getByText(/minimal tiga observasi valid/i)).toBeVisible();
     });
 
 });
