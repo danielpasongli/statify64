@@ -46,7 +46,7 @@ export const ExportModelAction = ({ trainedModel, onExport }: ExportModelActionP
                     htmlFor="naive-bayes-export-file-name"
                     className="text-xs text-muted-foreground"
                 >
-                    Nama file
+                    File name
                 </Label>
                 <Input
                     id="naive-bayes-export-file-name"

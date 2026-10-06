@@ -10,7 +10,7 @@ export class NaiveBayesAnalysis {
      * 8) — lihat `wasm::function::get_formatted_results`.
      */
     get_formatted_results(): any;
-    constructor(target_data: any, predictors_data: any, target_data_defs: any, predictors_data_defs: any, config_data: any);
+    constructor(target_data: any, predictors_data: any, target_data_defs: any, predictors_data_defs: any, config_data: any, text: any);
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -20,7 +20,7 @@ export interface InitOutput {
     readonly __wbg_naivebayesanalysis_free: (a: number, b: number) => void;
     readonly naivebayesanalysis_get_all_errors: (a: number) => any;
     readonly naivebayesanalysis_get_formatted_results: (a: number) => [number, number, number];
-    readonly naivebayesanalysis_new: (a: any, b: any, c: any, d: any, e: any) => [number, number, number];
+    readonly naivebayesanalysis_new: (a: any, b: any, c: any, d: any, e: any, f: any) => [number, number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

@@ -6,7 +6,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -21,10 +21,13 @@ import { APPLY_MODEL_MESSAGES } from "@/components/Modals/Analyze/Classify/apply
 import type { ApplyModelIssue } from "@/components/Modals/Analyze/Classify/apply-model/constants/apply-model-codes";
 import {
   autoMapFeatures,
+  formatVectorMappingSummary,
   getEligibleActualTargetVariables,
   getEligibleVariablesForFeature,
+  summarizeVectorMapping,
   validateMapping,
 } from "@/components/Modals/Analyze/Classify/apply-model/hooks/useApplyModelMappingRules";
+import CollapsibleNameList from "@/components/Modals/Analyze/Classify/apply-model/dialogs/collapsible-name-list";
 import type { ApplyModelVariablesTabType } from "@/components/Modals/Analyze/Classify/apply-model/types/apply-model";
 import type { Variable } from "@/types/Variable";
 
@@ -44,6 +47,10 @@ const VARIABLES_TAB_HELP = {
     "Matches features to dataset variables by name (exact first, then case-insensitive if unique). This overwrites your manual choices.",
   actual:
     "Optional. Choose the variable holding the true class to add evaluation metrics and a confusion matrix to the output.",
+  rawText:
+    "This model was trained on raw text. Choose the string variable that holds the text to classify; it is preprocessed with the text preprocessing settings stored in the model.",
+  vector:
+    "This model was trained on word-vector columns. Columns are matched to dataset variables by name; columns that are not found are treated as 0.",
 } as const;
 
 // Radix Select tidak menerima value string kosong, jadi pilihan "kosong"
@@ -63,6 +70,13 @@ const VARIABLE_DETAIL_CODES: ReadonlySet<ApplyModelIssue["code"]> = new Set([
   "AM_E_MAP_DUPLICATE",
   "AM_E_MAP_MEASURE_UNKNOWN",
 ]);
+// v2: kode issue yang tampil di blok Text Features (bukan di baris tabel fitur).
+const RAW_TEXT_ISSUE_CODES: ReadonlySet<ApplyModelIssue["code"]> = new Set([
+  "AM_E_MAP_RAW_TEXT_UNMAPPED",
+  "AM_E_MAP_RAW_TEXT_TYPE",
+]);
+// Batas daftar error kolom vektor yang ditampilkan (model bisa memuat ribuan kolom).
+const MAX_VECTOR_ISSUES_SHOWN = 5;
 
 /** Ganti placeholder `{detail}` pada pesan (AGENTS.md §4.5). */
 function formatIssueMessage(issue: ApplyModelIssue): string {
@@ -93,15 +107,28 @@ export function VariablesTab({
   onChange,
   showFieldHelp,
 }: VariablesTabProps) {
+  const text = descriptor.text;
+  const textMapping = useMemo(
+    () => ({ RawTextVar: data.RawTextVar, VectorMapping: data.VectorMapping }),
+    [data.RawTextVar, data.VectorMapping]
+  );
+
   const issues = useMemo(
     () =>
       validateMapping(
         descriptor,
         data.FeatureMapping,
         data.ActualTargetVar,
-        variables
+        variables,
+        textMapping
       ),
-    [descriptor, data.FeatureMapping, data.ActualTargetVar, variables]
+    [descriptor, data.FeatureMapping, data.ActualTargetVar, variables, textMapping]
+  );
+
+  // v2: ringkasan kolom vektor (hanya dihitung ulang bila pemetaan berubah).
+  const vectorSummary = useMemo(
+    () => summarizeVectorMapping(descriptor, data.VectorMapping),
+    [descriptor, data.VectorMapping]
   );
 
   const actualIssues = issues.filter((issue) =>
@@ -125,16 +152,66 @@ export function VariablesTab({
     });
   };
 
+  const handleRawTextChange = (value: string) => {
+    onChange({ ...data, RawTextVar: value === NONE_VALUE ? null : value });
+  };
+
   const handleAutoMap = () => {
-    // Menimpa pilihan manual (AGENTS.md §6.4).
-    onChange(autoMapFeatures(descriptor, variables));
+    // Menimpa pilihan manual (AGENTS.md §6.4). Model dengan Text: kunci Text
+    // (RawTextVar/VectorMapping) ikut ditimpa, sisanya dipertahankan.
+    const mapped = autoMapFeatures(descriptor, variables);
+    onChange(text ? { ...data, ...mapped } : mapped);
   };
 
   const actualOptions = withCurrent(
-    getEligibleActualTargetVariables(data.FeatureMapping, variables).map(
-      (v) => v.name
-    ),
+    getEligibleActualTargetVariables(
+      data.FeatureMapping,
+      variables,
+      textMapping
+    ).map((v) => v.name),
     data.ActualTargetVar
+  );
+
+  // v2: opsi dropdown Raw Text Variable = variabel bertipe STRING.
+  const rawTextOptions = withCurrent(
+    variables.filter((v) => v.type === "STRING").map((v) => v.name),
+    data.RawTextVar ?? null
+  );
+  const rawTextUsedByFeatures = new Set(
+    Object.values(data.FeatureMapping).filter(
+      (name): name is string => name !== null && name !== undefined
+    )
+  );
+  const rawTextIssues = issues.filter(
+    (issue) =>
+      RAW_TEXT_ISSUE_CODES.has(issue.code) ||
+      (text?.source === "raw" &&
+        VARIABLE_DETAIL_CODES.has(issue.code) &&
+        data.RawTextVar != null &&
+        issue.detail === data.RawTextVar)
+  );
+  const vectorColumns = new Set(text?.source === "vector" ? text.columns : []);
+  const vectorMappedVariables = new Set(
+    Object.values(data.VectorMapping ?? {}).filter(
+      (name): name is string => name !== null && name !== undefined
+    )
+  );
+  const vectorIssues =
+    text?.source === "vector"
+      ? issues.filter(
+          (issue) =>
+            (issue.code === "AM_E_MAP_NUMERIC_TYPE" &&
+              issue.detail !== undefined &&
+              vectorColumns.has(issue.detail)) ||
+            ((issue.code === "AM_E_MAP_VAR_NOT_FOUND" ||
+              issue.code === "AM_E_MAP_DUPLICATE") &&
+              issue.detail !== undefined &&
+              vectorMappedVariables.has(issue.detail))
+        )
+      : [];
+  const zeroFilledInfo = issues.find((issue) => issue.code === "AM_I_TEXT_ZERO_FILLED");
+  const allZeroFilledWarning = issues.find(
+    (issue) => issue.code === "AM_W_TEXT_ALL_ZERO_FILLED"
   );
 
   return (
@@ -154,6 +231,14 @@ export function VariablesTab({
         <HelpText show={showFieldHelp} text={VARIABLES_TAB_HELP.mapping} />
         <HelpText show={showFieldHelp} text={VARIABLES_TAB_HELP.autoMap} />
 
+        {descriptor.features.length === 0 ? (
+          <p
+            data-testid="no-numeric-categorical-features"
+            className="text-sm text-muted-foreground"
+          >
+            This model has no numerical or categorical features; it uses text features only.
+          </p>
+        ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
@@ -252,7 +337,111 @@ export function VariablesTab({
             })}
           </tbody>
         </table>
+        )}
       </section>
+
+      {text?.source === "raw" && (
+        <section
+          data-testid="raw-text-section"
+          className="flex flex-col gap-2"
+        >
+          <Label className="font-semibold">Raw Text Variable</Label>
+          <p className="text-sm text-muted-foreground">
+            Model text variable: {text.rawVariable ?? "-"}
+          </p>
+          <Select
+            value={data.RawTextVar ?? NONE_VALUE}
+            onValueChange={handleRawTextChange}
+          >
+            <SelectTrigger aria-label="Raw text variable">
+              <SelectValue placeholder={NOT_MAPPED_LABEL} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE_VALUE}>{NOT_MAPPED_LABEL}</SelectItem>
+              {rawTextOptions.map((name) => (
+                <SelectItem
+                  key={name}
+                  value={name}
+                  disabled={rawTextUsedByFeatures.has(name)}
+                >
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <HelpText show={showFieldHelp} text={VARIABLES_TAB_HELP.rawText} />
+          {rawTextIssues.length > 0 && (
+            <div
+              data-testid="raw-text-errors"
+              className="flex flex-col gap-1 text-sm text-destructive"
+            >
+              {rawTextIssues.map((issue, index) => (
+                <div
+                  key={`${issue.code}-${index}`}
+                  className="flex items-start gap-2"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span>{formatIssueMessage(issue)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {text?.source === "vector" && (
+        <section
+          data-testid="vector-text-section"
+          className="flex flex-col gap-2"
+        >
+          <Label className="font-semibold">Word-Vector Columns</Label>
+          <p
+            data-testid="vector-mapping-summary"
+            className="flex items-center gap-1 text-sm"
+          >
+            <Info className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+            <span>{formatVectorMappingSummary(vectorSummary)}</span>
+          </p>
+          <HelpText show={showFieldHelp} text={VARIABLES_TAB_HELP.vector} />
+          {zeroFilledInfo !== undefined && (
+            <CollapsibleNameList
+              label="Show columns treated as 0"
+              names={vectorSummary.zeroFilled}
+              testId="vector-zero-filled-list"
+            />
+          )}
+          {allZeroFilledWarning !== undefined && (
+            <div
+              data-testid="vector-all-zero-filled-warning"
+              className="flex items-start gap-2 rounded border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-900"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{formatIssueMessage(allZeroFilledWarning)}</span>
+            </div>
+          )}
+          {vectorIssues.length > 0 && (
+            <div
+              data-testid="vector-mapping-errors"
+              className="flex flex-col gap-1 text-sm text-destructive"
+            >
+              {vectorIssues.slice(0, MAX_VECTOR_ISSUES_SHOWN).map((issue, index) => (
+                <div
+                  key={`${issue.code}-${index}`}
+                  className="flex items-start gap-2"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span>{formatIssueMessage(issue)}</span>
+                </div>
+              ))}
+              {vectorIssues.length > MAX_VECTOR_ISSUES_SHOWN && (
+                <span>
+                  ...and {vectorIssues.length - MAX_VECTOR_ISSUES_SHOWN} more issue(s).
+                </span>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="flex flex-col gap-2">
         <Label className="font-semibold">Actual target (optional)</Label>

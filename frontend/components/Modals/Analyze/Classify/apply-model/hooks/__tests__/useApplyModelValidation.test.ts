@@ -235,10 +235,10 @@ describe("formatApplyModelIssueMessage", () => {
       formatApplyModelIssueMessage({
         code: "AM_E_SCHEMA_VERSION_UNSUPPORTED",
         severity: "error",
-        detail: "2.0",
+        detail: "3.0",
       })
     ).toBe(
-      "Versi format model \"2.0\" tidak didukung. Versi yang didukung: 1.0, 1.1."
+      "The model format version \"3.0\" is not supported. Supported versions: 1.0, 1.1, 2.0. (AM_E_SCHEMA_VERSION_UNSUPPORTED)"
     );
     expect(
       formatApplyModelIssueMessage({ code: "AM_E_NO_ROWS", severity: "error" })

@@ -119,7 +119,7 @@ const mockToast = toast as unknown as {
 };
 
 const DATASET_CHANGED_MESSAGE =
-  "Dataset berubah — pemetaan variabel Apply Model disusun ulang.";
+  "The dataset changed, so the Apply Model variable mapping was rebuilt.";
 
 function makeVariable(
   name: string,
@@ -218,7 +218,7 @@ describe("fungsi murni container", () => {
         warnings: [],
       })
     ).toBe(
-      "Prediksi selesai: 5 baris diprediksi. Kolom baru: NB_PredictedValue, NB_PredictedProbability."
+      "Predictions complete: 5 rows scored. New columns: NB_PredictedValue, NB_PredictedProbability."
     );
   });
 
@@ -346,7 +346,7 @@ describe("ApplyModelMain — OK", () => {
     expect(mockToast.error).not.toHaveBeenCalled();
     expect(mockPromiseCalls).toHaveLength(1);
     expect(mockPromiseCalls[0].options.loading).toBe(
-      "Menerapkan model ke dataset..."
+      "Applying the model to the dataset..."
     );
 
     const summary = await mockPromiseCalls[0].promise;
@@ -365,7 +365,7 @@ describe("ApplyModelMain — OK", () => {
     expect(callArg.dataVariables).toBe(mockDataRows);
 
     expect(mockPromiseCalls[0].options.success(summary)).toBe(
-      "Prediksi selesai: 5 baris diprediksi. Kolom baru: NB_PredictedValue, NB_PredictedProbability."
+      "Predictions complete: 5 rows scored. New columns: NB_PredictedValue, NB_PredictedProbability."
     );
 
     const saved = (await getFormData("ApplyModel")) as ApplyModelType & {
@@ -386,20 +386,20 @@ describe("ApplyModelMain — OK", () => {
   it("pesan error toast memakai getUserFriendlyApplyModelError (kode AM_E_ dipetakan ke teks Indonesia)", async () => {
     const user = userEvent.setup();
     mockApplyModel.mockRejectedValueOnce(
-      new Error("AM_E_SCHEMA_VERSION_UNSUPPORTED: 2.0")
+      new Error("AM_E_SCHEMA_VERSION_UNSUPPORTED: 3.0")
     );
     await renderAndLoadModel();
     await user.click(screen.getByRole("button", { name: "OK" }));
     await expect(mockPromiseCalls[0].promise).rejects.toThrow(
-      "AM_E_SCHEMA_VERSION_UNSUPPORTED: 2.0"
+      "AM_E_SCHEMA_VERSION_UNSUPPORTED: 3.0"
     );
 
     const { error } = mockPromiseCalls[0].options;
-    expect(error(new Error("AM_E_SCHEMA_VERSION_UNSUPPORTED: 2.0"))).toBe(
-      "Versi format model \"2.0\" tidak didukung. Versi yang didukung: 1.0, 1.1."
+    expect(error(new Error("AM_E_SCHEMA_VERSION_UNSUPPORTED: 3.0"))).toBe(
+      "The model format version \"3.0\" is not supported. Supported versions: 1.0, 1.1, 2.0. (AM_E_SCHEMA_VERSION_UNSUPPORTED)"
     );
-    expect(error(new Error("sesuatu yang acak"))).toContain(
-      "Penerapan model tidak dapat diselesaikan"
+    expect(error(new Error("something random"))).toContain(
+      "The model could not be applied"
     );
   });
 });
@@ -507,7 +507,7 @@ describe("ApplyModelMain — Reset", () => {
 
     await waitFor(() =>
       expect(mockToast.success).toHaveBeenCalledWith(
-        "Pengaturan Apply Model telah direset."
+        "Apply Model settings have been reset."
       )
     );
     expect(screen.getByRole("tab", { name: "Model" })).toHaveAttribute(

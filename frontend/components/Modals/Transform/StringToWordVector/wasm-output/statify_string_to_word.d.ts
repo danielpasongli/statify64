@@ -8,7 +8,7 @@ export function init_panic_hook(): void;
  * - `js_data`   : Array<string> (kolom teks dari dataset)
  * - `js_config` : VectorizerConfig object
  *
- * Mengembalikan JSON: { vocabulary, matrix, stats } atau { code, message } jika error.
+ * Mengembalikan objek: { vocabulary, matrix, stats }; bila error, melempar objek JS { code, message }.
  */
 export function process_text_data(js_data: any, js_config: any): any;
 

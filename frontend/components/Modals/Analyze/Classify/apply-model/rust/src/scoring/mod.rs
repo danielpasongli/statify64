@@ -11,8 +11,11 @@ use serde_json::Value;
 use crate::models::data::DataValue;
 
 pub mod naive_bayes;
+// Revisi v2 (AGENTS_V2.md §10): fitur Text (schema 2.0) lewat `statify-text-core`.
+pub mod text;
 
 use naive_bayes::NaiveBayesScorer;
+use text::TextModel;
 
 /// Peran fitur di model: `categorical` (dari variabel nominal/ordinal) atau
 /// `numerical` (dari variabel scale). AGENTS.md §3.4.
@@ -55,6 +58,19 @@ pub enum RowScore {
     },
 }
 
+/// Masukan Text untuk satu baris (revisi v2, AGENTS_V2.md §10.4). Dihitung
+/// SEKALI per proses lewat `TextModel::prepare` (batch), lalu diteruskan per
+/// baris ke `ClassifierScorer::score_row_with_text`.
+#[derive(Debug, Clone, Copy)]
+pub struct TextRowInput<'a> {
+    /// Kontribusi log Text per kelas (TANPA `ln prior`), sejajar `classes()`.
+    /// Baris teks missing = vektor nol (Bernoulli tetap `Σ A_ct`).
+    pub contribution: &'a [f64],
+    /// Teks dihitung prediktor missing (K5/V11): raw null/kosong/whitespace,
+    /// atau vector tanpa satu pun nilai pada kolom terpetakan.
+    pub missing: bool,
+}
+
 pub trait ClassifierScorer {
     fn model_type(&self) -> &str;
     fn schema_version(&self) -> &str;
@@ -67,6 +83,18 @@ pub trait ClassifierScorer {
     fn is_legacy_unseen_handling(&self) -> bool;
     /// `values` sejajar `features()`.
     fn score_row(&self, values: &[DataValue]) -> RowScore;
+
+    /// Revisi v2: parameter fitur Text (schema 2.0) bila model punya. Default
+    /// `None` (model v1 dan scorer algoritma lain).
+    fn text_model(&self) -> Option<&TextModel> {
+        None
+    }
+
+    /// Revisi v2: skor satu baris dengan kontribusi Text. Default = `score_row`
+    /// (mengabaikan `text`) sehingga perilaku v1 tidak berubah.
+    fn score_row_with_text(&self, values: &[DataValue], _text: Option<TextRowInput<'_>>) -> RowScore {
+        self.score_row(values)
+    }
 }
 
 /// Registry scorer: cek objek & `model_type` (AGENTS.md §4.2), lalu dispatch.
@@ -75,7 +103,7 @@ pub fn build_scorer(model: &Value) -> Result<Box<dyn ClassifierScorer>, String> 
     let obj = match model.as_object() {
         Some(obj) => obj,
         None => {
-            return Err("AM_E_NOT_OBJECT: model bukan objek JSON".to_string());
+            return Err("AM_E_NOT_OBJECT: The model file must contain a JSON object.".to_string());
         }
     };
 
@@ -83,7 +111,7 @@ pub fn build_scorer(model: &Value) -> Result<Box<dyn ClassifierScorer>, String> 
         Some(model_type) => model_type,
         None => {
             return Err(
-                "AM_E_MODEL_TYPE_MISSING: field model_type tidak ada atau bukan string"
+                "AM_E_MODEL_TYPE_MISSING: The model file has no 'model_type' field, or it is not a string."
                     .to_string(),
             );
         }

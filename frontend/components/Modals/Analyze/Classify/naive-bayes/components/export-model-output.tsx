@@ -48,7 +48,7 @@ export const ExportModelOutput = ({ data }: ExportModelOutputProps) => {
     } catch {
         return (
             <div className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
-                Model Naive Bayes tidak bisa dimuat untuk diekspor (format data tidak valid).
+                The Naive Bayes model cannot be loaded for export because its data is not valid.
             </div>
         );
     }
@@ -58,9 +58,9 @@ export const ExportModelOutput = ({ data }: ExportModelOutputProps) => {
     return (
         <div className="rounded-lg border p-4">
             <p className="mb-3 text-xs text-muted-foreground">
-                Model Naive Bayes terlatih siap diekspor sebagai file JSON.
-                Perhatikan: file ini dapat memuat nilai/label kategori asli
-                dari dataset (AGENTS.md §5.10).
+                The trained Naive Bayes model is ready to be exported as a JSON file.
+                Note that the file can contain the original category labels and
+                terms from your dataset.
             </p>
             <ExportModelAction trainedModel={trainedModel} onExport={downloadJson} />
         </div>

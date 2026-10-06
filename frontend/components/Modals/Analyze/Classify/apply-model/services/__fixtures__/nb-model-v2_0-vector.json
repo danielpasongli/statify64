@@ -1,0 +1,92 @@
+{
+  "schema_version": "2.0",
+  "model_type": "naive_bayes",
+  "trained_at": "2026-10-01T00:00:00.000Z",
+  "target": {
+    "name": "Sentimen",
+    "classes": [
+      "neg",
+      "pos"
+    ],
+    "class_priors": [
+      0.3333333333333333,
+      0.6666666666666666
+    ],
+    "class_counts": [
+      1,
+      2
+    ]
+  },
+  "features": [],
+  "smoothing_alpha": 1.0,
+  "variance_floor": 1e-09,
+  "feature_order": [],
+  "label_mapping": {
+    "neg": 0,
+    "pos": 1
+  },
+  "validation_config": {
+    "method": "holdout",
+    "training_percentage": 70,
+    "holdout_percentage": 30,
+    "folds": null,
+    "seed": 42
+  },
+  "missing_value_policy": "x",
+  "unseen_category_policy": "x",
+  "text": {
+    "source": "vector",
+    "likelihood": "multinomial",
+    "alpha": 1.0,
+    "terms": [
+      "VEC_makan",
+      "VEC_nasi",
+      "VEC_saya",
+      "VEC_suka",
+      "VEC_tidak"
+    ],
+    "raw_variable": null,
+    "columns": [
+      "VEC_makan",
+      "VEC_nasi",
+      "VEC_saya",
+      "VEC_suka",
+      "VEC_tidak"
+    ],
+    "log_weights": {
+      "neg": [
+        -2.197225,
+        -1.504077,
+        -1.504077,
+        -1.504077,
+        -1.504077
+      ],
+      "pos": [
+        -0.875469,
+        -1.791759,
+        -1.791759,
+        -1.791759,
+        -2.484907
+      ]
+    },
+    "log_weights_absent": null,
+    "class_term_counts": {
+      "neg": [
+        0,
+        1,
+        1,
+        1,
+        1
+      ],
+      "pos": [
+        4,
+        1,
+        1,
+        1,
+        0
+      ]
+    },
+    "uses_class_prior": true,
+    "recipe": null
+  }
+}

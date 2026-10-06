@@ -1,5 +1,5 @@
 // AGENTS.md §4.5 & §6.6 — menerjemahkan pesan error mesin Apply Model menjadi
-// pesan pengguna (bahasa Indonesia). Dipakai sebagai callback `error` pada
+// pesan pengguna (bahasa Inggris, kode internal di akhir kalimat). Dipakai sebagai callback `error` pada
 // `toast.promise` (pola NB/services/naive-bayes-error-messages.ts).
 
 import {
@@ -9,10 +9,35 @@ import {
 
 // Pesan dari Rust selalu berbentuk "AM_E_XXX: <detail bebas>" (§4.5). Prefix
 // "Error:" (hasil `String(error)` / `Error.toString()`) ikut ditoleransi.
-const ERROR_CODE_PATTERN = /^\s*(?:Error:\s*)?(AM_E_[A-Z_]+)\s*(?::\s*([\s\S]*))?$/;
+const ERROR_CODE_PATTERN = /^\s*(?:Error:\s*)?(AM_E_[A-Z0-9_]+)\s*(?::\s*([\s\S]*))?$/;
 
 const GENERIC_ERROR_MESSAGE =
-  "Penerapan model tidak dapat diselesaikan. Periksa kembali model, pemetaan variabel, dan pengaturan yang dipilih, lalu coba lagi.";
+  "The model could not be applied. Check the model, the variable mapping and the selected settings, then try again.";
+
+// Detail AM_E_TEXT_NEGATIVE dari Rust. Format baru (PLAN_V3_UI_EN §3.2):
+// "<kolom>" atau "<kolom> (<n> columns affected)". Format lama (WASM yang belum
+// di-build ulang): "<kolom>" atau "<kolom> (total <n> kolom bermasalah)".
+// Kedua format diterima; nama kolom dan jumlah kolom ditampilkan terpisah.
+const TEXT_NEGATIVE_DETAIL_PATTERNS: readonly RegExp[] = [
+  /^([\s\S]*?)\s*\((\d+)\s+columns affected\)\s*$/,
+  /^([\s\S]*?)\s*\(total\s+(\d+)\s+kolom bermasalah\)\s*$/,
+];
+
+function formatErrorDetail(code: ApplyModelErrorCode, detail: string): string {
+  if (code !== "AM_E_TEXT_NEGATIVE") return detail;
+  let column = detail;
+  let total = 1;
+  for (const pattern of TEXT_NEGATIVE_DETAIL_PATTERNS) {
+    const match = pattern.exec(detail);
+    if (match) {
+      column = match[1];
+      total = Number(match[2]);
+      break;
+    }
+  }
+  const quoted = `'${column.trim()}'`;
+  return total > 1 ? `${quoted} and ${total - 1} more column(s)` : quoted;
+}
 
 function isErrorCode(code: string): code is ApplyModelErrorCode {
   return Object.prototype.hasOwnProperty.call(APPLY_MODEL_MESSAGES, code);
@@ -26,7 +51,7 @@ export const getUserFriendlyApplyModelError = (error: unknown): string => {
   if (match) {
     const code = match[1];
     if (isErrorCode(code)) {
-      const detail = (match[2] ?? "").trim();
+      const detail = formatErrorDetail(code, (match[2] ?? "").trim());
       return APPLY_MODEL_MESSAGES[code].replace(/\{detail\}/g, detail);
     }
   }

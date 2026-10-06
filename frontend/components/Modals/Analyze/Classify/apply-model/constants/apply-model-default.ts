@@ -19,6 +19,8 @@ export const ApplyModelModelDefault: ApplyModelModelTabType = {
 export const ApplyModelVariablesDefault: ApplyModelVariablesTabType = {
   FeatureMapping: {},
   ActualTargetVar: null,
+  RawTextVar: null,
+  VectorMapping: {},
 };
 
 export const ApplyModelSaveDefault: ApplyModelSaveTabType = {

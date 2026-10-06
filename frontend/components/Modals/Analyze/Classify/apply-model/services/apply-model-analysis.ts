@@ -14,12 +14,16 @@ import {
   resolveFinalOutputNames,
   type OutputColumnSpec,
 } from "@/components/Modals/Analyze/Classify/apply-model/hooks/useApplyModelSaveRules";
-import { transformApplyModelResult } from "@/components/Modals/Analyze/Classify/apply-model/services/apply-model-formatter";
+import {
+  transformApplyModelResult,
+  type ApplyModelTextMappingInfo,
+} from "@/components/Modals/Analyze/Classify/apply-model/services/apply-model-formatter";
 import { resultApplyModel } from "@/components/Modals/Analyze/Classify/apply-model/services/apply-model-output";
 import { saveApplyModelVariables } from "@/components/Modals/Analyze/Classify/apply-model/services/apply-model-save-variables";
 import type { ApplyModelType } from "@/components/Modals/Analyze/Classify/apply-model/types/apply-model";
 import type {
   ApplyModelRawResult,
+  ApplyModelTextPayload,
   ApplyModelWorkerPayload,
 } from "@/components/Modals/Analyze/Classify/apply-model/types/apply-model-worker";
 import type { Variable } from "@/types/Variable";
@@ -29,7 +33,7 @@ import type { Variable } from "@/types/Variable";
  * `public/workers/Classify/ApplyModel/apply-model.worker.js` dan di-bump
  * setiap `pkg/` disalin ulang. Format: `apply-model-YYYYMMDD<huruf>`.
  */
-export const APPLY_MODEL_WASM_VERSION = "apply-model-20261003a";
+export const APPLY_MODEL_WASM_VERSION = "apply-model-v3-20261005a";
 export const APPLY_MODEL_WORKER_URL = `/workers/Classify/ApplyModel/apply-model.worker.js?v=${APPLY_MODEL_WASM_VERSION}`;
 
 export type ApplyModelRunSummary = {
@@ -59,6 +63,40 @@ function describeColumn(spec: OutputColumnSpec): string {
   if (spec.key === "predicted") return "Predicted value";
   if (spec.key === "maxProbability") return "Max probability";
   return `Probability of ${spec.key.slice("class:".length)}`;
+}
+
+/**
+ * v2: membaca kolom teks mentah langsung dari `dataVariables` (TANPA `getSlicedData`
+ * dan TANPA parseFloat, agar "3 kucing lucu" tidak menjadi angka 3; pola sama dengan
+ * NB/services/naive-bayes-analysis.ts). null/""/spasi saja -> null (V11); teks bermakna
+ * dikirim apa adanya. Panjang hasil = max(`minLength`, baris terakhir yang berisi + 1).
+ */
+export function readRawTextValues(
+  dataVariables: string[][],
+  columnIndex: number,
+  minLength: number,
+): (string | null)[] {
+  const values: (string | null)[] = [];
+  let lastFilled = -1;
+  dataVariables.forEach((row, index) => {
+    const cell: unknown = row?.[columnIndex];
+    const text = cell === null || cell === undefined ? "" : String(cell);
+    if (text.trim() === "") {
+      values.push(null);
+    } else {
+      values.push(text);
+      lastFilled = index;
+    }
+  });
+  const length = Math.max(minLength, lastFilled + 1);
+  values.length = Math.min(values.length, length);
+  while (values.length < length) values.push(null);
+  return values;
+}
+
+/** v2: sel numerik kolom vektor; non-angka/non-finite -> null (Rust: 0). */
+function toVectorCell(value: string | number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function runWorker(payload: ApplyModelWorkerPayload): Promise<ApplyModelRawResult> {
@@ -118,19 +156,101 @@ export async function applyModel({
   });
   const mappedVariables = mapping.map((entry) => entry.variable);
   const actualVariable = formData.variables.ActualTargetVar;
-  const selectedVariables =
-    actualVariable === null ? mappedVariables : [...mappedVariables, actualVariable];
 
-  const slices = getSlicedData({ dataVariables, variables, selectedVariables });
-  if (slices.length === 0) throw codedError("AM_E_NO_ROWS");
+  // v2 (AGENTS_V2.md §10.2–10.3): fitur Text. Raw -> kolom dibaca mentah (bukan lewat
+  // getSlicedData); vector -> kolom terpetakan ikut di slice setelah prediktor v1.
+  const text = descriptor.text;
+  let rawTextColumnIndex: number | null = null;
+  const vectorEntries: Array<{ modelIndex: number; variable: string }> = [];
+  if (text?.source === "raw") {
+    const rawVariable = formData.variables.RawTextVar ?? null;
+    if (rawVariable === null) {
+      throw codedError("AM_E_MAP_RAW_TEXT_UNMAPPED", text.rawVariable ?? undefined);
+    }
+    const definition = variables.find((variable) => variable.name === rawVariable);
+    if (!definition) throw codedError("AM_E_MAP_VAR_NOT_FOUND", rawVariable);
+    rawTextColumnIndex = definition.columnIndex;
+  } else if (text?.source === "vector") {
+    const vectorMapping = formData.variables.VectorMapping ?? {};
+    text.columns.forEach((column, modelIndex) => {
+      const variable = vectorMapping[column] ?? null;
+      // Kolom tak terpetakan diisi 0 oleh Rust (V10); tidak dikirim.
+      if (variable !== null) vectorEntries.push({ modelIndex, variable });
+    });
+  }
+  const vectorVariables = vectorEntries.map((entry) => entry.variable);
 
+  const selectedVariables = [
+    ...mappedVariables,
+    ...vectorVariables,
+    ...(actualVariable === null ? [] : [actualVariable]),
+  ];
+  // Model vector hanya-Text yang semua kolomnya tak terpetakan: pinjam satu kolom dataset
+  // semata-mata untuk mengetahui jumlah baris (semua baris akan NotScored di Rust).
+  const rowCarrier =
+    selectedVariables.length === 0 && text?.source === "vector"
+      ? (variables[0]?.name ?? null)
+      : null;
+  const slices = getSlicedData({
+    dataVariables,
+    variables,
+    selectedVariables: rowCarrier === null ? selectedVariables : [rowCarrier],
+  });
+  // Jalur raw tidak memakai slice untuk teks, sehingga boleh tanpa slice sama sekali.
+  if (slices.length === 0 && rawTextColumnIndex === null) throw codedError("AM_E_NO_ROWS");
+  const sliceRows = slices[0]?.length ?? 0;
+
+  let textPayload: ApplyModelTextPayload | undefined;
+  if (text?.source === "raw" && rawTextColumnIndex !== null) {
+    const values = readRawTextValues(dataVariables, rawTextColumnIndex, sliceRows);
+    if (values.length === 0) throw codedError("AM_E_NO_ROWS");
+    textPayload = { source: "raw", values };
+  } else if (text?.source === "vector") {
+    const vectorSlices = slices.slice(
+      mappedVariables.length,
+      mappedVariables.length + vectorVariables.length,
+    );
+    const values: (number | null)[][] = [];
+    for (let row = 0; row < sliceRows; row++) {
+      values.push(
+        vectorEntries.map((entry, column) =>
+          toVectorCell(vectorSlices[column]?.[row]?.[entry.variable]),
+        ),
+      );
+    }
+    textPayload = {
+      source: "vector",
+      mapped_columns: vectorEntries.map((entry) => entry.modelIndex),
+      values,
+    };
+  }
+
+  // v2: informasi pemetaan Text untuk baris ringkasan model (sisi TS).
+  let textMappingInfo: ApplyModelTextMappingInfo | undefined;
+  if (text?.source === "raw") {
+    textMappingInfo = {
+      source: "raw",
+      modelVariable: text.rawVariable,
+      datasetVariable: formData.variables.RawTextVar ?? "-",
+    };
+  } else if (text?.source === "vector") {
+    textMappingInfo = {
+      source: "vector",
+      totalColumns: text.columns.length,
+      mappedColumns: vectorEntries.length,
+    };
+  }
+
+  const actualSliceIndex = mappedVariables.length + vectorVariables.length;
   const payload: ApplyModelWorkerPayload = {
     predictors: slices.slice(0, mappedVariables.length),
     predictorDefs: getVarDefs(variables, mappedVariables),
     mapping,
-    actual: actualVariable === null ? [] : [slices[mappedVariables.length]],
+    actual: actualVariable === null ? [] : [slices[actualSliceIndex]],
     actualDefs: actualVariable === null ? [] : getVarDefs(variables, [actualVariable]),
     model: formData.model.ModelJson,
+    // Payload model v1 tidak berubah: key `text` hanya ada bila model memuat fitur Text.
+    ...(textPayload === undefined ? {} : { text: textPayload }),
   };
 
   // 4. Worker -> Output Viewer -> kolom dataset (urutan tetap).
@@ -138,6 +258,7 @@ export async function applyModel({
 
   const formattedResult = transformApplyModelResult(rawResult, formData.output, {
     sourceLabel: formData.model.SourceLabel ?? "-",
+    ...(textMappingInfo === undefined ? {} : { textMapping: textMappingInfo }),
     savedColumns: specs.map((spec, index) => ({
       column: describeColumn(spec),
       finalName: finalNames[index],

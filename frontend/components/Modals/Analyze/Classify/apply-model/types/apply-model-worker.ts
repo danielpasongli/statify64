@@ -7,6 +7,13 @@ import type {
 } from "@/components/Modals/Analyze/Classify/naive-bayes/services/naive-bayes-analysis-formatter";
 import type { ApplyModelWarningCode } from "@/components/Modals/Analyze/Classify/apply-model/constants/apply-model-codes";
 
+// v2 (AGENTS_V2.md §10.3): payload fitur Text.
+// raw: satu teks per baris (null = kosong); vector: `mapped_columns` = indeks ke
+// `model.text.columns`, `values[row][j]` sejajar `mapped_columns`.
+export type ApplyModelTextPayload =
+  | { source: "raw"; values: (string | null)[] }
+  | { source: "vector"; mapped_columns: number[]; values: (number | null)[][] };
+
 export type ApplyModelWorkerPayload = {
   predictors: Record<string, string | number | null>[][]; // satu slice per fitur, urutan descriptor.features
   predictorDefs: unknown[][]; // getVarDefs, urutan sama
@@ -14,6 +21,9 @@ export type ApplyModelWorkerPayload = {
   actual: Record<string, string | number | null>[][]; // [] atau satu slice
   actualDefs: unknown[][]; // [] atau satu defs
   model: unknown; // ModelJson apa adanya
+  // v2: hanya ada bila model memuat fitur Text (payload model v1 tidak berubah);
+  // worker meneruskannya sebagai argumen ke-7 konstruktor (`undefined` = tanpa Text).
+  text?: ApplyModelTextPayload;
 };
 
 export type ApplyModelRawResult = {

@@ -36,9 +36,10 @@ export class NaiveBayesAnalysis {
      * @param {any} target_data_defs
      * @param {any} predictors_data_defs
      * @param {any} config_data
+     * @param {any} text
      */
-    constructor(target_data, predictors_data, target_data_defs, predictors_data_defs, config_data) {
-        const ret = wasm.naivebayesanalysis_new(target_data, predictors_data, target_data_defs, predictors_data_defs, config_data);
+    constructor(target_data, predictors_data, target_data_defs, predictors_data_defs, config_data, text) {
+        const ret = wasm.naivebayesanalysis_new(target_data, predictors_data, target_data_defs, predictors_data_defs, config_data, text);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -94,6 +95,10 @@ function __wbg_get_imports() {
         },
         __wbg___wbindgen_is_function_1f9d30630b8b1d3d: function(arg0) {
             const ret = typeof(arg0) === 'function';
+            return ret;
+        },
+        __wbg___wbindgen_is_null_e343b7d08827ba72: function(arg0) {
+            const ret = arg0 === null;
             return ret;
         },
         __wbg___wbindgen_is_object_3c45d4f2dde4e749: function(arg0) {

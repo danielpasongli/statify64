@@ -1,5 +1,7 @@
 # AGENTS.md — Menu Analyze → Classify → Naive Bayes
 
+> **Revisi v2 (disetujui pemilik, 2026-10):** Dokumen ini **tetap berlaku untuk perilaku v1**. Perluasan v2 — Text Features, likelihood per kelompok, schema export `2.0`, Raw Text di Apply Model, crate `CORE` (`statify-text-core`) sebagai **pengecualian aturan salin P6** milik Apply Model, serta pengecualian K4 Apply Model untuk fitur Text — diatur oleh `AGENTS_V2.md` (folder yang sama) yang **hierarkinya lebih tinggi** (AGENTS_V2.md > PLAN_V2.md > dokumen ini). Bila ada konflik, `AGENTS_V2.md` yang berlaku. Bagian yang dilonggarkan ditandai satu baris rujukan `(Lihat AGENTS_V2.md §x)`; isi lama tidak dihapus.
+
 Dokumen ini adalah kontrak kerja untuk siapa pun (manusia atau agent) yang mengimplementasikan menu **Naive Bayes** di `frontend/components/Modals/Analyze/Classify/naive-bayes`. Dokumen ini mengikat: bila ada bagian kode yang menyimpang dari sini tanpa alasan yang didiskusikan ulang, anggap itu bug desain, bukan variasi yang sah.
 
 Dokumen ini murni desain & kontrak. **Tidak ada kode implementasi di sini.** Rencana implementasi langkah-demi-langkah ada di `PLAN.md` (folder yang sama).
@@ -25,6 +27,8 @@ Cakupan yang **tidak termasuk** (di luar scope menu ini, jangan ditambahkan tanp
 - Import model dan prediksi ke dataset baru/lain. Menu ini hanya melatih dan mengevaluasi. *(Revisi Apply Model: kebutuhan ini sekarang ditangani menu terpisah **Analyze → Classify → Apply Model**, `../apply-model/`, yang membaca file/hasil Export Model dari menu ini. Menu Naive Bayes sendiri tetap tidak melakukan prediksi data baru.)*
 - Tab "Save" ala Nearest Neighbor yang menulis kolom hasil (predicted value/probability) kembali ke data viewer. Tidak ada permintaan seperti itu di spesifikasi ini.
 - Varian algoritma terpisah per tipe atribut (murni Gaussian NB atau murni Categorical/Multinomial NB) — yang dibangun adalah **satu model campuran**.
+
+*(Revisi v2 — cakupan diperluas ke Text Features dan likelihood per kelompok.)* (Lihat AGENTS_V2.md §0 V1–V5, §1)
 
 ---
 
@@ -147,6 +151,8 @@ Payload yang dikirim ke worker/WASM minimal memuat: data & definisi variabel tar
 
 Bagian ini adalah kontrak angka/istilah — implementasi Rust wajib patuh persis pada definisi berikut, supaya UI, dokumentasi, dan hasil ekspor JSON tidak saling bertentangan.
 
+*(Revisi v2 — rumus Text, Gaussian min-std, dan skor Top-k ditambahkan tanpa mengubah rumus v1.)* (Lihat AGENTS_V2.md §6, §0 V5–V6, V12)
+
 ### 5.1 Model
 
 - Satu model campuran: atribut `scale` dimodelkan sebagai **Gaussian Naive Bayes** (mean & variance per kelas), atribut `nominal`/`ordinal` dimodelkan sebagai **Categorical Naive Bayes** (frekuensi per kategori per kelas). Prediksi akhir menggabungkan log-likelihood dari kedua jenis atribut plus log class prior.
@@ -216,6 +222,8 @@ Bagian ini adalah kontrak angka/istilah — implementasi Rust wajib patuh persis
   Kedua field ini wajib supaya Apply Model bisa menghitung probabilitas kategori tak dikenal persis seperti §5.9. Field lama tidak berubah nama/arti; file `1.0` tetap dianggap valid oleh Apply Model (dengan peringatan). Nama field skema ini sekarang juga dikunci oleh `../apply-model/AGENTS.md` §3.1 — perubahan apa pun wajib merevisi kedua dokumen.
 - **Nilai/label kategori asli dari dataset boleh ikut tersimpan** di dalam JSON model (by design — sudah dikonfirmasi pemilik produk). Ini dicatat di sini secara eksplisit supaya tidak ada yang "memperbaiki" ini di kemudian hari dengan menghapus label tanpa didiskusikan ulang; namun karena berarti file ekspor bisa memuat data yang berpotensi sensitif, developer disarankan tetap mendokumentasikan hal ini secara terlihat oleh pengguna (misal keterangan singkat di UI Export) — bukan berarti fungsionalitasnya dibatasi.
 
+*(Revisi v2 — schema `1.1` tetap untuk model setara v1; selain itu schema `2.0`.)* (Lihat AGENTS_V2.md §0 V8, §8)
+
 ---
 
 ## 6. Struktur File & Tanggung Jawab
@@ -280,3 +288,5 @@ Integrasi di luar folder ini (wajib, tidak bisa dihindari — lihat bagian 7 unt
 - Jangan mengubah definisi/rumus di bagian 5 (smoothing, variance floor, metrik, confusion matrix, kappa, dsb.) secara sepihak saat implementasi. Jika ternyata ada kebutuhan berbeda saat coding, dokumen ini yang direvisi dulu (dan didiskusikan ulang), bukan kode yang diam-diam menyimpang dari sini.
 - *(Revisi Apply Model — pengecualian terbatas):* agent yang mengerjakan `../apply-model/PLAN.md` **Fase 0** boleh mengubah folder ini **hanya** pada: `rust/src/stats/save.rs` (schema 1.1, §5.10), tipe `NaiveBayesTrainedModelRaw` di `services/naive-bayes-analysis-formatter.ts`, konstanta `NAIVE_BAYES_WASM_VERSION` di `services/naive-bayes-analysis.ts`, serta worker & `pkg/` di `frontend/public/workers/Classify/NaiveBayes/`. Rumus training/scoring tetap tidak boleh diubah.
 - *(Revisi Apply Model):* jangan mengubah `rust/src/stats/preprocess_data.rs::data_value_to_label`/`is_missing_value`, `rust/src/stats/prediction.rs`, atau `rust/src/stats/classification_table.rs` tanpa merevisi `../apply-model/AGENTS.md` — ketiganya disalin oleh Apply Model dan harus tetap identik.
+
+*(Revisi v2 — larangan di atas dikecualikan sebatas yang diizinkan v2; larangan v2 menggantikan bila bertentangan.)* (Lihat AGENTS_V2.md §2 P-V1, P-V4 dan §12)

@@ -10,6 +10,8 @@
  */
 
 import init, { process_text_data } from './wasm-output/statify_string_to_word.js';
+import type { VectorizerConfigPayload } from './types';
+import { normalizeWorkerError } from './utils/normalizeWorkerError';
 
 // Flag agar init() hanya dipanggil sekali selama lifetime Worker
 let wasmReady = false;
@@ -35,48 +37,8 @@ self.onmessage = async (event: MessageEvent) => {
 
         self.postMessage({ status: 'success', payload: result });
     } catch (error: unknown) {
-        // error adalah AppError JSON dari Rust
-        self.postMessage({ status: 'error', payload: error });
+        // Error bisa berupa string JSON, objek {code,message}, atau Error init WASM.
+        // Selalu dinormalkan agar UI menerima { code, message } yang terisi (F04).
+        self.postMessage({ status: 'error', payload: normalizeWorkerError(error) });
     }
 };
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Type definitions (mirroring Rust VectorizerConfig)
-// ──────────────────────────────────────────────────────────────────────────────
-
-/** Payload yang dikirim ke Rust — harus cocok dengan struct VectorizerConfig di lib.rs */
-export interface VectorizerConfigPayload {
-    lowercase: boolean;
-    /** "none" | "indonesian" | "english" */
-    stemming_method: string;
-    /** "none" | "indonesian" | "english" | "custom" */
-    stopwords_method: string;
-    /** JSON string: "[\"kata1\",\"kata2\",...]" atau null */
-    custom_stopwords: string | null;
-    /** Pola regex untuk delimiter tokenizer, contoh: r"[\s.,;:!?]+" */
-    delimiters: string;
-    ngram_min: number;
-    ngram_max: number;
-    /** "binary" | "raw" | "normalized" | "log" */
-    tf_method: string;
-    /** "none" | "idf" | "smooth" */
-    idf_method: string;
-    words_to_keep: number;
-}
-
-/** Output dari Rust process_text_data */
-export interface VectorizerOutput {
-    vocabulary: string[];
-    matrix: number[][];
-    stats: {
-        total_documents: number;
-        vocabulary_size: number;
-        method: string;
-    };
-}
-
-/** Error dari Rust AppError */
-export interface AppError {
-    code: string;
-    message: string;
-}

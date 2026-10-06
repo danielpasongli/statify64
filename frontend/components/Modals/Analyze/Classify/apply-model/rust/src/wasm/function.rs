@@ -17,15 +17,22 @@
 // sama dengan `extract_value` di `naive-bayes/rust/src/stats/preprocess_data.rs`
 // (sel hilang -> `DataValue::Null`). Actual: `[]` atau tepat satu slice;
 // nama variabelnya dibaca dari `actual_defs[0][0].name`.
+//
+// Revisi v2 (Fase A2, AGENTS_V2.md §10.3–10.4): `run_apply_model_with_text`
+// menambah argumen payload Text (raw / vector). `run_apply_model` 6-argumen
+// dipertahankan sebagai pembungkus (`text = None`) sehingga seluruh pemanggil
+// dan test v1 tidak berubah. Kontribusi Text dihitung sekali lewat
+// `TextModel::prepare` (memakai `statify-text-core`), lalu diteruskan per baris.
 use serde::Serialize;
 use serde_json::Value;
 use wasm_bindgen::JsValue;
 
 use crate::models::data::{DataRecord, DataValue, VariableDefinition, VariableMeasure};
-use crate::models::payload::MappingEntry;
+use crate::models::payload::{MappingEntry, TextPayload};
 use crate::models::result::{
     ApplyModelRawResult, ModelSummary, ModelSummaryFeature, ModelSummaryParameter,
 };
+use crate::scoring::text::TextSource;
 use crate::scoring::{build_scorer, ClassifierScorer, FeatureRole, FeatureSpec};
 use crate::stats::evaluation::{actual_unknown_class_warning, build_evaluation};
 use crate::stats::summary::{build_warnings, resolve_row, summarize_rows, RowOutcome};
@@ -48,7 +55,7 @@ pub fn get_formatted_results(result: &Option<ApplyModelRawResult>) -> Result<JsV
                 .map_err(|e| JsValue::from_str(&format!("AM_E_SERIALIZE: {}", e)))
         }
         None => Err(JsValue::from_str(
-            "AM_E_PAYLOAD: hasil Apply Model tidak tersedia",
+            "AM_E_PAYLOAD: the Apply Model result is not available",
         )),
     }
 }
@@ -64,6 +71,8 @@ pub fn get_formatted_results(result: &Option<ApplyModelRawResult>) -> Result<JsV
 /// - `model`: isi file model apa adanya.
 ///
 /// Semua error berbentuk `"AM_E_XXX: detail"` (AGENTS.md §4.5, P3).
+///
+/// Perilaku v1: tanpa payload Text (`run_apply_model_with_text(.., None)`).
 pub fn run_apply_model(
     predictors: &[Vec<DataRecord>],
     predictor_defs: &[Vec<VariableDefinition>],
@@ -72,26 +81,75 @@ pub fn run_apply_model(
     actual_defs: &[Vec<VariableDefinition>],
     model: &Value,
 ) -> Result<ApplyModelRawResult, String> {
+    run_apply_model_with_text(
+        predictors,
+        predictor_defs,
+        mapping,
+        actual,
+        actual_defs,
+        model,
+        None,
+    )
+}
+
+/// Pipeline scoring penuh dengan payload Text opsional (revisi v2).
+///
+/// - Model dengan fitur Text (schema 2.0) WAJIB menerima `text`; tanpa itu
+///   `AM_E_PAYLOAD`. Sumber payload harus sama dengan sumber model.
+/// - Model tanpa fitur Text MENGABAIKAN `text` (keputusan konservatif: tidak
+///   mengubah perilaku v1 bila pemanggil mengirim payload Text berlebih).
+/// - Jumlah baris = slice terpanjang di antara `predictors` dan payload Text
+///   (model hanya-Text tidak punya slice prediktor).
+pub fn run_apply_model_with_text(
+    predictors: &[Vec<DataRecord>],
+    predictor_defs: &[Vec<VariableDefinition>],
+    mapping: &[MappingEntry],
+    actual: &[Vec<DataRecord>],
+    actual_defs: &[Vec<VariableDefinition>],
+    model: &Value,
+    text: Option<&TextPayload>,
+) -> Result<ApplyModelRawResult, String> {
     let scorer = build_scorer(model)?;
 
     validate_payload(scorer.features(), predictors, predictor_defs, mapping)?;
     let actual_variable = actual_variable_name(actual, actual_defs)?;
 
+    // Payload Text hanya relevan bila model punya fitur Text.
+    let text_model = scorer.text_model();
+    let text_payload: Option<&TextPayload> = match (text_model, text) {
+        (Some(_), Some(payload)) => Some(payload),
+        (Some(_), None) => {
+            return Err(payload_error(
+                "the model has Text features but the text payload is empty",
+            ));
+        }
+        (None, _) => None,
+    };
+
     // Jumlah baris = slice terpanjang (pola `count_cases` NB), supaya baris
-    // yang kosong di sebagian slice tetap terhitung.
-    let total_rows = predictors.iter().map(|slice| slice.len()).max().unwrap_or(0);
+    // yang kosong di sebagian slice tetap terhitung. Payload Text ikut dihitung.
+    let predictor_rows = predictors.iter().map(|slice| slice.len()).max().unwrap_or(0);
+    let total_rows = predictor_rows.max(text_payload.map_or(0, |payload| payload.row_count()));
     if total_rows == 0 {
         return Err(
-            "AM_E_NO_ROWS: dataset aktif tidak berisi baris data pada variabel yang dipetakan"
+            "AM_E_NO_ROWS: The active dataset has no data rows in the mapped variables."
                 .to_string(),
         );
     }
+
+    // Kontribusi Text per baris (sekali, batch). Aturan baris missing (K5/V11)
+    // ada di `scoring::text`; CORE tidak mengenal baris missing.
+    let text_scores = match (text_model, text_payload) {
+        (Some(model), Some(payload)) => Some(model.prepare(payload, total_rows)?),
+        _ => None,
+    };
 
     let classes = scorer.classes();
     let outcomes: Vec<RowOutcome> = (0..total_rows)
         .map(|row| {
             let values = row_values(predictors, mapping, row);
-            resolve_row(classes, scorer.score_row(&values))
+            let text_row = text_scores.as_ref().and_then(|scores| scores.row(row));
+            resolve_row(classes, scorer.score_row_with_text(&values, text_row))
         })
         .collect();
 
@@ -113,8 +171,23 @@ pub fn run_apply_model(
         _ => None,
     };
 
+    let mut model_summary = build_model_summary(scorer.as_ref(), model, mapping);
+    // Revisi v2 (§10.4): baris ringkasan dinamis fitur Text.
+    if let (Some(text_model), Some(scores)) = (text_model, text_scores.as_ref()) {
+        match text_model.source {
+            TextSource::Vector => model_summary.parameters.push(ModelSummaryParameter {
+                label: "Text features zero-filled".to_string(),
+                value: scores.zero_filled_columns.to_string(),
+            }),
+            TextSource::Raw => model_summary.parameters.push(ModelSummaryParameter {
+                label: "Rows with empty text".to_string(),
+                value: scores.empty_rows.to_string(),
+            }),
+        }
+    }
+
     Ok(ApplyModelRawResult {
-        model_summary: build_model_summary(scorer.as_ref(), model, mapping),
+        model_summary,
         case_processing_summary: summary.case_processing_summary,
         prediction_distribution: summary.prediction_distribution,
         predictions: summary.predictions,
@@ -141,7 +214,7 @@ fn actual_variable_name(
 
     if actual.len() != 1 || actual_defs.len() != 1 {
         return Err(payload_error(&format!(
-            "actual ({}) dan actualDefs ({}) harus kosong atau masing-masing berisi tepat satu slice",
+            "actual ({}) and actualDefs ({}) must both be empty or each contain exactly one slice",
             actual.len(),
             actual_defs.len()
         )));
@@ -149,7 +222,7 @@ fn actual_variable_name(
 
     match actual_defs[0].first() {
         Some(def) => Ok(Some(def.name.clone())),
-        None => Err(payload_error("actualDefs[0] kosong")),
+        None => Err(payload_error("actualDefs[0] is empty")),
     }
 }
 
@@ -181,7 +254,7 @@ fn validate_payload(
         || mapping.len() != feature_count
     {
         return Err(payload_error(&format!(
-            "jumlah predictors ({}), predictorDefs ({}), dan mapping ({}) harus sama dengan jumlah fitur model ({})",
+            "the numbers of predictors ({}), predictorDefs ({}) and mapping ({}) must equal the number of model features ({})",
             predictors.len(),
             predictor_defs.len(),
             mapping.len(),
@@ -197,7 +270,7 @@ fn validate_payload(
     {
         if entry.feature != feature.name {
             return Err(payload_error(&format!(
-                "mapping[{}].feature \"{}\" tidak sama dengan fitur model \"{}\"",
+                "mapping[{}].feature \"{}\" does not match the model feature \"{}\"",
                 index, entry.feature, feature.name
             )));
         }
@@ -206,7 +279,7 @@ fn validate_payload(
             Some(def) => def,
             None => {
                 return Err(payload_error(&format!(
-                    "predictorDefs[{}] kosong untuk fitur \"{}\"",
+                    "predictorDefs[{}] is empty for feature \"{}\"",
                     index, feature.name
                 )));
             }
@@ -771,7 +844,8 @@ mod tests {
         assert_err_code(run(&unsupported), "AM_E_MODEL_TYPE_UNSUPPORTED");
 
         let mut bad_schema = d1();
-        bad_schema["schema_version"] = json!("2.0");
+        // Revisi v2 (Fase A2): "2.0" kini didukung; contoh versi tak didukung dinaikkan ke "3.0".
+        bad_schema["schema_version"] = json!("3.0");
         assert_err_code(run(&bad_schema), "AM_E_SCHEMA_VERSION_UNSUPPORTED");
 
         assert_err_code(run(&json!([1, 2])), "AM_E_NOT_OBJECT");

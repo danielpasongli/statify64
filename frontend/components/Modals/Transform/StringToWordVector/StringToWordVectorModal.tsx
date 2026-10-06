@@ -7,7 +7,10 @@ import { useStringToWordVector } from "./hooks/useStringToWordVector";
 import { VariablesTab } from "./VariablesTab";
 import { OptionsTab } from "./OptionsTab";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { validateStwvConfig } from "./config";
+import { Loader2, AlertCircle } from "lucide-react";
+import { validateColumnPrefix } from "./utils/columnPrefix";
+import { formatStwvError } from "./utils/formatStwvError";
 
 /**
  * Komponen Content
@@ -24,21 +27,38 @@ const StringToWordVectorContent: React.FC<BaseModalProps> = ({ onClose }) => {
         removeTarget,
         config,
         setConfig,
+        columnPrefix,
+        setColumnPrefix,
         isLoading,
-        result,
         error,
-        runVectorizer,
-        saveToDataset
+        runAndAddToDataset,
+        reset,
     } = useStringToWordVector();
 
     const [activeTab, setActiveTab] = React.useState("variables");
 
-    const handleRun = async () => {
+    // Validasi opsi: tombol Run dinonaktifkan dan pesan ditampilkan bila ada yang tidak sah
+    const validationErrors = React.useMemo(() => validateStwvConfig(config), [config]);
+    const prefixError = React.useMemo(() => validateColumnPrefix(columnPrefix), [columnPrefix]);
+    const hasValidationErrors = validationErrors.length > 0 || prefixError !== null;
+
+    // OK: jalankan STWV, tambahkan kolom ke dataset, tulis Output Viewer; tutup modal bila berhasil
+    const handleOk = async () => {
         if (!selectedVariable) {
-            toast.error("Pilih variabel teks terlebih dahulu.");
+            toast.error("Select a text variable first.");
             return;
         }
-        await runVectorizer();
+        if (hasValidationErrors) {
+            toast.error(validationErrors[0] ?? prefixError ?? "Some options are invalid.");
+            return;
+        }
+        const success = await runAndAddToDataset();
+        if (success) onClose();
+    };
+
+    const handleReset = () => {
+        reset();
+        setActiveTab("variables");
     };
 
     return (
@@ -66,6 +86,9 @@ const StringToWordVectorContent: React.FC<BaseModalProps> = ({ onClose }) => {
                             <OptionsTab
                                 config={config}
                                 setConfig={setConfig}
+                                columnPrefix={columnPrefix}
+                                setColumnPrefix={setColumnPrefix}
+                                columnPrefixError={prefixError}
                             />
                         </TabsContent>
                     </div>
@@ -75,7 +98,19 @@ const StringToWordVectorContent: React.FC<BaseModalProps> = ({ onClose }) => {
                 {isLoading && (
                     <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Memproses... Harap tunggu.</span>
+                        <span>Processing... Please wait.</span>
+                    </div>
+                )}
+
+                {hasValidationErrors && (
+                    <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                        <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                        <div>
+                            <p className="font-semibold">Some options are invalid:</p>
+                            {validationErrors.map((msg) => (
+                                <p key={msg}>{msg}</p>
+                            ))}
+                        </div>
                     </div>
                 )}
 
@@ -83,54 +118,26 @@ const StringToWordVectorContent: React.FC<BaseModalProps> = ({ onClose }) => {
                     <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                         <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                         <div>
-                            <p className="font-semibold">[{error.code}]</p>
-                            <p>{error.message}</p>
+                            <p>{formatStwvError(error)}</p>
                         </div>
-                    </div>
-                )}
-
-                {result && !isLoading && !error && (
-                    <div className="mt-4 rounded-md border border-border bg-muted/40 p-3 text-sm space-y-1">
-                        <div className="flex items-center gap-2 font-semibold text-foreground mb-2">
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            <span>Berhasil!</span>
-                        </div>
-                        <p className="text-muted-foreground">
-                            Metode: <span className="font-mono text-foreground">{result.stats.method.toUpperCase()}</span>
-                        </p>
-                        <p className="text-muted-foreground">
-                            Dokumen: <span className="font-mono text-foreground">{result.stats.total_documents}</span>
-                        </p>
-                        <p className="text-muted-foreground">
-                            Vocabulary: <span className="font-mono text-foreground">{result.stats.vocabulary_size} terms</span>
-                        </p>
-                        <p className="text-muted-foreground text-xs mt-1">
-                            {result.vocabulary.slice(0, 10).join(", ")}{result.vocabulary.length > 10 ? ` ... (+${result.vocabulary.length - 10} lainnya)` : ""}
-                        </p>
-                        <Button
-                            className="w-full mt-3"
-                            onClick={saveToDataset}
-                            disabled={isLoading}
-                        >
-                            Tambahkan ke Dataset
-                        </Button>
                     </div>
                 )}
             </div>
 
             {/* Footer Form Action Buttons */}
             <div className="px-6 py-3 border-t border-border flex items-center justify-end bg-secondary flex-shrink-0 space-x-4">
-                <Button variant="outline" onClick={onClose} disabled={isLoading}>Cancel</Button>
-                <Button onClick={handleRun} disabled={isLoading || !selectedVariable}>
+                <Button onClick={handleOk} disabled={isLoading || !selectedVariable || hasValidationErrors}>
                     {isLoading ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Processing...
                         </>
                     ) : (
-                        "Run Computation"
+                        "OK"
                     )}
                 </Button>
+                <Button variant="outline" onClick={handleReset} disabled={isLoading}>Reset</Button>
+                <Button variant="outline" onClick={onClose} disabled={isLoading}>Cancel</Button>
             </div>
         </div>
     );

@@ -103,7 +103,7 @@ pub fn actual_unknown_class_warning(count: u32) -> Option<ApplyModelWarning> {
     Some(ApplyModelWarning {
         code: "AM_W_ACTUAL_UNKNOWN_CLASS".to_string(),
         count,
-        message: "Sebagian baris dikeluarkan dari evaluasi karena kelas sebenarnya tidak dikenal oleh model."
+        message: "Some rows were excluded from the evaluation because their actual class is not known to the model."
             .to_string(),
     })
 }

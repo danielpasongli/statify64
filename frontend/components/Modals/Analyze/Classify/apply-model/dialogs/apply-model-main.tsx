@@ -52,6 +52,26 @@ export const cloneApplyModelDefault = (): ApplyModelType =>
     JSON.parse(JSON.stringify(ApplyModelDefault)) as ApplyModelType;
 
 /**
+ * v2 (AGENTS_V2.md §10.2): hasil auto-map memuat `RawTextVar`/`VectorMapping`
+ * hanya bila model punya fitur Text. Kunci itu disalin ke `variables`; untuk model
+ * tanpa Text objek `variables` tetap persis seperti v1 (tanpa kunci Text).
+ */
+function toVariablesForm(
+    mapped: ReturnType<typeof autoMapFeatures>
+): ApplyModelVariablesTabType {
+    return {
+        FeatureMapping: mapped.FeatureMapping,
+        ActualTargetVar: mapped.ActualTargetVar,
+        ...(mapped.RawTextVar !== undefined
+            ? { RawTextVar: mapped.RawTextVar }
+            : {}),
+        ...(mapped.VectorMapping !== undefined
+            ? { VectorMapping: mapped.VectorMapping }
+            : {}),
+    };
+}
+
+/**
  * AGENTS.md §6.1 "Saat model baru berhasil dimuat": `model` diisi dari hasil
  * muat, `variables` direset lalu auto-map terhadap dataset aktif, `save`
  * direset ke default, `output` dipertahankan.
@@ -70,10 +90,7 @@ export function applyLoadedModel(
             SourceLabel: loaded.sourceLabel,
             ModelJson: loaded.model,
         },
-        variables: {
-            FeatureMapping: mapped.FeatureMapping,
-            ActualTargetVar: mapped.ActualTargetVar,
-        },
+        variables: toVariablesForm(mapped),
         save: cloneApplyModelDefault().save,
         output: prev.output,
     };
@@ -82,7 +99,7 @@ export function applyLoadedModel(
 const VALIDATION_ERROR_TOAST_ID = "apply-model-validation-error";
 
 const DATASET_CHANGED_MESSAGE =
-    "Dataset berubah — pemetaan variabel Apply Model disusun ulang.";
+    "The dataset changed, so the Apply Model variable mapping was rebuilt.";
 
 /**
  * Fingerprint ringan dari daftar variabel dataset (name+type+measure), untuk
@@ -158,10 +175,7 @@ export function reconcileForDatasetChange(
         variables:
             mapped === null
                 ? defaults.variables
-                : {
-                      FeatureMapping: mapped.FeatureMapping,
-                      ActualTargetVar: mapped.ActualTargetVar,
-                  },
+                : toVariablesForm(mapped),
         save: { ...prev.save, CustomNames: defaults.save.CustomNames },
         output: prev.output,
     };
@@ -169,11 +183,12 @@ export function reconcileForDatasetChange(
 
 export type { ApplyModelRunSummary };
 
-/** Teks toast sukses (AGENTS.md §6.1). */
+/** Teks toast sukses (bahasa Inggris, PLAN_V3_UI_EN §3.3). */
 export function formatApplyModelSuccessMessage(
     summary: ApplyModelRunSummary
 ): string {
-    return `Prediksi selesai: ${summary.scoredRows} baris diprediksi. Kolom baru: ${summary.finalNames.join(", ")}.`;
+    const rowLabel = summary.scoredRows === 1 ? "row" : "rows";
+    return `Predictions complete: ${summary.scoredRows} ${rowLabel} scored. New columns: ${summary.finalNames.join(", ")}.`;
 }
 
 const ApplyModelMain: React.FC<BaseModalProps> = ({ onClose }) => {
@@ -343,7 +358,7 @@ const ApplyModelMain: React.FC<BaseModalProps> = ({ onClose }) => {
         };
 
         toast.promise(run(), {
-            loading: "Menerapkan model ke dataset...",
+            loading: "Applying the model to the dataset...",
             success: (summary) => formatApplyModelSuccessMessage(summary),
             error: getUserFriendlyApplyModelError,
         });
@@ -358,7 +373,7 @@ const ApplyModelMain: React.FC<BaseModalProps> = ({ onClose }) => {
         } catch {
             // Gagal menghapus data tersimpan: state form tetap sudah direset.
         }
-        toast.success("Pengaturan Apply Model telah direset.");
+        toast.success("Apply Model settings have been reset.");
     }, []);
 
     return (

@@ -48,7 +48,7 @@ describe("CLASSIFIER_MODEL_ADAPTERS & getModelAdapter (§3.2)", () => {
     expect(adapter).toBe(naiveBayesModelAdapter);
     expect(adapter?.modelType).toBe("naive_bayes");
     expect(adapter?.algorithmLabel).toBe("Naive Bayes");
-    expect(adapter?.supportedSchemaVersions).toEqual(["1.0", "1.1"]);
+    expect(adapter?.supportedSchemaVersions).toEqual(["1.0", "1.1", "2.0"]);
     expect(adapter?.defaultOutputPrefix).toBe("NB");
   });
 

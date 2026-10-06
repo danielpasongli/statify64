@@ -1,0 +1,26 @@
+[package]
+name = "statify-text-core"
+version = "0.1.0"
+edition = "2021"
+description = "Inti pemrosesan teks Statify (tokenizer, stopwords, stemmer, n-gram, vectorizer). Library Rust murni tanpa wasm-bindgen."
+
+[lib]
+crate-type = ["rlib"]
+
+# Versi dependensi disalin persis dari STWV/rust/Cargo.toml agar Cargo.lock STWV tetap dapat dipakai.
+# Sengaja TIDAK memuat wasm-bindgen, web-sys, serde-wasm-bindgen, console_error_panic_hook.
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+
+# Stemming bahasa Inggris (Porter algorithm)
+rust-stemmers = "1.2.0"
+
+# Stemming bahasa Indonesia (Nazief-Adriani via Sastrawi)
+sastrawi-rs = "0.5.1"
+
+# HashSet & HashMap efisien untuk stopwords filter
+hashbrown = "0.14"
+
+# Regex engine untuk tokenizer
+regex = "1.10"

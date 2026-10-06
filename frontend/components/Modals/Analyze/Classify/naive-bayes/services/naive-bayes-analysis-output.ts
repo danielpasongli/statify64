@@ -8,11 +8,22 @@
 
 import type { Table } from "@/types/Table";
 import { useResultStore } from "@/stores/useResultStore";
-import type {
-  NaiveBayesRawResult,
-  NaiveBayesTrainedModelRaw,
+import {
+  getTrainedText,
+  type NaiveBayesRawResult,
+  type NaiveBayesTrainedModelRaw,
 } from "./naive-bayes-analysis-formatter";
 import type { NaiveBayesType } from "@/components/Modals/Analyze/Classify/naive-bayes/types/naive-bayes";
+import { getEffectiveTextSource } from "@/components/Modals/Analyze/Classify/naive-bayes/hooks/useNaiveBayesValidation";
+import {
+  describeAttributeDistribution,
+  describeCaseProcessingSummary,
+  describeCohensKappa,
+  describeConfusionMatrix,
+  describeEvaluationMetrics,
+  describeExportModel,
+  describeTextFeatureTable,
+} from "./naive-bayes-interpretation";
 
 export type NaiveBayesFormattedResult = {
   tables: Table[];
@@ -48,7 +59,10 @@ export async function resultNaiveBayes({
     if (caseProcessingSummary) {
       await addStatistic(analyticId, {
         title: "Case Processing Summary",
-        description: "Case Processing Summary",
+        description: describeCaseProcessingSummary(
+          rawResult.case_processing_summary,
+          getTrainedText(rawResult.trained_model)
+        ),
         output_data: caseProcessingSummary,
         // PENTING: JANGAN pakai string persis "Case Processing Summary" di
         // sini. String ini dipakai sebagai key lookup ke registry komponen
@@ -70,7 +84,7 @@ export async function resultNaiveBayes({
     if (attributeDistributionTable) {
       await addStatistic(analyticId, {
         title: "Attribute Distribution Table",
-        description: "Attribute Distribution Table",
+        description: describeAttributeDistribution(rawResult.attribute_distribution ?? []),
         output_data: attributeDistributionTable,
         components: "Attribute Distribution Table",
       });
@@ -83,7 +97,9 @@ export async function resultNaiveBayes({
     if (evaluationMetrics) {
       await addStatistic(analyticId, {
         title: "Model Evaluation Metrics",
-        description: "Model Evaluation Metrics",
+        description: rawResult.evaluation_metrics
+          ? describeEvaluationMetrics(rawResult.evaluation_metrics, rawResult.confusion_matrix)
+          : "Model Evaluation Metrics",
         output_data: evaluationMetrics,
         components: "Model Evaluation Metrics",
       });
@@ -91,7 +107,7 @@ export async function resultNaiveBayes({
     if (evaluationMetricsKappa) {
       await addStatistic(analyticId, {
         title: "Cohen's Kappa",
-        description: "Cohen's Kappa (overall)",
+        description: describeCohensKappa(rawResult.evaluation_metrics?.cohens_kappa),
         output_data: evaluationMetricsKappa,
         components: "Model Evaluation Metrics",
       });
@@ -103,9 +119,40 @@ export async function resultNaiveBayes({
     if (confusionMatrix) {
       await addStatistic(analyticId, {
         title: "Confusion Matrix",
-        description: "Confusion Matrix",
+        description: rawResult.confusion_matrix
+          ? describeConfusionMatrix(rawResult.confusion_matrix)
+          : "Confusion Matrix",
         output_data: confusionMatrix,
         components: "Confusion Matrix",
+      });
+    }
+  }
+
+  // Text Feature Table (AGENTS_V2 §9 / V9). Opsi `TextFeatureTable` tetap
+  // tersimpan true walau tidak ada Text Features, jadi tabel ini diabaikan bila
+  // sumber Text efektif "none" atau Rust tidak mengirim `text_feature_table`.
+  // `output_data` membawa tabel Top-k (`tables`, bisa dirender oleh renderer
+  // generik) + struktur lengkap (`textFeatureTable`, untuk Download CSV/Copy TSV).
+  if (
+    configData.output.TextFeatureTable &&
+    getEffectiveTextSource(configData.main) !== "none" &&
+    rawResult.text_feature_table
+  ) {
+    const textFeatureTable = formattedResult.tables.find(
+      (table) => table.key === "text_feature_table"
+    );
+    if (textFeatureTable) {
+      await addStatistic(analyticId, {
+        title: "Text Feature Table",
+        description: describeTextFeatureTable(rawResult.text_feature_table, {
+          alpha: rawResult.case_processing_summary?.text_features?.alpha ?? getTrainedText(rawResult.trained_model)?.alpha,
+          source: getEffectiveTextSource(configData.main) === "vector" ? "vector" : "raw",
+        }),
+        output_data: JSON.stringify({
+          tables: [textFeatureTable],
+          textFeatureTable: rawResult.text_feature_table,
+        }),
+        components: "Text Feature Table",
       });
     }
   }
@@ -116,8 +163,7 @@ export async function resultNaiveBayes({
   if (rawResult.trained_model) {
     await addStatistic(analyticId, {
       title: "Export Model",
-      description:
-        "Unduh model Naive Bayes terlatih sebagai file JSON. File ini dapat memuat nilai/label kategori asli dari dataset (AGENTS.md §5.10).",
+      description: describeExportModel(rawResult.trained_model),
       output_data: JSON.stringify({
         naiveBayesTrainedModel: rawResult.trained_model satisfies NaiveBayesTrainedModelRaw,
       }),

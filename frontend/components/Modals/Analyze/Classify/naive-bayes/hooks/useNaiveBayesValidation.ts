@@ -1,5 +1,9 @@
 import { useMemo } from "react";
-import type { NaiveBayesType } from "@/components/Modals/Analyze/Classify/naive-bayes/types/naive-bayes";
+import type {
+    NaiveBayesTextSource,
+    NaiveBayesType,
+} from "@/components/Modals/Analyze/Classify/naive-bayes/types/naive-bayes";
+import { validateStwvConfig } from "@/components/Modals/Transform/StringToWordVector/config";
 import type { Variable } from "@/types/Variable";
 
 export type NaiveBayesValidationResult = {
@@ -10,6 +14,40 @@ export type NaiveBayesValidationResult = {
 // Batas seed mengikuti Rust: seed dikonversi ke u32 untuk Mersenne Twister
 // (identik dengan MAX_SEED di useNearestNeighborValidation.ts, AGENTS.md §4.2).
 const MAX_SEED = 4294967295;
+
+// AGENTS_V2 §3.7 & §6: batas validasi Text (alpha > 0 dan <= 999 seperti
+// Smoothing Alpha v1; Top-k bilangan bulat 1-1000).
+const MAX_TEXT_ALPHA = 999;
+const MIN_TEXT_TOP_K = 1;
+const MAX_TEXT_TOP_K = 1000;
+
+/**
+ * Sumber Text efektif (AGENTS_V2 §2 V2): diturunkan dari ISI slot, bukan dari
+ * `main.TextSource` yang tersimpan (bisa basi pada data lama). Raw Text Variable
+ * menang bila terisi; selain itu Word-Vector Variables; selain itu "none".
+ */
+export function getEffectiveTextSource(
+    main: NaiveBayesType["main"]
+): NaiveBayesTextSource {
+    if (main.RawTextVar) return "raw";
+    if ((main.TextVectorVars ?? []).length > 0) return "vector";
+    return "none";
+}
+
+/**
+ * Nama kolom Text yang dikirim ke worker (urutan sama dengan payload
+ * `NaiveBayesTextPayload`): `[RawTextVar]`, daftar Word-Vector, atau kosong.
+ * Container membangun `dataVariables` sebagai
+ * `[target, ...getEffectivePredictors, ...getTextColumnNames]` HANYA untuk jalur
+ * Word-Vector. Raw Text Variable tidak lewat `dataVariables` (lihat
+ * `rawTextValues` pada `analyzeNaiveBayes`).
+ */
+export function getTextColumnNames(main: NaiveBayesType["main"]): string[] {
+    const source = getEffectiveTextSource(main);
+    if (source === "raw") return [main.RawTextVar as string];
+    if (source === "vector") return [...(main.TextVectorVars ?? [])];
+    return [];
+}
 
 /**
  * Predictor efektif menurut kontrak AGENTS.md §3.3.
@@ -50,7 +88,12 @@ export function getEffectivePredictors(
         return [...candidateFactors, ...candidateCovariates];
     }
 
+    // v2 (AGENTS_V2 §0 V3 & §3.3): pada mode Exclude, yang otomatis keluar
+    // hanya target, ExcludedVar, RawTextVar, TextVectorVars, dan `unknown`.
+    // Variabel STRING lain TETAP ikut sebagai predictor (perilaku v1).
     const excluded = new Set(main.ExcludedVar ?? []);
+    if (main.RawTextVar) excluded.add(main.RawTextVar);
+    for (const name of main.TextVectorVars ?? []) excluded.add(name);
 
     return variables
         .filter((v) => v.measure !== "unknown")
@@ -62,6 +105,10 @@ export function getEffectivePredictors(
  * Validasi terpusat menu Naive Bayes (pola `useNearestNeighborValidation.ts`):
  * - `validation.isValid` menentukan disabled/enabled tombol OK: target harus
  *   terisi DAN predictor efektif tidak boleh kosong (AGENTS.md §4.4).
+ * - v2 (AGENTS_V2 §3.3): OK aktif bila target terisi DAN (predictor efektif
+ *   tidak kosong ATAU Text Features terisi). Pilihan Complement yang bercampur
+ *   dengan predictor Numeric/Categorical, serta konfigurasi Text Preprocessing
+ *   yang tidak sah (jalur Raw Text), memblokir OK.
  * - `validateNumericInputs()` menggabungkan validasi numerik (Smoothing
  *   Alpha, persentase training/holdout, jumlah fold, seed) jadi satu pintu,
  *   dipanggil baik saat pindah tab maupun sebelum submit.
@@ -74,21 +121,53 @@ export function useNaiveBayesValidation(
         const errors: string[] = [];
 
         if (!formData.main.TargetVar) {
-            errors.push("Pilih variabel target.");
+            errors.push("Select a target variable.");
         }
 
         const effectivePredictors = getEffectivePredictors(
             formData.main,
             variables
         );
-        if (effectivePredictors.length === 0) {
+        const textSource = getEffectiveTextSource(formData.main);
+        const hasText = textSource !== "none";
+        // N5-8: pada mode Exclude tanpa target, daftar predictor efektif (semua
+        // variabel selain target) belum bermakna, jadi pesan predictor tetap
+        // ditampilkan bila Text Features juga kosong. Hanya memengaruhi pesan:
+        // form sudah tidak valid karena target kosong. `getEffectivePredictors`
+        // tidak diubah (perilaku v1 dipertahankan).
+        const predictorBelumBermakna =
+            !formData.main.TargetVar &&
+            (formData.main.SpecificationMode ?? "exclude") === "exclude";
+        if (
+            (effectivePredictors.length === 0 || predictorBelumBermakna) &&
+            !hasText
+        ) {
             errors.push(
-                "Pilih minimal satu variabel predictor (lewat Variables to Exclude atau Candidate Factors/Covariates)."
+                "Select at least one predictor variable (using Variables to Exclude or Candidate Factors / Covariates) or add Text Features."
             );
         }
 
+        // AGENTS_V2 §0 V5 & §3.6: Complement hanya sah bila model HANYA berisi
+        // Text Features (kode NB_E_COMPLEMENT_MIXED).
+        if (
+            hasText &&
+            formData.options.TextLikelihood === "complement" &&
+            effectivePredictors.length > 0
+        ) {
+            errors.push(
+                "Complement Naive Bayes can only be used when the model contains Text Features only. Choose Multinomial or Bernoulli, or remove the numeric/categorical predictors."
+            );
+        }
+
+        // AGENTS_V2 §3.5: jalur Raw Text memvalidasi konfigurasi Text Preprocessing.
+        if (textSource === "raw") {
+            for (const message of validateStwvConfig(formData.text)) {
+                errors.push(`Text Preprocessing: ${message}`);
+            }
+        }
+
         return { isValid: errors.length === 0, errors };
-    }, [formData.main, variables]);
+    }, [formData.main, formData.options.TextLikelihood, formData.text, variables]);
 
     const validateNumericInputs = (): string | null =>
         getNumericInputError(formData);
@@ -106,6 +185,7 @@ export function useNaiveBayesValidation(
  */
 export function getNumericInputError(formData: NaiveBayesType): string | null {
     const { options, validation } = formData;
+    const hasTextFeatures = getEffectiveTextSource(formData.main) !== "none";
 
     // Smoothing Alpha — AGENTS.md §4.1 & §5.2: harus > 0, boleh desimal,
     // maksimum 999.
@@ -113,13 +193,42 @@ export function getNumericInputError(formData: NaiveBayesType): string | null {
         typeof options.SmoothingAlpha !== "number" ||
         !Number.isFinite(options.SmoothingAlpha)
     ) {
-        return "Masukkan angka yang valid untuk Smoothing Alpha.";
+        return "Enter a valid number for Smoothing Alpha.";
     }
     if (options.SmoothingAlpha <= 0) {
-        return "Smoothing Alpha harus lebih besar dari 0.";
+        return "Smoothing Alpha must be greater than 0.";
     }
     if (options.SmoothingAlpha > 999) {
-        return "Smoothing Alpha maksimum 999.";
+        return "Smoothing Alpha must not exceed 999.";
+    }
+
+    // Text Features (AGENTS_V2 §3.6/§3.7) — hanya divalidasi bila Text Features
+    // terisi, supaya field tersembunyi tidak memblokir model tanpa teks.
+    // Top-k hanya relevan bila Text Feature Table dicentang.
+    if (hasTextFeatures) {
+        if (
+            typeof options.TextAlpha !== "number" ||
+            !Number.isFinite(options.TextAlpha)
+        ) {
+            return "Enter a valid number for Text smoothing alpha.";
+        }
+        if (options.TextAlpha <= 0) {
+            return "Text smoothing alpha must be greater than 0.";
+        }
+        if (options.TextAlpha > MAX_TEXT_ALPHA) {
+            return `Text smoothing alpha must not exceed ${MAX_TEXT_ALPHA}.`;
+        }
+        if (formData.output.TextFeatureTable) {
+            const k = formData.output.TextTopK;
+            if (
+                typeof k !== "number" ||
+                !Number.isInteger(k) ||
+                k < MIN_TEXT_TOP_K ||
+                k > MAX_TEXT_TOP_K
+            ) {
+                return `Top-k terms per class must be a whole number between ${MIN_TEXT_TOP_K} and ${MAX_TEXT_TOP_K}.`;
+            }
+        }
     }
 
     // Training/Holdout — AGENTS.md §4.2: TrainingPercentage rentang 1-99.
@@ -136,7 +245,7 @@ export function getNumericInputError(formData: NaiveBayesType): string | null {
             pct < 1 ||
             pct > 99
         ) {
-            return "Persentase Training harus bilangan bulat antara 1 dan 99.";
+            return "Training percentage must be a whole number between 1 and 99.";
         }
     }
 
@@ -144,7 +253,7 @@ export function getNumericInputError(formData: NaiveBayesType): string | null {
     if (validation.ValidationMethod === "kfold") {
         const folds = validation.KFolds;
         if (typeof folds !== "number" || !Number.isInteger(folds) || folds < 1) {
-            return "Jumlah fold minimal 1.";
+            return "The number of folds must be at least 1.";
         }
     }
 
@@ -158,7 +267,7 @@ export function getNumericInputError(formData: NaiveBayesType): string | null {
             validation.RandomSeed < 0 ||
             validation.RandomSeed > MAX_SEED
         ) {
-            return `Seed harus bilangan bulat antara 0 dan ${MAX_SEED}.`;
+            return `The seed must be a whole number between 0 and ${MAX_SEED}.`;
         }
     }
 

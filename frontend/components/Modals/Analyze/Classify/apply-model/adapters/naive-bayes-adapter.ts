@@ -1,4 +1,5 @@
 // AGENTS.md §3.2, §4.3, §4.4 — adapter model Naive Bayes (schema 1.0 & 1.1).
+// AGENTS_V2.md §10.1 — schema 2.0 (fitur Text, gaussian_minstd) ditambahkan; 1.0/1.1 tidak berubah.
 // Murni TypeScript; tanpa komponen React, tanpa akses store.
 
 import type { ApplyModelIssue } from "@/components/Modals/Analyze/Classify/apply-model/constants/apply-model-codes";
@@ -6,15 +7,21 @@ import type {
   ClassifierModelAdapter,
   ModelDescriptor,
   ModelFeatureDescriptor,
+  ModelTextDescriptor,
   ModelValidationResult,
 } from "@/components/Modals/Analyze/Classify/apply-model/adapters/types";
 import type { NaiveBayesExportedModel } from "@/components/Modals/Analyze/Classify/apply-model/types/model-schema";
 
 const MODEL_TYPE = "naive_bayes";
 const ALGORITHM_LABEL = "Naive Bayes";
-const SUPPORTED_SCHEMA_VERSIONS: readonly string[] = ["1.0", "1.1"];
+const SUPPORTED_SCHEMA_VERSIONS: readonly string[] = ["1.0", "1.1", "2.0"];
 const LEGACY_SCHEMA_VERSION = "1.0";
 const SCHEMA_VERSION_WITH_COUNTS = "1.1";
+const SCHEMA_VERSION_V2 = "2.0"; // juga mewajibkan field 1.1 (counts & class_totals)
+
+const TEXT_SOURCES: readonly string[] = ["raw", "vector"];
+const TEXT_LIKELIHOODS: readonly string[] = ["multinomial", "bernoulli", "complement"];
+const NUMERIC_LIKELIHOODS: readonly string[] = ["gaussian", "gaussian_minstd"];
 const TOLERANCE = 1e-6; // AGENTS.md K8
 
 // Field wajib di kedua versi (§3.1: semua field kecuali yang bertanda `?`).
@@ -66,6 +73,24 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function hasOwn(obj: UnknownRecord, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function isV2(raw: UnknownRecord): boolean {
+  return raw.schema_version === SCHEMA_VERSION_V2;
+}
+
+// Blok `text` hanya bermakna di schema 2.0; `null`/tidak ada = tanpa fitur Text.
+function getTextBlock(raw: UnknownRecord): unknown {
+  return isV2(raw) ? raw.text : undefined;
+}
+
+function hasTextBlock(raw: UnknownRecord): boolean {
+  const text = getTextBlock(raw);
+  return text !== undefined && text !== null;
+}
+
+function sameStringList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
 function hasDuplicates(values: readonly string[]): boolean {
@@ -280,12 +305,14 @@ function validateStep7FeatureOrder(
     .map((f) => f.name)
     .filter(isNonEmptyString);
 
-  if (featureOrder.length === 0) {
-    errors.push(makeError("AM_E_FEATURE_ORDER_MISMATCH", "feature_order kosong"));
+  // v2: model hanya-Text (tanpa fitur Numeric/Categorical) punya feature_order kosong.
+  const textOnly = hasTextBlock(raw) && featureList.length === 0;
+  if (featureOrder.length === 0 && !textOnly) {
+    errors.push(makeError("AM_E_FEATURE_ORDER_MISMATCH", "feature_order is empty"));
     return;
   }
   if (hasDuplicates(featureOrder)) {
-    errors.push(makeError("AM_E_FEATURE_ORDER_MISMATCH", "feature_order duplikat"));
+    errors.push(makeError("AM_E_FEATURE_ORDER_MISMATCH", "feature_order has duplicates"));
     return;
   }
   const orderSet = new Set(featureOrder);
@@ -297,7 +324,7 @@ function validateStep7FeatureOrder(
     featureOrder.every((n) => nameSet.has(n));
   if (!sameSet) {
     errors.push(
-      makeError("AM_E_FEATURE_ORDER_MISMATCH", "tidak sama dengan features[].name")
+      makeError("AM_E_FEATURE_ORDER_MISMATCH", "does not match features[].name")
     );
   }
 }
@@ -406,6 +433,226 @@ function validateStep10Numerical(
 }
 
 // ---------------------------------------------------------------------------
+// Langkah 12 (v2): likelihood per fitur Numeric/Categorical
+// ---------------------------------------------------------------------------
+
+function validateStep12FeatureLikelihoods(
+  raw: UnknownRecord,
+  errors: ApplyModelIssue[]
+): void {
+  if (!isV2(raw) || !Array.isArray(raw.features)) return;
+
+  const featureList: unknown[] = raw.features;
+  featureList.forEach((f, i) => {
+    if (!isPlainObject(f)) return;
+    const label = featureLabel(f, i);
+
+    if (f.role === "categorical") {
+      if (f.likelihood !== undefined && f.likelihood !== "categorical") {
+        errors.push(
+          makeError("AM_E_NB2_LIKELIHOOD", `${label}: ${String(f.likelihood)}`)
+        );
+      }
+      return;
+    }
+
+    if (f.role === "numerical") {
+      // Tanpa field `likelihood` = "gaussian" (kompatibel dengan model 1.1 yang di-upgrade).
+      const likelihood = f.likelihood;
+      if (
+        likelihood !== undefined &&
+        !(typeof likelihood === "string" && NUMERIC_LIKELIHOODS.includes(likelihood))
+      ) {
+        errors.push(makeError("AM_E_NB2_LIKELIHOOD", `${label}: ${String(likelihood)}`));
+        return;
+      }
+      if (likelihood === "gaussian_minstd") {
+        const minVar = f.min_variance;
+        if (!(isFiniteNumber(minVar) && minVar > 0)) {
+          errors.push(makeError("AM_E_GAUSSIAN_INVALID", label));
+        }
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Langkah 13 (v2): blok `text` (AGENTS_V2.md §8, §10.1)
+// ---------------------------------------------------------------------------
+
+// Memeriksa `obj[class]` untuk setiap kelas: harus array sepanjang `expectedLength`
+// berisi bilangan finite (dan >= 0 bila `nonNegative`). Berhenti pada masalah pertama.
+function checkClassVectors(
+  label: string,
+  obj: unknown,
+  classes: string[],
+  expectedLength: number,
+  nonNegative: boolean,
+  errors: ApplyModelIssue[]
+): void {
+  if (!isPlainObject(obj)) {
+    errors.push(makeError("AM_E_FIELD_TYPE", label));
+    return;
+  }
+  for (const cls of classes) {
+    const vec = obj[cls];
+    if (!hasOwn(obj, cls) || !Array.isArray(vec)) {
+      errors.push(makeError("AM_E_NB2_TEXT_SHAPE", `${label}[${cls}]`));
+      return;
+    }
+    if (vec.length !== expectedLength) {
+      errors.push(
+        makeError(
+          "AM_E_NB2_TEXT_SHAPE",
+          `${label}[${cls}]: ${vec.length} values, expected ${expectedLength}`
+        )
+      );
+      return;
+    }
+    const valid = vec.every(
+      (x: unknown) => isFiniteNumber(x) && (!nonNegative || x >= 0)
+    );
+    if (!valid) {
+      errors.push(makeError("AM_E_FIELD_TYPE", `${label}.${cls}`));
+      return;
+    }
+  }
+}
+
+function validateStep13Text(
+  raw: UnknownRecord,
+  classes: string[] | null,
+  errors: ApplyModelIssue[]
+): void {
+  if (!hasTextBlock(raw)) return;
+  const text = raw.text;
+  if (!isPlainObject(text)) {
+    errors.push(makeError("AM_E_FIELD_TYPE", "text"));
+    return;
+  }
+
+  // --- source & likelihood ---
+  const source = text.source;
+  const sourceKnown = typeof source === "string" && TEXT_SOURCES.includes(source);
+  if (!sourceKnown) {
+    errors.push(makeError("AM_E_NB2_TEXT_SOURCE", `source=${String(source)}`));
+  }
+  const likelihood = text.likelihood;
+  const likelihoodKnown =
+    typeof likelihood === "string" && TEXT_LIKELIHOODS.includes(likelihood);
+  if (!likelihoodKnown) {
+    errors.push(makeError("AM_E_NB2_LIKELIHOOD", `text: ${String(likelihood)}`));
+  }
+
+  // --- alpha ---
+  if (!(isFiniteNumber(text.alpha) && text.alpha > 0)) {
+    errors.push(makeError("AM_E_PARAM_INVALID", "text.alpha"));
+  }
+
+  // --- uses_class_prior ---
+  if (typeof text.uses_class_prior !== "boolean") {
+    errors.push(makeError("AM_E_FIELD_TYPE", "text.uses_class_prior"));
+  } else if (likelihoodKnown && classes !== null) {
+    // Konsistensi dengan scorer Rust (A2, REVIEW-G1 A1-3): Complement dengan K >= 2
+    // tidak memakai prior; selain itu prior selalu dipakai.
+    const expectedUsesPrior = !(likelihood === "complement" && classes.length >= 2);
+    if (text.uses_class_prior !== expectedUsesPrior) {
+      errors.push(
+        makeError(
+          "AM_E_NB2_LIKELIHOOD",
+          `text.uses_class_prior=${String(text.uses_class_prior)}, expected ${String(expectedUsesPrior)} for ${String(likelihood)}`
+        )
+      );
+    }
+  }
+
+  // --- Complement hanya sah bila model hanya berisi Text ---
+  if (
+    likelihood === "complement" &&
+    Array.isArray(raw.features) &&
+    raw.features.length > 0
+  ) {
+    errors.push(makeError("AM_E_NB2_COMPLEMENT_MIXED"));
+  }
+
+  // --- terms ---
+  if (!isStringArray(text.terms)) {
+    errors.push(makeError("AM_E_FIELD_TYPE", "text.terms"));
+    return; // panjang acuan tidak ada; pemeriksaan bentuk tidak bisa dilanjutkan
+  }
+  const terms = text.terms;
+  if (terms.length === 0) {
+    errors.push(makeError("AM_E_NB2_TEXT_SHAPE", "text.terms: empty"));
+    return;
+  }
+  if (hasDuplicates(terms)) {
+    errors.push(makeError("AM_E_NB2_TEXT_SHAPE", "text.terms: duplicates"));
+  }
+
+  // --- sumber raw: raw_variable + recipe ---
+  if (source === "raw") {
+    if (!isNonEmptyString(text.raw_variable)) {
+      errors.push(makeError("AM_E_NB2_TEXT_SOURCE", "raw source without raw_variable"));
+    }
+    const recipe = text.recipe;
+    if (!isPlainObject(recipe)) {
+      errors.push(makeError("AM_E_NB2_TEXT_SOURCE", "raw source without text preprocessing settings"));
+    } else {
+      if (!isPlainObject(recipe.config) || !isStringArray(recipe.resolved_stopwords)) {
+        errors.push(makeError("AM_E_NB2_TEXT_SOURCE", "incomplete text preprocessing settings"));
+      }
+      if (!isStringArray(recipe.vocabulary)) {
+        errors.push(makeError("AM_E_NB2_TEXT_SOURCE", "recipe.vocabulary"));
+      } else if (!sameStringList(recipe.vocabulary, terms)) {
+        errors.push(
+          makeError("AM_E_NB2_TEXT_SHAPE", "recipe.vocabulary differs from text.terms")
+        );
+      }
+      if (!Array.isArray(recipe.idf) || recipe.idf.length !== terms.length) {
+        errors.push(makeError("AM_E_NB2_TEXT_SHAPE", "recipe.idf"));
+      }
+    }
+  }
+
+  // --- sumber vector: columns sama dengan terms ---
+  if (source === "vector") {
+    if (!isStringArray(text.columns)) {
+      errors.push(makeError("AM_E_NB2_TEXT_SOURCE", "vector source without columns"));
+    } else if (!sameStringList(text.columns, terms)) {
+      errors.push(makeError("AM_E_NB2_TEXT_SHAPE", "text.columns differs from text.terms"));
+    }
+  }
+
+  // --- parameter per kelas ---
+  if (classes !== null) {
+    checkClassVectors("text.log_weights", text.log_weights, classes, terms.length, false, errors);
+    checkClassVectors(
+      "text.class_term_counts",
+      text.class_term_counts,
+      classes,
+      terms.length,
+      true,
+      errors
+    );
+    if (likelihood === "bernoulli") {
+      // log_weights_absent (A_ct) wajib hanya untuk Bernoulli.
+      if (text.log_weights_absent === null || text.log_weights_absent === undefined) {
+        errors.push(makeError("AM_E_NB2_TEXT_SHAPE", "text.log_weights_absent"));
+      } else {
+        checkClassVectors(
+          "text.log_weights_absent",
+          text.log_weights_absent,
+          classes,
+          terms.length,
+          false,
+          errors
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Langkah 11: khusus schema 1.1 (class_counts & class_totals)
 // ---------------------------------------------------------------------------
 
@@ -415,7 +662,7 @@ function validateStep11Counts(
   classes: string[] | null,
   errors: ApplyModelIssue[]
 ): void {
-  if (raw.schema_version !== SCHEMA_VERSION_WITH_COUNTS) return;
+  if (raw.schema_version !== SCHEMA_VERSION_WITH_COUNTS && !isV2(raw)) return;
 
   // --- target.class_counts ---
   if (target !== null && Array.isArray(target.classes)) {
@@ -425,11 +672,11 @@ function validateStep11Counts(
     if (!Array.isArray(counts)) {
       errors.push(makeError("AM_E_COUNTS_INVALID", "target.class_counts"));
     } else if (counts.length !== classCount) {
-      errors.push(makeError("AM_E_COUNTS_INVALID", "target.class_counts: panjang"));
+      errors.push(makeError("AM_E_COUNTS_INVALID", "target.class_counts: length"));
     } else if (!counts.every(isNonNegativeInteger)) {
-      errors.push(makeError("AM_E_COUNTS_INVALID", "target.class_counts: nilai"));
+      errors.push(makeError("AM_E_COUNTS_INVALID", "target.class_counts: values"));
     } else if ((counts as number[]).reduce((a, c) => a + c, 0) === 0) {
-      errors.push(makeError("AM_E_COUNTS_INVALID", "target.class_counts: jumlah 0"));
+      errors.push(makeError("AM_E_COUNTS_INVALID", "target.class_counts: sum is 0"));
     } else {
       countsValid = true;
     }
@@ -493,6 +740,12 @@ function formatTrainingValidation(config: unknown): string {
   return typeof config.method === "string" ? `${config.method}, ${seed}` : "-";
 }
 
+const TEXT_LIKELIHOOD_LABELS: Record<ModelTextDescriptor["likelihood"], string> = {
+  multinomial: "Multinomial",
+  bernoulli: "Bernoulli",
+  complement: "Complement",
+};
+
 function buildDescriptor(raw: NaiveBayesExportedModel): ModelDescriptor {
   const roleByName = new Map<string, ModelFeatureDescriptor["role"]>(
     raw.features.map((f): [string, ModelFeatureDescriptor["role"]] => [f.name, f.role])
@@ -506,6 +759,44 @@ function buildDescriptor(raw: NaiveBayesExportedModel): ModelDescriptor {
   const warnings: ModelDescriptor["warnings"] =
     raw.schema_version === LEGACY_SCHEMA_VERSION ? ["AM_W_LEGACY_SCHEMA"] : [];
 
+  // v2: info fitur Text (hanya schema 2.0 dengan blok `text`).
+  const textBlock =
+    raw.schema_version === SCHEMA_VERSION_V2 && raw.text ? raw.text : null;
+  const textDescriptor: ModelTextDescriptor | null =
+    textBlock === null
+      ? null
+      : {
+          source: textBlock.source,
+          likelihood: textBlock.likelihood,
+          alpha: textBlock.alpha,
+          termCount: textBlock.terms.length,
+          rawVariable: textBlock.source === "raw" ? textBlock.raw_variable : null,
+          columns: textBlock.source === "vector" ? [...(textBlock.columns ?? [])] : [],
+        };
+
+  const summaryRows = [
+    { label: "Smoothing alpha", value: String(raw.smoothing_alpha) },
+    { label: "Variance floor", value: String(raw.variance_floor) },
+    {
+      label: "Training validation",
+      value: formatTrainingValidation(raw.validation_config),
+    },
+  ];
+  if (textDescriptor !== null) {
+    summaryRows.push(
+      {
+        label: "Text source",
+        value:
+          textDescriptor.source === "raw"
+            ? `Raw text: '${textDescriptor.rawVariable ?? ""}'`
+            : "Word vectors",
+      },
+      { label: "Text likelihood", value: TEXT_LIKELIHOOD_LABELS[textDescriptor.likelihood] },
+      { label: "Text terms", value: String(textDescriptor.termCount) },
+      { label: "Text alpha", value: String(textDescriptor.alpha) }
+    );
+  }
+
   return {
     modelType: MODEL_TYPE,
     algorithmLabel: ALGORITHM_LABEL,
@@ -514,15 +805,11 @@ function buildDescriptor(raw: NaiveBayesExportedModel): ModelDescriptor {
     targetName: raw.target.name,
     classes: [...raw.target.classes],
     features,
-    summaryRows: [
-      { label: "Smoothing alpha", value: String(raw.smoothing_alpha) },
-      { label: "Variance floor", value: String(raw.variance_floor) },
-      {
-        label: "Training validation",
-        value: formatTrainingValidation(raw.validation_config),
-      },
-    ],
+    summaryRows,
     warnings,
+    // Sengaja tidak menambah key `text` untuk model tanpa fitur Text agar
+    // descriptor v1 identik dengan sebelumnya.
+    ...(textDescriptor !== null ? { text: textDescriptor } : {}),
   };
 }
 
@@ -566,6 +853,8 @@ export const naiveBayesModelAdapter: ClassifierModelAdapter = {
     validateStep9Categorical(raw, classes, errors);
     validateStep10Numerical(raw, classes, errors);
     validateStep11Counts(raw, target, classes, errors);
+    validateStep12FeatureLikelihoods(raw, errors);
+    validateStep13Text(raw, classes, errors);
 
     if (errors.length > 0) return { ok: false, errors };
 

@@ -186,6 +186,30 @@ pub fn predict_case(
     case: &PreprocessedCase,
     alpha: f64,
 ) -> PredictionScores {
+    predict_case_inner(model, case, alpha, None)
+}
+
+/// Fase N3a (PLAN_V2 / AGENTS_V2 §6.5): sama dengan `predict_case`, ditambah
+/// kontribusi Text. `text_scores` = kontribusi Text SATU baris per kelas
+/// (`CORE::nb_text::score_rows`, urutan kelas `model.text.params.classes`,
+/// TANPA `ln prior`). Skor total = `ln prior` + Numeric + Categorical + Text;
+/// untuk Complement (`uses_class_prior == false`) tanpa `ln prior` (§6.3).
+/// Tanpa `text_scores` (atau model tanpa Text) hasilnya identik `predict_case`.
+pub fn predict_case_with_text(
+    model: &TrainedModelParams,
+    case: &PreprocessedCase,
+    alpha: f64,
+    text_scores: Option<&[f64]>,
+) -> PredictionScores {
+    predict_case_inner(model, case, alpha, text_scores)
+}
+
+fn predict_case_inner(
+    model: &TrainedModelParams,
+    case: &PreprocessedCase,
+    alpha: f64,
+    text_scores: Option<&[f64]>,
+) -> PredictionScores {
     let mut class_names: Vec<&String> = model.class_priors.class_counts.keys().collect();
     class_names.sort();
 
@@ -193,9 +217,17 @@ pub fn predict_case(
     let mut predicted_class: Option<String> = None;
     let mut best_score = f64::NEG_INFINITY;
 
+    // Fase N3a: konteks Text (hanya bila model punya Text DAN skor diberikan).
+    let text_ctx = match (&model.text, text_scores) {
+        (Some(text_model), Some(row_scores)) => Some((text_model, row_scores)),
+        _ => None,
+    };
+    // Complement (K >= 2) tidak memakai prior kelas; selain itu `ln prior`.
+    let uses_class_prior = text_ctx.map_or(true, |(text_model, _)| text_model.params.uses_class_prior);
+
     for class in &class_names {
         let prior = *model.class_priors.priors.get(class.as_str()).unwrap_or(&0.0);
-        let mut score = safe_ln(prior);
+        let mut score = if uses_class_prior { safe_ln(prior) } else { 0.0 };
 
         for (covariate_name, per_class_params) in &model.gaussian {
             if let Some(Some(value)) = case.covariates.get(covariate_name) {
@@ -216,6 +248,21 @@ pub fn predict_case(
             }
             // Lihat catatan di doc comment fungsi ini: cabang ini murni
             // pengaman, bukan jalur normal.
+        }
+
+        // Fase N3a: kontribusi Text dari CORE; kelas dicari lewat NAMA (bukan
+        // asumsi urutan kelas model Text sama dengan urutan alfabetis di sini).
+        if let Some((text_model, row_scores)) = text_ctx {
+            if let Some(class_index) = text_model
+                .params
+                .classes
+                .iter()
+                .position(|name| name.as_str() == class.as_str())
+            {
+                if let Some(contribution) = row_scores.get(class_index) {
+                    score += *contribution;
+                }
+            }
         }
 
         scores.insert((*class).clone(), score);
@@ -558,5 +605,116 @@ mod tests {
             assert!(!prob.is_nan());
             assert!(prob >= 0.0 && prob <= 1.0, "alpha={} prob={}", alpha, prob);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_n3a {
+    use super::*;
+    use crate::models::config::NumericLikelihood;
+    use crate::stats::numerical_distribution::NumericLikelihoodSpec;
+    use crate::stats::training::{train_naive_bayes_model, train_naive_bayes_model_v2};
+    use std::collections::HashMap as StdHashMap;
+
+    fn case_x(target_class: &str, x: Option<f64>) -> PreprocessedCase {
+        let mut covariates = StdHashMap::new();
+        covariates.insert("x".to_string(), x);
+        PreprocessedCase {
+            target_class: target_class.to_string(),
+            factors: StdHashMap::new(),
+            covariates,
+        }
+    }
+
+    fn golden_cases() -> Vec<PreprocessedCase> {
+        vec![
+            case_x("A", Some(1.0)),
+            case_x("A", Some(1.0)),
+            case_x("A", Some(1.0)),
+            case_x("B", Some(3.0)),
+            case_x("B", Some(5.0)),
+        ]
+    }
+
+    /// Golden AGENTS_V2 §6.7: log-likelihood kelas A di x = 3 dengan min-std
+    /// = -17.820326 (dengan floor 1e-9 v1: -1999999990.557305).
+    #[test]
+    fn golden_minstd_log_likelihood_kelas_a_di_x_3() {
+        let classes = vec!["A".to_string(), "B".to_string()];
+        let names = vec!["x".to_string()];
+        let spec = NumericLikelihoodSpec {
+            default: NumericLikelihood::GaussianMinstd,
+            overrides: StdHashMap::new(),
+        };
+        let minstd = train_naive_bayes_model_v2(
+            &golden_cases(),
+            &classes,
+            &[],
+            &names,
+            1.0,
+            1e-9,
+            &spec,
+            None,
+        )
+        .expect("pelatihan min-std");
+        let params_a = minstd.gaussian["x"]["A"];
+        let log_likelihood = log_gaussian_density(3.0, params_a.mean, params_a.variance);
+        assert!(
+            (log_likelihood - (-17.820326)).abs() < 1e-6,
+            "diperoleh {}",
+            log_likelihood
+        );
+
+        // Pembanding v1 (Gaussian biasa dengan floor 1e-9).
+        let plain = train_naive_bayes_model(&golden_cases(), &classes, &[], &names, 1.0, 1e-9);
+        let plain_a = plain.gaussian["x"]["A"];
+        let plain_log_likelihood = log_gaussian_density(3.0, plain_a.mean, plain_a.variance);
+        assert!(
+            (plain_log_likelihood - (-1999999990.557305)).abs() < 1e-3,
+            "diperoleh {}",
+            plain_log_likelihood
+        );
+    }
+
+    /// Skor lengkap lewat `predict_case`: min-std membuat kelas A masih
+    /// mungkin dibandingkan (bukan -2e9) dan hasilnya finite.
+    #[test]
+    fn minstd_menghasilkan_skor_finite_yang_bisa_dibandingkan() {
+        let classes = vec!["A".to_string(), "B".to_string()];
+        let names = vec!["x".to_string()];
+        let spec = NumericLikelihoodSpec {
+            default: NumericLikelihood::GaussianMinstd,
+            overrides: StdHashMap::new(),
+        };
+        let model = train_naive_bayes_model_v2(
+            &golden_cases(),
+            &classes,
+            &[],
+            &names,
+            1.0,
+            1e-9,
+            &spec,
+            None,
+        )
+        .expect("pelatihan min-std");
+        let result = predict_case(&model, &case_x("?", Some(3.0)), 1.0);
+        assert!(result.scores["A"] > -100.0);
+        assert!(result.scores["B"].is_finite());
+        assert_eq!(result.predicted_class, Some("B".to_string()));
+    }
+
+    /// Model tanpa Text + `text_scores` diberikan: skor diabaikan (identik
+    /// `predict_case`), sehingga jalur v1 tidak bisa berubah tanpa disengaja.
+    #[test]
+    fn model_tanpa_text_mengabaikan_text_scores_dan_sama_dengan_predict_case() {
+        let classes = vec!["A".to_string(), "B".to_string()];
+        let names = vec!["x".to_string()];
+        let model = train_naive_bayes_model(&golden_cases(), &classes, &[], &names, 1.0, 1e-9);
+        let query = case_x("?", Some(2.0));
+        let plain = predict_case(&model, &query, 1.0);
+        let with_text = predict_case_with_text(&model, &query, 1.0, Some(&[5.0, -5.0]));
+        assert_eq!(plain, with_text);
+        let without_scores = predict_case_with_text(&model, &query, 1.0, None);
+        assert_eq!(plain, without_scores);
     }
 }

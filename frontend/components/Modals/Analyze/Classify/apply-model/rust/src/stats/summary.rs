@@ -168,7 +168,7 @@ pub fn build_warnings(summary: &RowsSummary, legacy_unseen_handling: bool) -> Ve
         warnings.push(ApplyModelWarning {
             code: "AM_W_ROWS_NOT_SCORED".to_string(),
             count: not_scored,
-            message: "Sebagian baris tidak diprediksi karena seluruh variabel prediktornya kosong."
+            message: "Some rows were not scored because all of their predictor variables are missing."
                 .to_string(),
         });
     }
@@ -179,7 +179,7 @@ pub fn build_warnings(summary: &RowsSummary, legacy_unseen_handling: bool) -> Ve
             warnings.push(ApplyModelWarning {
                 code: "AM_W_UNSEEN_SKIPPED_LEGACY".to_string(),
                 count: skipped,
-                message: "Sebagian baris memiliki kategori yang tidak dikenal model (format 1.0), sehingga fitur tersebut dilewati saat prediksi."
+                message: "Some rows contain categories unknown to the model (schema 1.0), so that feature was skipped when predicting."
                     .to_string(),
             });
         }
@@ -189,7 +189,7 @@ pub fn build_warnings(summary: &RowsSummary, legacy_unseen_handling: bool) -> Ve
             warnings.push(ApplyModelWarning {
                 code: "AM_W_UNSEEN_CATEGORY".to_string(),
                 count: unseen,
-                message: "Sebagian baris memiliki kategori yang tidak dikenal model dan dihitung dengan smoothing."
+                message: "Some rows contain categories unknown to the model; they were handled with smoothing."
                     .to_string(),
             });
         }

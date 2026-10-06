@@ -16,10 +16,18 @@
 //   4. `actual`         — `Vec<Vec<DataRecord>>`: `[]` atau satu slice target aktual.
 //   5. `actual_defs`    — `Vec<Vec<VariableDefinition>>`: `[]` atau satu defs.
 //   6. `model`          — isi file model apa adanya (`serde_json::Value`).
+//   7. `text`           — REVISI v2 (Fase A2, AGENTS_V2.md §10.3), OPSIONAL:
+//                         `undefined`/`null` = tanpa fitur Text (perilaku v1,
+//                         pemanggil lama yang hanya mengirim 6 argumen tetap
+//                         valid) atau `ApplyModelTextPayload`
+//                         (`{source:"raw", values}` |
+//                          `{source:"vector", mapped_columns, values}`).
+//                         Argumen ini adalah satu-satunya perubahan signature
+//                         yang disahkan AGENTS_V2.md; worker diteruskan di Fase I1.
 use wasm_bindgen::prelude::*;
 
 use crate::models::data::{DataRecord, VariableDefinition};
-use crate::models::payload::MappingEntry;
+use crate::models::payload::{MappingEntry, TextPayload};
 use crate::models::result::ApplyModelRawResult;
 use crate::utils::converter::string_to_js_error;
 use crate::utils::error::ErrorCollector;
@@ -41,6 +49,7 @@ impl ApplyModelAnalysis {
         actual: JsValue,
         actual_defs: JsValue,
         model: JsValue,
+        text: JsValue,
     ) -> Result<ApplyModelAnalysis, JsValue> {
         let mut error_collector = ErrorCollector::default();
 
@@ -71,15 +80,26 @@ impl ApplyModelAnalysis {
             Err(e) => return Err(fail(&mut error_collector, "constructor.model", format!("AM_E_PAYLOAD: model: {}", e))),
         };
 
+        // Revisi v2: payload Text opsional (`undefined`/`null` -> tanpa Text).
+        let text: Option<TextPayload> = if text.is_undefined() || text.is_null() {
+            None
+        } else {
+            match serde_wasm_bindgen::from_value(text) {
+                Ok(value) => Some(value),
+                Err(e) => return Err(fail(&mut error_collector, "constructor.text", format!("AM_E_PAYLOAD: text: {}", e))),
+            }
+        };
+
         // Jalankan analisis sungguhan sekali di sini; error berkode (model
         // tidak valid, payload tidak sejajar, tanpa baris) -> `Err(JsValue)`.
-        let result = match function::run_apply_model(
+        let result = match function::run_apply_model_with_text(
             &predictors,
             &predictor_defs,
             &mapping,
             &actual,
             &actual_defs,
             &model,
+            text.as_ref(),
         ) {
             Ok(result) => result,
             Err(message) => {

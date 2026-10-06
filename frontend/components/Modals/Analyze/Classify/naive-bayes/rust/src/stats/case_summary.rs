@@ -122,6 +122,92 @@ pub fn compute_case_processing_summary(
     }
 }
 
+// =====================================================================
+// Fase N4 (PLAN_V2 / AGENTS_V2 §9) — baris informasi Text pada Case Processing
+// Summary.
+//
+// `CaseProcessingSummary` di atas TIDAK diubah (bentuk v1 tetap). Ringkasan
+// Text dihitung terpisah oleh `compute_text_features_summary` dan HANYA ada
+// untuk model dengan fitur Text; pemanggil (`wasm::function`) yang
+// menyisipkannya ke JSON hasil.
+//
+// Sumber angka (catatan serah-terima N3b): `n_terms` = jumlah term MODEL FINAL
+// (`TrainedTextModel::terms.len()`), BUKAN kosakata per-fold. Untuk jalur raw
+// itu = ukuran kosakata resep final; untuk jalur vector = jumlah kolom vektor.
+// =====================================================================
+
+/// Catatan kebocoran jalur Word-Vector (W-LEAK, AGENTS_V2 §3.4/§9): kosakata/IDF
+/// kolom vektor dihitung di luar Naive Bayes.
+pub const TEXT_LEAKAGE_NOTE: &str = "The vocabulary and IDF of these vector columns were computed outside Naive Bayes on all rows, so evaluation results may be slightly optimistic.";
+
+/// Catatan untuk model yang TIDAK memakai prior kelas (Complement dengan K >= 2,
+/// AGENTS_V2 §6.3): tabel prior kelas jangan ditampilkan seolah dipakai model.
+pub const TEXT_NO_PRIOR_NOTE: &str =
+    "Complement Naive Bayes does not use class priors; class scores come from the text features only.";
+
+/// Ringkasan fitur Text untuk Case Processing Summary (AGENTS_V2 §9).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextFeaturesSummary {
+    /// `"raw"` atau `"vector"`.
+    pub source: &'static str,
+    /// Baris `Text features`: `Raw text: '{var}' ({V} terms)` atau `Word vectors: {n} columns`.
+    pub description: String,
+    /// Nama Raw Text Variable (hanya jalur raw).
+    pub variable: Option<String>,
+    /// Jumlah term (raw) atau jumlah kolom vektor (vector) pada model final.
+    pub n_terms: usize,
+    /// `"multinomial"` / `"bernoulli"` / `"complement"`.
+    pub likelihood: String,
+    pub alpha: f64,
+    /// `false` bila model memakai skor tanpa prior (Complement, K >= 2).
+    pub uses_class_prior: bool,
+    /// Catatan W-LEAK; hanya jalur vector.
+    pub leakage_note: Option<String>,
+    /// Catatan "tanpa prior"; hanya bila `uses_class_prior == false`.
+    pub class_prior_note: Option<String>,
+}
+
+/// Bangun `TextFeaturesSummary`. `raw_variable = Some(..)` -> jalur raw;
+/// `None` -> jalur vector (W-LEAK ditambahkan).
+pub fn compute_text_features_summary(
+    raw_variable: Option<&str>,
+    n_terms: usize,
+    likelihood: &str,
+    alpha: f64,
+    uses_class_prior: bool,
+) -> TextFeaturesSummary {
+    let (source, description, variable, leakage_note) = match raw_variable {
+        Some(name) => (
+            "raw",
+            format!("Raw text: '{}' ({} terms)", name, n_terms),
+            Some(name.to_string()),
+            None,
+        ),
+        None => (
+            "vector",
+            format!("Word vectors: {} columns", n_terms),
+            None,
+            Some(TEXT_LEAKAGE_NOTE.to_string()),
+        ),
+    };
+
+    TextFeaturesSummary {
+        source,
+        description,
+        variable,
+        n_terms,
+        likelihood: likelihood.to_string(),
+        alpha,
+        uses_class_prior,
+        leakage_note,
+        class_prior_note: if uses_class_prior {
+            None
+        } else {
+            Some(TEXT_NO_PRIOR_NOTE.to_string())
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,5 +352,55 @@ mod tests {
         assert_eq!(summary.validation_scenario.method, "holdout");
         assert_eq!(summary.validation_scenario.training_percentage, Some(25.0));
         assert_eq!(summary.validation_scenario.holdout_percentage, Some(75.0));
+    }
+}
+
+// Fase N4 — test ringkasan Text (modul terpisah; test lama tidak diubah).
+#[cfg(test)]
+mod tests_n4 {
+    use super::*;
+
+    #[test]
+    fn ringkasan_raw_memuat_nama_variabel_dan_jumlah_term_model_final() {
+        let summary =
+            compute_text_features_summary(Some("Text Tweet"), 1234, "multinomial", 1.0, true);
+        assert_eq!(summary.source, "raw");
+        assert_eq!(summary.description, "Raw text: 'Text Tweet' (1234 terms)");
+        assert_eq!(summary.variable.as_deref(), Some("Text Tweet"));
+        assert_eq!(summary.n_terms, 1234);
+        assert_eq!(summary.likelihood, "multinomial");
+        assert_eq!(summary.alpha, 1.0);
+        assert!(summary.uses_class_prior);
+        // Raw tidak mendapat catatan W-LEAK (di-fit per fold, V7).
+        assert_eq!(summary.leakage_note, None);
+        assert_eq!(summary.class_prior_note, None);
+    }
+
+    #[test]
+    fn ringkasan_vector_memuat_jumlah_kolom_dan_catatan_w_leak() {
+        let summary = compute_text_features_summary(None, 20, "bernoulli", 0.5, true);
+        assert_eq!(summary.source, "vector");
+        assert_eq!(summary.description, "Word vectors: 20 columns");
+        assert_eq!(summary.variable, None);
+        assert_eq!(summary.alpha, 0.5);
+        assert_eq!(summary.leakage_note.as_deref(), Some(TEXT_LEAKAGE_NOTE));
+        assert!(TEXT_LEAKAGE_NOTE.contains("computed outside Naive Bayes on all rows"));
+        // Teks kanonik PLAN_V3 §3.1 (harus persis).
+        assert_eq!(
+            TEXT_LEAKAGE_NOTE,
+            "The vocabulary and IDF of these vector columns were computed outside Naive Bayes on all rows, so evaluation results may be slightly optimistic."
+        );
+        assert_eq!(
+            TEXT_NO_PRIOR_NOTE,
+            "Complement Naive Bayes does not use class priors; class scores come from the text features only."
+        );
+    }
+
+    #[test]
+    fn complement_tanpa_prior_diberi_catatan_agar_tabel_prior_tidak_menyesatkan() {
+        let summary = compute_text_features_summary(Some("Teks"), 5, "complement", 1.0, false);
+        assert!(!summary.uses_class_prior);
+        assert_eq!(summary.class_prior_note.as_deref(), Some(TEXT_NO_PRIOR_NOTE));
+        assert_eq!(summary.likelihood, "complement");
     }
 }

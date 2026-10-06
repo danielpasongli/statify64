@@ -6,7 +6,7 @@ export class ApplyModelAnalysis {
     [Symbol.dispose](): void;
     get_all_errors(): any;
     get_formatted_results(): any;
-    constructor(predictors: any, predictor_defs: any, mapping: any, actual: any, actual_defs: any, model: any);
+    constructor(predictors: any, predictor_defs: any, mapping: any, actual: any, actual_defs: any, model: any, text: any);
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -16,7 +16,7 @@ export interface InitOutput {
     readonly __wbg_applymodelanalysis_free: (a: number, b: number) => void;
     readonly applymodelanalysis_get_all_errors: (a: number) => any;
     readonly applymodelanalysis_get_formatted_results: (a: number) => [number, number, number];
-    readonly applymodelanalysis_new: (a: any, b: any, c: any, d: any, e: any, f: any) => [number, number, number];
+    readonly applymodelanalysis_new: (a: any, b: any, c: any, d: any, e: any, f: any, g: any) => [number, number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
