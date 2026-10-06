@@ -9,8 +9,21 @@ function loadWorker() {
         self: { postMessage: jest.fn() },
         console: { log() {}, warn() {}, error() {} },
         performance,
-        chiSquareCdf: (nilai, df) => jStat.chisquare.cdf(nilai, df),
     });
+    const categoricalSource = fs.readFileSync(
+        path.join(
+            __dirname,
+            '..',
+            '..',
+            '..',
+            'DescriptiveStatistics',
+            'libs',
+            'categoricalTests',
+            'categoricalChiSquare.js',
+        ),
+        'utf8',
+    );
+    vm.runInContext(categoricalSource, context);
     const utilities = fs.readFileSync(
         path.join(__dirname, '..', '..', 'libs', 'utils.js'),
         'utf8',
@@ -77,6 +90,10 @@ describe('Black-box Uji Bartlett', () => {
         );
 
         expect(pesan.data[0].pValue).toBeGreaterThanOrEqual(0.05);
+        expect(Math.abs(
+            pesan.data[0].pValue
+            - (1 - jStat.chisquare.cdf(pesan.data[0].statistic, pesan.data[0].df)),
+        )).toBeLessThan(1e-10);
     });
 
     test('B-BB-03: varians heterogen menghasilkan p-value kurang dari 0,05', () => {

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { jStat } = require('jstat');
 
 const modulePath = path.resolve(
   __dirname,
@@ -16,6 +17,24 @@ describe('mesin uji Chi-Square kategorik', () => {
     jest.resetModules();
     return require(modulePath);
   };
+
+  test('menyediakan p-value Chi-Square untuk digunakan modul statistik lain', () => {
+    const api = loadApi();
+    const cases = [
+      { statistic: 0, df: 1 },
+      { statistic: 3.841458820694124, df: 1 },
+      { statistic: 5.991464547107979, df: 2 },
+      { statistic: 18.307038053275146, df: 10 },
+      { statistic: 100, df: 1 },
+    ];
+
+    expect(api.chiSquarePValue).toEqual(expect.any(Function));
+    for (const { statistic, df } of cases) {
+      const expected = 1 - jStat.chisquare.cdf(statistic, df);
+      expect(Math.abs(api.chiSquarePValue(statistic, df) - expected))
+        .toBeLessThan(1e-10);
+    }
+  });
 
   test('menghitung statistik Pearson, df, p-value, dan expected count tabel 2x2', () => {
     const api = loadApi();

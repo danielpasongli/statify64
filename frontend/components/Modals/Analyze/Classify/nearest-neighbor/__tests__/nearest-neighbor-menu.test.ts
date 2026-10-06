@@ -181,8 +181,12 @@ beforeAll(async () => {
 
 beforeEach(() => {
     simulateConnectionError = false;
+    // Laporan performa KNN tidak relevan untuk pengujian alur menu.
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'info').mockImplementation(() => {});
+    jest.spyOn(console, 'groupCollapsed').mockImplementation(() => {});
+    jest.spyOn(console, 'groupEnd').mockImplementation(() => {});
+    jest.spyOn(console, 'table').mockImplementation(() => {});
 });
 
 afterEach(() => {

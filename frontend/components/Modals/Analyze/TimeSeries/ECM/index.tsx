@@ -44,9 +44,7 @@ const ECM: FC<ECMProps> = ({ onClose, containerType }) => {
 
     const {
         maxLagADF,
-        maxLagECM,
         handleMaxLagADF,
-        handleMaxLagECM,
         resetOptions,
     } = useOptionHook();
 
@@ -56,7 +54,6 @@ const ECM: FC<ECMProps> = ({ onClose, containerType }) => {
         data,
         selectedPeriod,
         maxLagADF,
-        maxLagECM,
         saveLongRun,
         saveShortRun,
         onClose
@@ -182,9 +179,7 @@ const ECM: FC<ECMProps> = ({ onClose, containerType }) => {
                     <TabsContent value="options" className="h-full">
                         <OptionTab
                             maxLagADF={maxLagADF}
-                            maxLagECM={maxLagECM}
                             handleMaxLagADF={handleMaxLagADF}
-                            handleMaxLagECM={handleMaxLagECM}
                         />
                     </TabsContent>
 

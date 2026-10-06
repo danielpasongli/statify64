@@ -54,8 +54,10 @@
  * ============================================================================
  */
 
-import chiSquareCdf from 'https://cdn.jsdelivr.net/npm/@stdlib/stats-base-dists-chisquare-cdf@0.2.2/+esm';
+import '../DescriptiveStatistics/libs/categoricalTests/categoricalChiSquare.js';
 import { checkIsMissing } from './libs/utils.js';
+
+const { chiSquarePValue } = self.CategoricalChiSquare;
 
 /** Menjumlahkan nilai dengan koreksi Neumaier untuk mengurangi galat floating point. */
 function compensatedSum(length, valueAt) {
@@ -482,12 +484,11 @@ function calculateBartlettTest(groupedData) {
     const df = numGroups - 1;
 
     // P-value = P(χ² > T)
-    // Menggunakan fungsi CDF dari distribusi chi-square
-    // p-value = 1 - CDF(T, df)
+    // Gunakan peluang ekor atas dari mesin Chi-Square lokal.
     //
-    // Jika T=0 → CDF=0 → nilai-p = 1,0 (varians homogen sempurna)
-    // Jika T besar → CDF mendekati 1 → p-value mendekati 0 (varians berbeda)
-    const pValue = 1 - chiSquareCdf(bartlettStatistic, df);
+    // Jika T=0 → nilai-p = 1,0 (varians homogen sempurna)
+    // Jika T besar → nilai-p mendekati 0 (varians berbeda)
+    const pValue = chiSquarePValue(bartlettStatistic, df);
 
     console.log('[DEBUG] Worker - df:', df, 'pValue:', pValue);
     console.log('[DEBUG] Worker - Final result:', {statistic: bartlettStatistic, df, pValue});
@@ -680,9 +681,9 @@ self.onmessage = function(e) {
                 factorData
             } = data;
 
-            // Validate chiSquareCdf is loaded
-            if (!chiSquareCdf) {
-                throw new Error('Chi-square CDF library not loaded');
+            // Pastikan fungsi distribusi Chi-Square lokal tersedia.
+            if (typeof chiSquarePValue !== 'function') {
+                throw new Error('Fungsi p-value Chi-Square lokal tidak tersedia.');
             }
 
             const results = [];

@@ -3,20 +3,31 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-// Execute the production worker. Only the CDN CDF is substituted; these tests
-// exercise input selection and the message contract, not the distribution.
+// Jalankan worker produksi bersama mesin Chi-Square lokal yang dipakai aplikasi.
 function loadWorker() {
     const context = vm.createContext({
         self: { postMessage: jest.fn() },
         console: { log() {}, warn() {}, error() {} },
-        performance, chiSquareCdf: () => 0,
+        performance,
     });
+    const categoricalSource = fs.readFileSync(
+        path.join(__dirname, '../../DescriptiveStatistics/libs/categoricalTests/categoricalChiSquare.js'),
+        'utf8',
+    );
+    vm.runInContext(categoricalSource, context);
     const utilities = fs.readFileSync(path.join(__dirname, '../libs/utils.js'), 'utf8');
     vm.runInContext(utilities.replace(/export function /g, 'function '), context);
     const source = fs.readFileSync(path.join(__dirname, '../bartlettTestWorker.js'), 'utf8');
     vm.runInContext(source.replace(/^import .*;\r?$/gm, ''), context);
     return context;
 }
+
+test('Bartlett memakai mesin Chi-Square lokal tanpa impor HTTP', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../bartlettTestWorker.js'), 'utf8');
+
+    expect(source).toContain("../DescriptiveStatistics/libs/categoricalTests/categoricalChiSquare.js");
+    expect(source).not.toMatch(/from ['"]https?:\/\//);
+});
 
 test('Bartlett excludes blank, non-finite and declared missing values in either column', () => {
     const worker = loadWorker();
