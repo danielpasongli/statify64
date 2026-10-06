@@ -26,7 +26,7 @@ describe('StatisticsTab', () => {
   it('shows the Chi-Square usage description only in the information tooltip', async () => {
     render(<StatisticsTab options={options} setOptions={jest.fn()} />);
     const user = userEvent.setup();
-    const description = /dibutuhkan minimal 2 variabel bertipe kategorik/i;
+    const description = /Variabel kelompok dan variabel hasil harus kategorik/i;
 
     expect(screen.queryByText(description)).not.toBeInTheDocument();
 
